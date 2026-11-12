@@ -100,7 +100,7 @@ export function strokeOrder(model: Model, crossed: readonly Crossed[]): Crossed[
 }
 
 export class TrimTool extends Tool {
-  static readonly summary = "Trims a curve back to where others cut it: click or drag across pieces";
+  static readonly summary = "Trims a curve back to where others cut it: {tap} or drag across pieces";
   static readonly how: How = [
     "{Tap} the piece of a curve to remove.",
     "Or drag across several pieces at once.",
@@ -209,7 +209,7 @@ export class TrimTool extends Tool {
         this.ctx.requestRender();
         return;
       }
-      this.guide(`click the curve or the surface that cuts ${this.held.surface} — Escape puts it down`);
+      this.guide(`{tap} the curve or the surface that cuts ${this.held.surface} — Escape puts it down`);
       return;
     }
     // A press on a surface, away from any curve, takes it in hand; anything
@@ -241,7 +241,7 @@ export class TrimTool extends Tool {
   private clickTrim(p: PointerInfo): void {
     const curve = curveUnder(this.ctx, p, anyCurve);
     if (!curve) {
-      this.guide("click on a curve — the piece under the click goes — drag across pieces, or press a surface where it is kept");
+      this.guide("{tap} on a curve — the piece under the {tap} goes — drag across pieces, or press a surface where it is kept");
       return;
     }
     // Where on the curve the press is: a lid's edge is not on the plane the press was read on.

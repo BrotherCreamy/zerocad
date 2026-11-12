@@ -230,7 +230,7 @@ test("sketch on face, then draw: the work plane is the face, and the circle lies
   }
   await look(app, 0.5, 0.7);
   const [cx, cy] = await app.screenOf([20, 15, 20]);
-  await app.type('arm("sketch")');
+  await app.type('arm("plane")');
   const at = await app.at(cx, cy);
   await app.page.mouse.click(at.x, at.y);
   await app.page.waitForTimeout(400);

@@ -167,7 +167,7 @@ defineModule("surfaces", {
     "           surface's own edges. The round and chamfer tools do all of it:",
     "           click an edge of a surface, or a surface and then another.",
     "           Given anything but a surface first, trim, extend, offset, fillet",
-    "           and chamfer are the sketch's and the solid's, as ever.",
+    "           and chamfer are the curves' and the solid's, as ever.",
     "           SMLib does not extend a trimmed face, so extend acts on the",
     "           sweep; and a fillet between two surfaces is trim, knit and the",
     "           edge fillet, since its own face-face blend leaves both untrimmed.",

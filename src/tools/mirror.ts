@@ -50,7 +50,7 @@ export function drawSet(r: RenderContext, model: Parameters<typeof pieceSamples>
 }
 
 export class MirrorTool extends FeatureTool {
-  static readonly summary = "Mirrors a copy: select, then click the mirror line or an axis";
+  static readonly summary = "Mirrors a copy: select, then {tap} the mirror line or an axis";
   static readonly how: How = [
     "{Tap} what to mirror, then ✓.",
     "{Tap} the mirror line: any line, or an axis arrow.",
@@ -91,7 +91,7 @@ export class MirrorTool extends FeatureTool {
 
   protected wanting(): string | null {
     if (!this.set.length) return null;
-    return "now click the mirror line — a line, or a frame's axis";
+    return `now {tap} the mirror line — a line, or a frame's axis`;
   }
 
   protected get verb(): string {
@@ -119,7 +119,7 @@ export class MirrorTool extends FeatureTool {
     if (this.choosingLine) {
       const line = mirrorLineOf(hit);
       if (!line) {
-        this.guide("click the mirror line: a line, or an arm of a frame's marker");
+        this.guide("{tap} the mirror line: a line, or an arm of a frame's marker");
         return;
       }
       if (line === this.line) {
@@ -132,7 +132,7 @@ export class MirrorTool extends FeatureTool {
       return;
     }
     if (!hit || !COPIES.has(hit.kind)) {
-      this.guide(this.set.length ? "click more to mirror, or ✓ and then the mirror line" : "click a line, arc, circle or point to mirror");
+      this.guide(this.set.length ? "{tap} more to mirror, or ✓ and then the mirror line" : "{tap} a line, arc, circle or point to mirror");
       return;
     }
     this.set = this.set.includes(hit.name) ? this.set.filter((n) => n !== hit.name) : [...this.set, hit.name];

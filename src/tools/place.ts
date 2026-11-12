@@ -56,7 +56,7 @@ import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, onEllipse, pointOnLine } from "../relations/geometry.ts";
 import { onSpline } from "../relations/spline.ts";
-import { isFacePlane, planeNormalRef, planeOfRef, sketchPlaneRef } from "../workplane.ts";
+import { isFacePlane, planeNormalRef, planeOfRef, drawingPlaneRef } from "../workplane.ts";
 import { parallel } from "../relations/geometry.ts";
 import type { Plane } from "../view.ts";
 import { liesOn } from "../view.ts";
@@ -85,7 +85,7 @@ export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string, p
   const free = !info.snap || info.snap.kind === "curve" || info.snap.kind === "projected";
   if (!free) return placed;
   const own = info.face?.flat ? info.face.name : null;
-  holdOnSketchPlane(ctx.model, placed, own ?? plane);
+  holdOnChosenPlane(ctx.model, placed, own ?? plane);
   // A round face, or one only the kernel knows (a fillet's): the point is
   // where the click landed, and nothing holds it there — said, so the owner's
   // "constrain to the plane i am hovering over" is not quietly half-kept
@@ -119,7 +119,7 @@ export function requirePlanar(model: Model, tool: string): void {
  * reference (`Model.planeKind`, or a face's name):
  *
  * 1. the plane the user chose to sketch on — the work plane (sketch on face)
- *    or the default frame (`sketchPlaneRef`) — when there is one: a sketch is
+ *    or the default frame (`drawingPlaneRef`) — when there is one: a sketch is
  *    drawn on its own plane, as in Onshape, whatever is under the cursor;
  * 2. else **the face of a solid the click landed on** (`PointerInfo.face`,
  *    read by the engine off the faces drawn this frame): the face's own
@@ -157,7 +157,7 @@ export class CurvePlane {
     this.ref = null;
     this.on = null;
     if (m.dim !== 3) return true;
-    const chosen = sketchPlaneRef(m);
+    const chosen = drawingPlaneRef(m);
     if (chosen === null && p.face && p.plane) {
       // The face the click landed on, as the engine read it — facing the
       // viewer. A round face has a plane to lay the gesture out on (the piece
@@ -271,7 +271,7 @@ export class CurvePlane {
  */
 export function holdCurve(m: Model, curve: string, centre: string, ref: string): string[] {
   if (m.dim !== 3) return [];
-  if (!isFacePlane(m, ref) && sketchPlaneRef(m) === null) return [];
+  if (!isFacePlane(m, ref) && drawingPlaneRef(m) === null) return [];
   const on = planeOfRef(m, ref);
   if (!on) return [];
   const made: string[] = [];
@@ -317,7 +317,7 @@ export function asArmed(ctx: ToolContext, ...curves: string[]): void {
  * nothing applied. The plane is `given` — a curve tool's gesture plane, which
  * may be a solid's flat face (`"e1:l2"`, docs/plans/click-on-face.md), a
  * plane the user chose, or the ground — else the plane the user chose to
- * sketch on (the work plane or the default frame, `sketchPlaneRef`).
+ * sketch on (the work plane or the default frame, `drawingPlaneRef`).
  *
  * **A face holds; the ground never does**: with no plane chosen and no face,
  * nothing, given or not — the owner's *"the default for sketch entities is no
@@ -331,14 +331,14 @@ export function asArmed(ctx: ToolContext, ...curves: string[]): void {
  * on the surface because they were laid out there, and have to stay on it
  * for the same reason the clicked ones do.
  */
-export function holdOnSketchPlane(model: Model, pointName: string, given?: string | null): string | null {
+export function holdOnChosenPlane(model: Model, pointName: string, given?: string | null): string | null {
   if (model.dim !== 3) return null;
   // A face is a plane to hold to whether or not one was chosen (the owner's
   // "constrain to the plane i am hovering over"); anything else only on a
   // plane the user picked (see `holdCurve`).
   const face = isFacePlane(model, given);
-  if (!face && sketchPlaneRef(model) === null) return null;
-  const ref = face ? given : given ?? sketchPlaneRef(model);
+  if (!face && drawingPlaneRef(model) === null) return null;
+  const ref = face ? given : given ?? drawingPlaneRef(model);
   if (ref === null || ref === undefined) return null;
   const plane = planeOfRef(model, ref);
   if (!plane || !liesOn(plane, model.coords(pointName))) return null;

@@ -671,7 +671,7 @@ test("up to face: held on a parallel face both ways; refused in words on a slant
 
   // A wall of the plate is square to the sketch, not parallel to it: refused, saying why.
   const wall = `${p.feature}:${p.lines[0]}`;
-  assert.throws(() => scope.setEnd(e3, "upto", wall), /is not parallel to e3's sketch — a lid on it would not be this profile moved, and the kernel sweeps square/);
+  assert.throws(() => scope.setEnd(e3, "upto", wall), /is not parallel to e3's profile — a lid on it would not be this profile moved, and the kernel sweeps square/);
   assert.equal(m.featureOf(e3, "extrude").upto, `${block}.lid`, "and nothing changed");
   // Its own face is no face to end on.
   assert.throws(() => scope.setEnd(e3, "upto", `${e3}.lid`), /own face/);

@@ -293,7 +293,7 @@ export function faceAhead(model: Model, f: ExtrudeFeature, given: string, at?: r
   { kind: "held" | "placed"; face: string; off: number } {
   const face = faceRef(model, given);
   const w = wayOf(model, f);
-  if (!w) throw new Error(`${f.name} cannot be laid out — its sketch plane has collapsed`);
+  if (!w) throw new Error(`${f.name} cannot be laid out — its profile's plane has collapsed`);
   const off = (p: readonly number[]) => dot3(sub3([...p], w.origin), w.way);
   const s = faceSource(model, face);
   if (s && s.feature.name === f.name) throw new Error(`"${face}" is ${f.name}'s own face — up to a face means a face of something else`);
@@ -302,7 +302,7 @@ export function faceAhead(model: Model, f: ExtrudeFeature, given: string, at?: r
     if (!plane) throw new Error(`"${face}" has no plane to read`);
     const lean = Math.hypot(...cross3(plane.n, w.way));
     if (lean > 1e-6) {
-      throw new Error(`"${face}" is not parallel to ${f.name}'s sketch — a lid on it would not be this profile moved, and the kernel sweeps square (TODO.md: up to a slanted face)`);
+      throw new Error(`"${face}" is not parallel to ${f.name}'s profile — a lid on it would not be this profile moved, and the kernel sweeps square (TODO.md: up to a slanted face)`);
     }
     return { kind: "held", face, off: off(plane.p) };
   }

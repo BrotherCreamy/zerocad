@@ -282,7 +282,7 @@ test("the revolve tool: a frameless region, then an axis, confirmed — the revo
   assert.equal(tool.confirm(), true, "a confirm then says what is missing");
   await c.settled();
   assert.deepEqual(c.typed, [], "and types nothing");
-  assert.match(c.log[0], new RegExp(`^revolve: ${off} is not in its plane, or crosses it — click a lit one$`));
+  assert.match(c.log[0], new RegExp(`^revolve: ${off} is not in its plane, or crosses it — \{tap\} a lit one$`));
 
   c.pickResult = { kind: "line", name: axis } as Pick;
   tool.onDown(info([0, 0]));

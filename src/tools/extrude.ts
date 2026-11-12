@@ -119,7 +119,7 @@ export class ExtrudeTool extends FeatureTool {
     end: END_OPTION,
     mode: MODE_OPTION,
   };
-  static readonly summary: string = "Pulls a closed shape into a solid: click inside it, then ✓";
+  static readonly summary: string = "Pulls a closed shape into a solid: {tap} inside it, then ✓";
   static readonly how: How = [
     "{Tap} inside a closed outline.",
     "Set the depth in the options; ⇅ turns it the other way.",
@@ -521,7 +521,7 @@ export class CutTool extends ExtrudeTool {
     depth: { ...DEPTH_OPTION, label: "depth" },
     end: END_OPTION,
   };
-  static readonly summary = "Cuts a hole or a pocket into a solid: click a closed shape, then ✓";
+  static readonly summary = "Cuts a hole or a pocket into a solid: {tap} a closed shape, then ✓";
   static readonly how: How = [
     "{Tap} inside a closed outline drawn on a solid.",
     "Set how deep in the options.",

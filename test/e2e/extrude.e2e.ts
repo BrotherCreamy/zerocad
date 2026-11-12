@@ -272,7 +272,7 @@ test("a circle sketched on the lid, on the work plane the sketch tool sets to th
   // workplane("a.b.c") of three lid corners, which is the lid's plane wherever
   // the lid goes — and makes no frame (docs/plans/frameless-curves.md; this
   // used to type plane(a, b, c), a frame on those corners).
-  await app.type("sketch");
+  await app.type("plane");
   await clickAt(...await app.screenOf(onG(36, 34, 35)));
   const typed = (await app.log()).split("\n").reverse().find((l) => l.includes("workplane("));
   assert.match(typed ?? "", /workplane\("p\d+\.p\d+\.p\d+"\)/, `the sketch tool's line: ${typed}`);

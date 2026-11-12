@@ -358,7 +358,7 @@ test("iPhone 13: holding a toolbar button shows its tooltip clear of the finger 
   const at = await middleOf(phone, button("circle"));
   await f.hold(...at, 750, true);
   const t = await tipBecomes(phone, (s) => s.shown, "the hold's tooltip");
-  assert.equal(t.text, 'Circle Draws a circle: drag out from its centre, or click 3 points or edges arm("circle")');
+  assert.equal(t.text, 'Circle Draws a circle: drag out from its centre, or tap 3 points or edges arm("circle")');
   // Clear of the finger: above it or beside it, never under it.
   const cv = await rectOf(phone, "#cv");
   const [fx, fy] = [cv.x + at[0], cv.y + at[1]];

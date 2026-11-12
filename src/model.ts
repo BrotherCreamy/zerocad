@@ -3781,7 +3781,7 @@ export class Model {
    *   and nothing could ever hold it. One gauge row along the normal itself.
    * - **A point lying on the drawing plane, or on the ground, is not free off
    *   it.** A sketch drawn on the ground in a fresh document holds no point
-   *   there (`holdOnSketchPlane` only holds them on a plane the user chose),
+   *   there (`holdOnChosenPlane` only holds them on a plane the user chose),
    *   and the solver never moves one off it — so a fully dimensioned
    *   rectangle on the ground would otherwise read free forever in z, which
    *   is not what a sketcher means by free and not what Onshape says. A point

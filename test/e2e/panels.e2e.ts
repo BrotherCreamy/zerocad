@@ -134,7 +134,7 @@ test("the canvas is the whole window — there is no header — and the chrome f
 
 test("the toolbar has a button per registered tool: its icon, with a tooltip and its name as its accessible name", async () => {
   // A tool with options is listed with them (`extrude  { depth: 10 }`); its name is the first word.
-  // The old names circle3 and arc3 are listed after the tools as what they arm, not as tools.
+  // The old names circle3, arc3 and sketch are listed after the tools as what they arm, not as tools.
   // A group's members share its one button, which shows the first of them
   // until another is armed (docs/plans/toolbar-groups.md): the polygon and the
   // slot are behind the rectangle's (docs/plans/sketch-shapes.md), and
@@ -148,7 +148,7 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
   // modify group since trim everything, so the fillet is behind its face
   // (docs/plans/trim-everything.md).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
-    .filter((t) => !["circle3", "arc3", "polygon", "slot", "region", "constrain", "round", "chamfer",
+    .filter((t) => !["circle3", "arc3", "sketch", "polygon", "slot", "region", "constrain", "round", "chamfer",
       "bevel", "fillet", "extend", "offset", "mirror", "pattern", "cut", "surface", "edge", "spline"].includes(t));
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
@@ -162,7 +162,7 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
       box: (() => { const r = el.getBoundingClientRect(); return [r.width, r.height]; })(),
     })));
   assert.deepEqual(buttons.map((b) => b.tool), tools, "the registry, in its order");
-  assert.ok(tools.includes("extrude") && tools.includes("revolve") && tools.includes("sketch"), "the solid tools included");
+  assert.ok(tools.includes("extrude") && tools.includes("revolve") && tools.includes("plane"), "the solid tools included");
   for (const b of buttons) {
     assert.equal(b.glyph, b.tool, `${b.tool}: its own glyph — every one here is a built-in`);
     assert.equal(b.text, "", "and no words on its face");

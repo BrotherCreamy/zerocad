@@ -27,11 +27,11 @@ import { Repl } from "../src/repl.ts";
 import { open, save } from "../src/persist.ts";
 import { planeLabel, planeNormalRef, pointOnWorkingPlane } from "../src/workplane.ts";
 import { chipParts, chipText, doneCommand, lookCommand } from "../src/modechip.ts";
-import { SketchTool, selectedPlane } from "../src/tools/sketch.ts";
+import { PlaneTool, selectedPlane } from "../src/tools/plane.ts";
 import { kernelFacePlane, kernelPlaneCommand } from "../src/kernelplane.ts";
 import type { BodyView } from "../src/bodies.ts";
 import { findLoops } from "../src/loops.ts";
-import { sketchFrameFor } from "../src/sketchface.ts";
+import { facePlaneFor } from "../src/faceplane.ts";
 import { activePlane, focusOf } from "../src/activeplane.ts";
 import { orbitBy, screenToPlane, viewAxes, worldToScreen, type View } from "../src/view.ts";
 import { getToolCtor, listTools, type PointerInfo, type Tool, type ToolContext } from "../src/tools/tool.ts";
@@ -94,7 +94,7 @@ const NOT_DRAWN: Record<string, string> = {
   extrude: "a solid feature: its points are the profile's, moved",
   cut: "the extrude's cut, a tool of its own (solid-tools-intuitive.md): its points are the profile's, moved",
   revolve: "a solid feature: its points are the profile's, turned",
-  sketch: "chooses the plane; draws nothing",
+  plane: "chooses the plane; draws nothing",
   round: "a solid's edge fillet: the kernel's, no model point",
   chamfer: "a solid's edge chamfer: the kernel's, no model point",
   surface: "a surface of faces already drawn — no point",
@@ -131,7 +131,7 @@ function faceRef(m: Model, toward: number[], pred: (n: number[], o: number[]) =>
   for (const l of findLoops(m)) {
     const { u, v, origin } = l.plane;
     const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    if (pred(n, origin)) return sketchFrameFor(m, l, toward);
+    if (pred(n, origin)) return facePlaneFor(m, l, toward);
   }
   throw new Error("no such face");
 }
@@ -385,14 +385,14 @@ test("the sketch tool armed on Front from its options types workplane(\"origin.x
   const typed: string[] = [];
   const run = ctx.run!;
   ctx.run = (c: string) => { typed.push(c); return run(c); };
-  new SketchTool(ctx).onArmed!();
+  new PlaneTool(ctx).onArmed!();
   await new Promise((r) => setTimeout(r, 5));
   await repl.eval("1");
   assert.deepEqual(typed, ['workplane("origin.xz")']);
   assert.equal(m.workPlane, "origin.xz");
   const { toward } = viewAxes(view);
   assert.ok(Math.abs(toward[1] + 1) < 1e-9, `looking at Front from the front: ${toward}`);
-  assert.equal(SketchTool.options.on.remember, false, "the next sketch starts by picking again");
+  assert.equal(PlaneTool.options.on.remember, false, "the next sketch starts by picking again");
 });
 
 test("the named planes are picked in the view: Top in the view a document opens in, Front and Right once turned to face them — nearest first, never edge-on", async () => {
@@ -402,7 +402,7 @@ test("the named planes are picked in the view: Top in the view a document opens 
     const { ctx } = host(m, view);
     const typed: string[] = [];
     ctx.run = (c: string) => { typed.push(c); };
-    const t = new SketchTool(ctx);
+    const t = new PlaneTool(ctx);
     renderAs(t, view);
     const [sx, sy] = worldToScreen(view, at);
     t.onMove!({ world: at, screen: [sx, sy] });
@@ -424,7 +424,7 @@ test("the named planes are picked in the view: Top in the view a document opens 
   const { ctx, log } = host(m, top);
   const typed: string[] = [];
   ctx.run = (c: string) => { typed.push(c); };
-  const t = new SketchTool(ctx);
+  const t = new PlaneTool(ctx);
   renderAs(t, top);
   t.onDown!({ world: [0, 0, 0], screen: [5, 5] });
   assert.deepEqual(typed, []);
@@ -484,7 +484,7 @@ test("sketching on a kernel-made face no loop bounds: one typed line, a plain fr
   };
   (ctx as { solids?: unknown }).solids = solids;
   ctx.regionAt = () => null;
-  const t = new SketchTool(ctx);
+  const t = new PlaneTool(ctx);
   const [sx, sy] = worldToScreen(view, [30, -2, 8]);
   t.onDown!({ world: [30, -2, 8], screen: [sx, sy] });
   await new Promise((r) => setTimeout(r, 5));

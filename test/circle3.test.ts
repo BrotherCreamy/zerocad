@@ -333,5 +333,5 @@ test("Circle3Tool: the collinear refusal reaches the log pane when there is one"
   tool.onDown(raw([10, 0]));
   tool.onDown(raw([25, 0]));
   assert.equal(ctx.lines.length, 1);
-  assert.match(ctx.lines[0], /^circle: those three are on one line — click the third off it$/);
+  assert.match(ctx.lines[0], /^circle: those three are on one line — \{tap\} the third off it$/);
 });

@@ -99,6 +99,88 @@ is now seven solves a trial, the most a folding trial spends.
 as the fallback; `build:kernel:noopt` is the one to time on. And the
 phone has still not been measured for any of this.
 
+## 2026-11-12 — there is no sketch: what the word was doing, and the choices behind its going
+
+Built on `claude/no-sketch` from docs/plans/no-sketch.md. The register has
+every choice; this is why, and what was dropped.
+
+**The word was a claim.** Nothing in the model was a sketch — a group is a
+set, an entity in any number of them, a plane a place a click lands — but
+"Sketch on this face", a "sketch tool", a "Sketch" workbench and "Sketch
+mode is the work plane" each told a person that what they drew went
+*inside* something. The owner said twice that it does not. So the package
+is almost entirely words, and the test that matters is the one that greps
+for the word: a source-level scan of every string literal in `src/`, with
+one exception, the quoted module id, because files name it.
+
+**Why "Plane" and not "Face" or "Draw on".** The tool's job is to choose a
+plane to draw on: a solid's face, a flat face the kernel made, or Top,
+Front and Right — and the last three are no faces, so "Face" lied in the
+other direction. "Draw on" is a verb, right for a menu item ("Draw on this
+face") and wrong for a thing on the tray. "Plane" also already named the
+chip's part and the typed `workplane`. The icon stayed; it was never the
+word. The old name is an alias rather than nothing, as `circle3` is: a
+script or a habit typing `arm("sketch")` gets the tool and a line saying
+which one.
+
+**Why the workbench is renamed and the module is not.** Both were called
+`sketch`. A workbench's name is on the logo menu, the organiser's title and
+in `workbench("…")`, all read by a person, so it is `drawing` now, with a
+one-entry alias table so `workbench("sketch")` and a file head from before
+still open it, and a save writes the new name. A module's id is in a
+workbench file's module list and in `ui({ modules })` — data a file names,
+never a word a person reads unprompted — and renaming it would have been a
+format change for the sake of the grep. The label changed; the id did not;
+the test allows exactly that literal.
+
+**Where `{tap}` is filled.** The how-lines already carried `{tap}` and were
+filled by `howText` where they were shown. A tool's running guidance is
+written in a dozen files, each with its own `guide` helper, and some of it
+goes to the log and the chip through `ctx.log`. Three places were
+considered: each tool's helper (a dozen edits and the next tool forgets),
+the `Tool` base class (tools call `ctx.log` directly, so it would need a
+wrapper around a context the engine also mutates), and the engine's
+`ctx.log` — the one object every line passes through, which also knows the
+hand. The engine won. The cost is honest: headless, with a test's own
+context, the placeholder is what the tool said, and the unit tests now pin
+`{tap}` where they pinned "click". A summary is read by `toolSummary` in
+three places, so it took a `hand` argument instead.
+
+**Picture 503 was not a bug.** The engine's hand had been seeded from the
+device for a week. The picture helper in that e2e file moves the mouse off
+the drawing before every shot, so the hover tag is out of the picture —
+and a mouse move is a mouse, so the chip said "click". A real phone sends
+no mouse event. The same screen with no mouse (picture 531) says "tap".
+Filed under *Next up*: the two helpers could ask the viewport first.
+
+**Members, not freedoms.** The spec's *"3 free"* on a group could count
+the group's own degrees of freedom or the members that still move. The
+first is a rank question — the Jacobian with every variable outside the
+group pinned — one kernel call per group per solve, and the owner had
+said this was not a concern now. The second is a filter over the free set
+the status already draws the blue ink from, and it is precisely what
+*Select what is free* selects, so the dot's count and the selection's size
+are one number and cannot disagree. The menu's header says it in full,
+*1 of 9 free*, so nobody reads "1 free" as one freedom.
+
+**A CSS dot, not another ● / ○.** The row's open marker already uses
+those two glyphs, as a radio does. A second pair on the same row meaning
+something else would have been read as a second radio. The definedness
+mark is a drawn dot — filled grey when held, a ring in the free ink when
+not — placed before the count, with a hover's tooltip and no press. A
+finger's hold on it is the row's menu, not a tip: picture 536's first take
+showed both at once, and a probe of where a phone's touch lands on the row
+showed why — Chromium hands a touch on the name to the open marker's
+finger-wide target and one near the count to the eye's, so the dot is the
+only part of the row left to hold. A dot that answered a hold with its tip
+alone would have been a row with no menu; its count is in the header.
+
+**The status fade.** Pictures 515 and 521 had no SOLVED because three
+seconds had passed: `statusFade` fades the verdict and `showDiagnosis` the
+count when nothing agrees, and the stylesheet hides a faded status
+outright, text kept. Picture 510 kept its count because *4 agreeing* does
+not fade. Measured in the browser rather than read off the code, and the
+measurement is now a test.
 
 ## 2026-11-12 — the gate: what four "flaky" failures really were
 

@@ -73,13 +73,13 @@ import { faceShade, faceUnder, pickSolid, SHADE_PX, type DrawnFaces } from "../s
 import { describeFace, faceKernelNames, faceRef, isPlanarFace, planeNow } from "../relations/solidref.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
-  HAND, SELECT, engineNext, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Hand, type Tool, type ToolContext,
+  HAND, SELECT, engineNext, getToolCtor, howText, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Hand, type Tool, type ToolContext,
   type PointerInfo, type RegionHit, type RenderContext, type SolidsAccess,
 } from "./tool.ts";
 import {
   assignView, cameraPlane, depth, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
-import { pointOnWorkingPlane, sketchPlane } from "../workplane.ts";
+import { pointOnWorkingPlane, chosenPlane } from "../workplane.ts";
 import { TOUCH_REACH, hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
@@ -585,7 +585,7 @@ export class ToolEngine {
 
   /**
    * Where a drag's press is read, and the plane the drag then moves in: the
-   * plane the user chose to sketch on (`sketchPlane`), else the one facing
+   * plane the user chose to sketch on (`chosenPlane`), else the one facing
    * the viewer — not the origin's, which is where a click *lands* with no plane
    * chosen (../workplane.ts). A drag is a hand moving something it sees, and
    * pinning it to the ground in a turned view would leave a lid's corner
@@ -593,7 +593,7 @@ export class ToolEngine {
    */
   private dragPointAt(sx: number, sy: number): { world: number[]; plane?: Plane } {
     if (this.model.dim !== 3) return { world: screenToWorld(this.view, sx, sy) };
-    const chosen = sketchPlane(this.model);
+    const chosen = chosenPlane(this.model);
     const on = chosen && screenToPlane(this.view, sx, sy, chosen);
     if (on && chosen) return { world: on, plane: chosen };
     const facing = cameraPlane(this.view);
@@ -890,7 +890,13 @@ export class ToolEngine {
       faceShade: (name) => faceShade(this.drawnFaces, faceKernelNames(this.model, name), this.view),
       toScreen: (world) => worldToScreen(this.view, world),
       regionAt: ([sx, sy]) => this.regionAt(sx, sy),
-      log: this.onLog,
+      // What a tool says while running — guidance, a refusal — is said to the
+      // hand on the canvas, as its how-lines are (docs/plans/tool-howto.md,
+      // docs/plans/no-sketch.md): `{tap}` in the line reads *click* under a
+      // mouse and *tap* under a finger. Filled here, the one place every
+      // tool's line passes, so no tool keeps two spellings of one sentence.
+      // Headless (a test's own ctx) the placeholder is what the tool said.
+      log: this.onLog && ((line, outcome) => this.onLog!(howText(line, this.pointing), outcome)),
       run: this.onRun,
       // The engine's own bracket, idempotent as ever: the pointer event that
       // began the gesture has long closed its own by the time this is called.
@@ -1257,7 +1263,7 @@ export class ToolEngine {
     // face (`PointerInfo.face`), so a point it places there is held to it.
     // With a sketch plane chosen every click lands on that plane, whatever is
     // under it (case 1, sketch-mode.md), and this is not asked.
-    const chosen = sketchPlane(this.model);
+    const chosen = chosenPlane(this.model);
     const landing = tool.snaps && this.model.dim === 3 && chosen === null ? this.landingAt(sx, sy) : null;
     this.landing = landing ? { ...landing, at: [sx, sy] } : null;
     // The tool is handed a *snapped* world coordinate, and the snap that

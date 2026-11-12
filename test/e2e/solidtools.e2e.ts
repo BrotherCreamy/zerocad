@@ -122,7 +122,7 @@ test("an extrude flipped with ⇅: the handle turns round, the preview and the s
 });
 
 test("a circle on the lid, the Cut tool, ✓: a hole down through the plate — no minus sign typed", { skip }, async () => {
-  await app.type('arm("sketch")');
+  await app.type('arm("plane")');
   await clickWorld([W - 5, H - 5, T]);
   await app.type("arm(\"circle\")");
   await leftDrag(await app.screenOf([-12, 0, T]), await app.screenOf([-7, 0, T]));
@@ -155,14 +155,14 @@ test("a circle on the lid, the Cut tool, ✓: a hole down through the plate — 
 
 test("Through all on a stepped body: a boss on the plate, a hole from the boss's top through both", { skip }, async () => {
   // The boss: a rectangle on the lid, extruded up 15.
-  await app.type('arm("sketch")');
+  await app.type('arm("plane")');
   await clickWorld([W - 3, H - 3, T]);
   await app.type("arm(\"rectangle\")");
   await leftDrag(await app.screenOf([5, -10, T]), await app.screenOf([25, 10, T]));
   await app.type('arm("extrude", { depth: 15 })');
   await clickWorld([15, 0, T]);
   await press("#options .oact button.ok");
-  await app.type('arm("sketch")');
+  await app.type('arm("plane")');
   await clickWorld([22, 7, T + 15]);
   await app.type("arm(\"circle\")");
   await leftDrag(await app.screenOf([15, 0, T + 15]), await app.screenOf([18, 0, T + 15]));

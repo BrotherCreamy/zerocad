@@ -222,7 +222,7 @@ test("a point off the sketch snaps at its projection, with the hollow marker, an
 
 // --- Sketch on this ---------------------------------------------------------------
 
-test("Sketch on this, on a frame, types the default and the lookAt — and one Ctrl+Z undoes the edit", async () => {
+test("Draw on this, on a frame, types the default and the lookAt — and one Ctrl+Z undoes the edit", async () => {
   await app.type("lookAt()");
   // A second frame, flat, off to the side: right-click its +x arm.
   await app.type("ho = pt(-60, -40, 0); hx = pt(-40, -40, 0); hy = pt(-60, -20, 0); h = frame(ho, hx, hy)");
@@ -240,9 +240,9 @@ test("Sketch on this, on a frame, types the default and the lookAt — and one C
   const head = await app.page.$eval("#ctxmenu", (el) => el.querySelector(".head")?.textContent ?? "");
   assert.match(head, /^f2/, `the menu is the frame's: ${head}`);
   const handle = await app.page.evaluateHandle(() =>
-    Array.from(document.querySelectorAll("#ctxmenu .item")).find((el) => el.firstElementChild?.textContent === "Sketch on this") ?? null);
+    Array.from(document.querySelectorAll("#ctxmenu .item")).find((el) => el.firstElementChild?.textContent === "Draw on this") ?? null);
   const el = handle.asElement();
-  assert.ok(el, "a frame's menu offers Sketch on this");
+  assert.ok(el, "a frame's menu offers Draw on this");
   await el.click();
   await app.page.waitForTimeout(200);
   assert.match(await app.log(), /> setDefaultFrame\("f2"\); lookAt\("f2"\)/, "typed, as every item is");

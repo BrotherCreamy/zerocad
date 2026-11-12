@@ -92,7 +92,7 @@ export class EdgeExtrudeTool extends FeatureTool {
       this.ctx.requestRender();
       return;
     }
-    this.guide("click a line, arc, circle or spline — the chain it is in is extruded");
+    this.guide("{tap} a line, arc, circle or spline — the chain it is in is extruded");
   }
 
   render(r: RenderContext): void {

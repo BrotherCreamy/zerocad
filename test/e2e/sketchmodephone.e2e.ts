@@ -97,8 +97,8 @@ async function options(): Promise<void> {
 }
 
 test("the sketch button tapped, then Front in its options: the view square to Front, the chip says so", async () => {
-  await tapOn('#toolbar button[data-tool="sketch"]');
-  assert.equal((await chip()).what, "sketch");
+  await tapOn('#toolbar button[data-tool="plane"]');
+  assert.equal((await chip()).what, "plane");
   await options();
   await shot("1-armed-options");
   await tapOn('#options .ochoose[data-choice="front"]');
@@ -163,7 +163,7 @@ test("a filleted block's side wall tapped with the sketch tool, and a circle dra
   const [w, h] = await app.page.$eval("#cv", (el) => [el.clientWidth, el.clientHeight]);
   await type(`pan(${w / 2 + 20 - bx}, ${h / 2 + 80 - by})`);
   await shot("5-filleted-block");
-  await tapOn('#toolbar button[data-tool="sketch"]');
+  await tapOn('#toolbar button[data-tool="plane"]');
   await tapAt(...await app.screenOf(wall));
   await app.page.waitForFunction(() => (document.getElementById("mode") as HTMLElement).dataset.where !== "", null, { timeout: 5000 });
   const wp = await value("workplane()") as string;

@@ -68,7 +68,7 @@ export class FilletTool extends FeatureTool {
   static readonly options: OptionSpecs = {
     radius: { default: DEFAULT_RADIUS, unit: "length", check: (v) => ((v as number) > 0 ? null : "must be more than 0") },
   };
-  static readonly summary: string = "Rounds a corner: click two lines that meet, or their corner";
+  static readonly summary: string = "Rounds a corner: {tap} two lines that meet, or their corner";
   static readonly how: How = [
     "{Tap} a corner, or the two lines that meet at it.",
     "Set the radius in the options, then ✓.",
@@ -105,7 +105,7 @@ export class FilletTool extends FeatureTool {
   }
 
   protected wanting(): string | null {
-    return this.lines.length ? `now click a line that meets ${this.lines[0]}` : null;
+    return this.lines.length ? `now {tap} a line that meets ${this.lines[0]}` : null;
   }
 
   protected get verb(): string {
@@ -152,8 +152,8 @@ export class FilletTool extends FeatureTool {
     if (!hit || hit.kind !== "line") {
       const what = hit ? `${hit.name} is a ${hit.kind} — ` : "";
       const first = this.lines[0];
-      this.guide(first ? (hit ? `${what}click a line that meets ${first}` : `now click a line that meets ${first}`)
-        : `${hit ? what : "click a line — "}${this.name} wants two lines that share a corner`);
+      this.guide(first ? (hit ? `${what}{tap} a line that meets ${first}` : `now {tap} a line that meets ${first}`)
+        : `${hit ? what : "{tap} a line — "}${this.name} wants two lines that share a corner`);
       return;
     }
     const line = hit.name;
@@ -161,7 +161,7 @@ export class FilletTool extends FeatureTool {
     if (at !== -1) {
       // The last one picked, picked again, is the quick path; the other is dropped.
       if (at === this.lines.length - 1 && this.lines.length === 2 && this.byCorner === null) this.confirm();
-      else if (at === this.lines.length - 1 && this.lines.length === 1) this.guide(`that is ${line} again — click the line it shares a corner with`);
+      else if (at === this.lines.length - 1 && this.lines.length === 1) this.guide(`that is ${line} again — {tap} the line it shares a corner with`);
       else {
         this.lines.splice(at, 1);
         this.byCorner = null;
@@ -170,7 +170,7 @@ export class FilletTool extends FeatureTool {
       return;
     }
     if (this.lines.length === 2) {
-      this.guide(`${this.lines.join(" and ")} are picked — ✓ or Enter rounds them; click one to drop it`);
+      this.guide(`${this.lines.join(" and ")} are picked — ✓ or Enter rounds them; {tap} one to drop it`);
       return;
     }
     if (this.lines.length === 1 && !sharesCorner(model, this.lines[0], line)) {

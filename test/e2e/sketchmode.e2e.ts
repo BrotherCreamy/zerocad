@@ -89,10 +89,10 @@ async function drag(a: [number, number], b: [number, number]): Promise<void> {
 const typedLines = () => app.page.$$eval("#log > div", (els) => els.map((e) => e.textContent ?? "").filter((t) => t.startsWith("> ")).map((t) => t.slice(2).trim()));
 
 test("in a fresh document the sketch tool lights Top, and offers Top, Front and Right as buttons", async () => {
-  await app.page.click('#toolbar button[data-tool="sketch"]');
+  await app.page.click('#toolbar button[data-tool="plane"]');
   await app.page.waitForTimeout(250);
-  assert.equal((await chip()).what, "sketch");
-  assert.equal((await chip()).next, "click a lit face or plane to sketch on it");
+  assert.equal((await chip()).what, "plane");
+  assert.equal((await chip()).next, "click a lit face or plane to draw on it");
   const buttons = await app.page.$$eval('#options .ochoose', (els) => els.map((b) => (b as HTMLElement).dataset.choice));
   assert.deepEqual(buttons, ["top", "front", "right"]);
   // The Top patch is drawn, faintly green, round the origin.
@@ -100,7 +100,7 @@ test("in a fresh document the sketch tool lights Top, and offers Top, Front and 
   const [ox, oy] = await app.screenOf([0.5 * half, -0.5 * half, 0]);
   const px = await app.pixel(ox + 0.5, oy + 0.5, "drawing");
   assert.ok(px[3] > 0 && px[1] > px[0], `Top's patch is tinted at its middle: ${px}`);
-  const tip = await app.page.$eval('#toolbar button[data-tool="sketch"]', (b) => b.getAttribute("aria-label") ?? b.getAttribute("title") ?? "");
+  const tip = await app.page.$eval('#toolbar button[data-tool="plane"]', (b) => b.getAttribute("aria-label") ?? b.getAttribute("title") ?? "");
   assert.ok(tip.length > 0);
   await shot("1-armed-fresh");
 });
@@ -222,7 +222,7 @@ let solid: { wall: number[]; camera: string };
 test("a filleted block's side wall: picked with the sketch tool, the view square to it, a circle drawn on it held there", { skip }, async () => {
   solid = await block();
   await shot("6-block-filleted-chamfered");
-  await app.page.click('#toolbar button[data-tool="sketch"]');
+  await app.page.click('#toolbar button[data-tool="plane"]');
   await app.page.waitForTimeout(250);
   const [sx, sy] = await app.screenOf(solid.wall);
   await clickAt(sx, sy);
@@ -259,7 +259,7 @@ test("the chamfer's face, which no loop bounds: refused as a plane to draw on, s
   const features = await value("model.features.size") as number;
   const frames = await value("[...model.entities.values()].filter((e) => e.kind === 'frame').length") as number;
   const typedBefore = (await typedLines()).length;
-  await app.page.click('#toolbar button[data-tool="sketch"]');
+  await app.page.click('#toolbar button[data-tool="plane"]');
   await app.page.waitForTimeout(250);
   const at = await chamferPixel();
   assert.ok(at, "the chamfer's face in sight again");
@@ -272,7 +272,7 @@ test("the chamfer's face, which no loop bounds: refused as a plane to draw on, s
   // chamfer's face was held by nothing and stayed behind when the solid moved.
   // The face is refused, in words, with what works instead.
   assert.match((await app.page.textContent("#log")) ?? "", /that face is e\d+'s — a chamfer the solid kernel cut along an edge/, "refused, saying why");
-  assert.match((await app.page.textContent("#log")) ?? "", /a chamfer between two walls is the sketch's own/, "and what works");
+  assert.match((await app.page.textContent("#log")) ?? "", /a chamfer between two walls is the profile's own/, "and what works");
   assert.equal(await value("model.features.size"), features, "no feature made");
   assert.equal(await value("[...model.entities.values()].filter((e) => e.kind === 'frame').length"), frames, "and no frame made there");
   assert.ok(!(await typedLines()).slice(typedBefore).some((l) => /^workplane\(/.test(l)), "nothing typed");

@@ -142,7 +142,7 @@ export function checkEllipse(model: Model, center?: string | null, major?: strin
   if (center != null && center === major) throw new Error("an ellipse needs its major end apart from its centre");
   if (minor != null && !(minor > 0)) throw new Error("an ellipse needs a positive minor semi-axis");
   if (model.dim !== 2 && model.dim !== 3) throw new Error(`an ellipse lies in a plane — a ${model.dim}D model has none to give it`);
-  if (!entityKind("ellipse")) throw new Error("the ellipse is the sketch module's, and it is not loaded");
+  if (!entityKind("ellipse")) throw new Error("the ellipse is the drawing module's, and it is not loaded");
 }
 
 /**
@@ -200,7 +200,7 @@ function checkEllipticArc(model: Model, center: string, major: string, start: st
   for (const p of [start, end]) model.point(p);
   if (start === end) throw new Error("an elliptical arc needs two different ends");
   if ([start, end].some((p) => p === center || p === major)) throw new Error("an elliptical arc's ends are its own points — not its centre or its major end");
-  if (!entityKind("earc")) throw new Error("the elliptical arc is the sketch module's, and it is not loaded");
+  if (!entityKind("earc")) throw new Error("the elliptical arc is the drawing module's, and it is not loaded");
 }
 
 /**

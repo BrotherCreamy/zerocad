@@ -151,7 +151,7 @@ test("on an iPhone: a plate drawn, its depth handle dragged, ⇅ tapped — the 
 
 test("on an iPhone: a circle on the lid, Cut held out of the extrude's button, ✓ — a hole, no minus sign typed; then Through all", { skip }, async () => {
   await type('lookAt("origin"); orbit(-0.6, -1.0)');
-  await tapButton('#toolbar button[data-tool="sketch"]');
+  await tapButton('#toolbar button[data-tool="plane"]');
   await tapAt([W - 6, H - 6, 10]);
   await tapButton('#toolbar button[data-tool="circle"]');
   await dragOn([-14, 0, 10], [-9, 0, 10]);

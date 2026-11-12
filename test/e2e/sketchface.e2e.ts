@@ -189,8 +189,8 @@ test("turned so the near wall faces the camera, the sketch tool outlines it, ref
   assert.ok(dot(seen, [0, 0, 1]) > 0.1, "and the lid is in view too");
   await shot("1-plate");
 
-  await app.type("sketch");
-  assert.equal((await app.model()).activeTool, "sketch");
+  await app.type("plane");
+  assert.equal((await app.model()).activeTool, "plane");
   const wall = await app.screenOf(NEAR_WALL);
   await moveTo(...wall);
   const tint = await pixel(...wall);
@@ -200,8 +200,8 @@ test("turned so the near wall faces the camera, the sketch tool outlines it, ref
   // A click off the plate is refused aloud, and the tool stays armed.
   await clickAt(...await emptySpot());
   // In 3D the ground's named planes are there to take too (docs/plans/sketch-mode.md), so the miss says so.
-  assert.match(await app.log(), /sketch: click inside a lit face, or a lit plane — or choose Top, Front or Right in the options/);
-  assert.equal((await app.model()).activeTool, "sketch");
+  assert.match(await app.log(), /plane: click inside a lit face, or a lit plane — or choose Top, Front or Right in the options/);
+  assert.equal((await app.model()).activeTool, "plane");
 
   const frames = (await app.model()).byKind.frame;
   const before = await saved();
@@ -274,7 +274,7 @@ test("a circle drawn on the wall lands on it, and extruded a positive depth stan
   await shot("3-boss");
 });
 
-test("the same by the context menu, on the right wall: Sketch on this face types workplane(…) for it, and a second boss stands off that side", async () => {
+test("the same by the context menu, on the right wall: Draw on this face types workplane(…) for it, and a second boss stands off that side", async () => {
   // Turned so the right wall faces the camera too.
   await app.type("lookAt(\"f1\"); orbit(-1.2, -0.9)");
   await centreOn(CENTROID);
@@ -283,9 +283,9 @@ test("the same by the context menu, on the right wall: Sketch on this face types
   const at = await app.screenOf(RIGHT_WALL);
   await rightClick(...at);
   const items = await menuItems();
-  const cmd = items["Sketch on this face"];
+  const cmd = items["Draw on this face"];
   assert.match(cmd ?? "", /^workplane\("p\d+\.p\d+\.p\d+"\)$/, `the item and what it types: ${JSON.stringify(items)}`);
-  await choose("Sketch on this face");
+  await choose("Draw on this face");
   assert.match(await app.log(), new RegExp(`> ${cmd.replace(/[().]/g, "\\$&")}`), "logged as typed");
   const f = (await workPlane())!;
   assert.notEqual(f, wallPlane);
@@ -293,7 +293,7 @@ test("the same by the context menu, on the right wall: Sketch on this face types
 
   // Off the plate, on empty canvas, there is no such item.
   await rightClick(...await emptySpot());
-  assert.ok(!("Sketch on this face" in await menuItems()));
+  assert.ok(!("Draw on this face" in await menuItems()));
   await key("Escape");
 
   await app.type("circle");

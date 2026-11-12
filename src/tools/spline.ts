@@ -36,7 +36,7 @@ export function splinePreview(at: number[][], closed: boolean, scale: number): n
 
 export class SplineTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
-  static readonly summary = "Draws a spline through the points you click; double-click to end it";
+  static readonly summary = "Draws a spline through the points you {tap}; double-{tap} to end it";
   static readonly how: How = [
     "{Tap} each point for the curve to pass through.",
     { mouse: "Double-click the last point, or press Enter, to end it.", finger: "✓ in the options ends it." },
@@ -61,7 +61,7 @@ export class SplineTool extends Tool {
     // Short on a phone: the chip is one line there, and a longer one wrapped
     // and lost its end (looked at, iPhone 13).
     if (hand === "finger") return this.laid.length >= 3 ? "tap more, ✓ ends, the first closes" : "tap more, or ✓ to end";
-    return `click the next point — double-click ends it${this.laid.length >= 3 ? ", the first closes it" : ""}`;
+    return `${press(hand)} the next point — double-${press(hand)} ends it${this.laid.length >= 3 ? ", the first closes it" : ""}`;
   }
 
   /** How near two screen points must be to be one laid point, for the hand that pressed. */

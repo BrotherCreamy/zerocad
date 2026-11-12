@@ -94,7 +94,7 @@ test("on an iPhone: a plate drawn with a finger, its region tapped, ✓ — a pl
 });
 
 test("on an iPhone: a circle on the top, Cut tapped in the dialog, ✓ — a hole through", { skip }, async () => {
-  await type("sketch");
+  await type("plane");
   await tapAt([W - 6, H - 6, T]);
   await type("circle");
   await dragOn([-12, 0, T], [-7, 0, T]);
@@ -118,7 +118,7 @@ test("on an iPhone: a circle on the top, Cut tapped in the dialog, ✓ — a hol
 
 test("on an iPhone: a circle on the side, ✓ with the default — a boss added; a dimension changed — rebuilt", { skip }, async () => {
   await type('lookAt("f1"); orbit(-0.25, -1.2)');
-  await type("sketch");
+  await type("plane");
   await tapAt([10, -H, T / 2]);
   // Square to the wall now, which is only 8 deep: closer, so a finger's reach
   // starting the circle is on the wall and not on its edges.

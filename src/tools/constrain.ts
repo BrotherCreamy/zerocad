@@ -39,7 +39,7 @@
 import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand, type ToolContext, type How } from "./tool.ts";
 import { Tool } from "./tool.ts";
 import { constraintsFor } from "../dimensioning.ts";
-import { sketchFrameFor } from "../sketchface.ts";
+import { facePlaneFor } from "../faceplane.ts";
 import { parsePointTriple } from "../model.ts";
 import { markPicked } from "./picked.ts";
 
@@ -74,7 +74,7 @@ export function solidRefAt(ctx: ToolContext, screen: [number, number]): string |
   const loop = region ? region.loops[region.index] : null;
   if (region && loop && (face || onSolid(ctx.model, loop.members.map((m) => m.name)))) {
     try {
-      return sketchFrameFor(ctx.model, loop, region.toward);
+      return facePlaneFor(ctx.model, loop, region.toward);
     } catch {
       // A face seen edge-on, or no three points off a line: the kernel's name, greyed, or nothing.
     }
@@ -114,7 +114,7 @@ export class ConstrainTool extends Tool {
     // "The list", not "the palette": on a workbench without the palette's
     // module the list is this tool's options pane (main.ts), and the tool
     // does not know which it is.
-    if (!this.picks.length) this.ctx.log?.("constrain: click what to relate — the relations that apply are listed", "guide");
+    if (!this.picks.length) this.ctx.log?.("constrain: {tap} what to relate — the relations that apply are listed", "guide");
     this.ctx.requestRender();
   }
 

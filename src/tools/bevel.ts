@@ -32,7 +32,7 @@ export class BevelTool extends FilletTool {
     // 0 is "the same as the first": an even chamfer, the usual one.
     other: { default: 0, unit: "length", label: "second", check: (v) => ((v as number) >= 0 ? null : "must be 0 (the same) or more") },
   };
-  static readonly summary = "Chamfers a sketch corner: click two lines that meet, or their corner";
+  static readonly summary = "Chamfers a corner: {tap} two lines that meet, or their corner";
   static readonly how: How = [
     "{Tap} a corner, or the two lines that meet at it.",
     "Set the setback in the options, then ✓.",

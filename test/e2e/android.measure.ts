@@ -37,13 +37,13 @@ const fixture = (name: string) => readFileSync(new URL(`../fixtures/${name}`, im
 /** Sets the work plane to a face of a feature — the plane sketch on face sets — the last feature's that has one. */
 async function planeOnAFace(app: AppContext): Promise<string> {
   return app.page.evaluate(async () => {
-    const [{ findLoops }, { sketchOnFaceCommand }, { activePlane }] = await Promise.all(
-      ["/src/loops.ts", "/src/sketchface.ts", "/src/activeplane.ts"].map((p) => import(p)));
+    const [{ findLoops }, { drawOnFaceCommand }, { activePlane }] = await Promise.all(
+      ["/src/loops.ts", "/src/faceplane.ts", "/src/activeplane.ts"].map((p) => import(p)));
     const n = (window as unknown as { __neocad: { model: { workPlane: string | null; features: Map<string, unknown> }; engine: { view: { scale: number } }; repl: { eval(s: string): Promise<{ ok: boolean; error?: Error }> } } }).__neocad;
     let found = "";
     for (const loop of findLoops(n.model).reverse()) {
       let cmd: string;
-      try { cmd = sketchOnFaceCommand(n.model, loop, [0, 0, 1]); } catch { continue; }
+      try { cmd = drawOnFaceCommand(n.model, loop, [0, 0, 1]); } catch { continue; }
       const r = await n.repl.eval(cmd);
       if (!r.ok) continue;
       const p = activePlane(n.model, n.engine.view.scale, n.model.workPlane);

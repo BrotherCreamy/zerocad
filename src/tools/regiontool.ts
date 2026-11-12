@@ -56,7 +56,7 @@ const OPS = { add, subtract, intersect } as const;
 const VERB: Record<RegionMode, string> = { new: "make a region of", add: "add", subtract: "subtract", intersect: "intersect with" };
 
 export class RegionTool extends Tool {
-  static readonly summary = "Combines faces into a region: click a face, then faces to subtract";
+  static readonly summary = "Combines faces into a region: {tap} a face, then faces to subtract";
   static readonly how: How = [
     "{Tap} inside a closed outline to make a region of it.",
     "Then {tap} outlines inside it to cut them out.",

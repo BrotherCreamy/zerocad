@@ -28,7 +28,7 @@ export class SurfaceTool extends FeatureTool {
     depth: { default: DEFAULT_SURFACE_DEPTH, unit: "length", check: (v) => ((v as number) !== 0 ? null : "must not be 0") },
     chain: { default: true, label: "chain" },
   };
-  static readonly summary = "Sweeps curves into a surface: click a curve, set the depth, ✓";
+  static readonly summary = "Sweeps curves into a surface: {tap} a curve, set the depth, ✓";
   static readonly how: How = [
     "{Tap} a curve — or inside a closed outline, for a flat sheet.",
     "Set the depth in the options, then ✓.",
@@ -113,7 +113,7 @@ export class SurfaceTool extends FeatureTool {
       this.ctx.requestRender();
       return;
     }
-    this.guide("click a line, arc or circle — the chain it is in is swept — or inside a closed loop for its face");
+    this.guide("{tap} a line, arc or circle — the chain it is in is swept — or inside a closed loop for its face");
   }
 
   render(r: RenderContext): void {

@@ -132,7 +132,7 @@ export class RevolveTool extends FeatureTool {
     },
     mode: MODE_OPTION,
   };
-  static readonly summary = "Spins a closed shape into a solid: click it, then the axis, then ✓";
+  static readonly summary = "Spins a closed shape into a solid: {tap} it, then the axis, then ✓";
   static readonly how: How = [
     "{Tap} inside a closed outline.",
     "Then {tap} a lit line or axis arrow to spin it about.",
@@ -226,7 +226,7 @@ export class RevolveTool extends FeatureTool {
   protected wanting(): string | null {
     if (!this.picks.size) return this.axis === null ? null : missedRegion(this.ctx.model);
     return this.candidates().length
-      ? "now click a line, or a frame's arm, to turn it about"
+      ? `now {tap} a line, or a frame's arm, to turn it about`
       : "nothing lies in its plane to turn it about — draw a line there";
   }
 
@@ -259,7 +259,7 @@ export class RevolveTool extends FeatureTool {
         return;
       }
       if (!this.candidates().includes(axis)) {
-        this.guide(`${axis} is not in its plane, or crosses it — click a lit one`);
+        this.guide(`${axis} is not in its plane, or crosses it — {tap} a lit one`);
         return;
       }
       this.axis = axis;

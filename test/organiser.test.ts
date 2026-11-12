@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { fix } from "../src/relations/basic.ts";
+import { dist, fix } from "../src/relations/basic.ts";
 import { parallel } from "../src/relations/geometry.ts";
 import { del, extrude, fillet } from "../src/operations.ts";
 import { addTo, closegroup, group, hide, members, opengroup, removeFrom, rename, ungroup } from "../src/groups.ts";
@@ -26,7 +26,7 @@ import { Repl } from "../src/repl.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
-import { addCommand, organiserSections, rowMenu } from "../src/organiser.ts";
+import { addCommand, definedTip, freeMembers, organiserSections, rowMenu } from "../src/organiser.ts";
 import { defaultLayout, parseStored } from "../src/panels.ts";
 import { axisFrame, tiltedFrame } from "./frames.ts";
 import { polygon } from "./profiles.ts";
@@ -388,16 +388,55 @@ test("a row's menu: Rename, Add/Remove selection, Open/Close, Ungroup for a grou
     ["Rename…", 'rename("g1", "'],
     ["Add selection", `addTo("g1", "${lines[1]}")`],
     ["Remove selection", `removeFrom("g1", "${lines[0]}")`],
+    ["Select what is free", "off: what is free is known after a solve"],
     ["Open", 'opengroup("g1")'],
     ["Ungroup", 'ungroup("g1")'],
   ]);
   assert.deepEqual(items([]).slice(1, 3), [["Add selection", "off: select something to add first"], ["Remove selection", "off: select members to remove first"]]);
   opengroup(m, "g1");
-  assert.deepEqual(items([])[3], ["Close", "closegroup()"]);
+  assert.deepEqual(items([])[4], ["Close", "closegroup()"]);
   assert.match(rowMenu(m, "g1")!.header!, /g1  group of 1 member  ·  open/);
   assert.deepEqual(rowMenu(m, "e1")!.items.map((i) => [i.label, i.action.do === "run" ? i.action.command : ""]),
     [["Edit e1", 'edit("e1")'], ["Construction", 'construction("e1")'], ["Delete", 'del("e1")']], "one construction row on every kind: a body's too");
   assert.equal(rowMenu(m, lines[0]), null);
+});
+
+test("a group is fully defined when every member is: the row's reading from the diagnosis's free set, the count on its tip, Select what is free on its menu — and no relation counted", async () => {
+  // docs/plans/no-sketch.md; the owner: "A group is only fully defined when
+  // every element within the group is fully defined." No new solve and no
+  // relation: a reading of `Model.diagnose`'s `free`, kept to the group.
+  await loadKernel();
+  const m = new Model(3);
+  const { points, lines } = rectangle(m); // held: two corners fixed, every side par to an axis
+  const loose = m.addPoint([10, 10, 5]).name;
+  const d = dist(m, points[0], points[1], 40); // a relation in the group: no entity, counted neither way
+  group(m, ...points, ...lines, d); // g1: the whole rectangle
+  group(m, lines[0], loose); // g2: one side and a point nothing holds
+  assert.equal(m.solve().solved, true);
+  const free = m.diagnose().free;
+  assert.ok(free.has(loose) && !free.has(lines[0]), `the loose point is free and the side is not: ${[...free]}`);
+  // The pane, with no diagnosis yet: unknown, and the menu says so.
+  assert.deepEqual(organiserSections(m)[1].rows.map((r) => r.defined), [null, null]);
+  assert.deepEqual(definedTip(organiserSections(m)[1].rows[0]).summary, "Whether every member is held — known after a solve");
+  // With it: g1 defined, 9 members of which 8 are entities; g2 one of two free.
+  const [g1, g2] = organiserSections(m, [], free)[1].rows;
+  assert.deepEqual([g1.defined, g2.defined], [{ free: 0, of: 8 }, { free: 1, of: 2 }]);
+  assert.equal(definedTip(g1).name, "g1 is fully defined");
+  assert.match(definedTip(g2).summary ?? "", /^1 of its 2 members can still move — Select what is free/);
+  const item = (g: string) => rowMenu(m, g, [], free)!.items.find((i) => i.label === "Select what is free")!.action;
+  assert.deepEqual(item("g1"), { do: "disabled", why: "g1 is fully defined — every member is held" });
+  assert.deepEqual(item("g2"), { do: "run", command: `select("${loose}")` });
+  assert.deepEqual(freeMembers(m, "g2", free), [loose]);
+  assert.match(rowMenu(m, "g1", [], free)!.header!, /g1  group of 9 members  ·  fully defined$/);
+  assert.match(rowMenu(m, "g2", [], free)!.header!, /g2  group of 2 members  ·  1 of 2 free$/);
+  // A group of relations alone has nothing that moves: no reading.
+  group(m, d);
+  assert.equal(organiserSections(m, [], free)[1].rows[2].defined, null);
+  // A corner let go: the side it ends and the corner, free, and the row says how many.
+  del(m, m.relationsNaming(points[2]).find((r) => r.op === "fix")!.name);
+  m.solve();
+  const after = organiserSections(m, [], m.diagnose().free)[1].rows[0].defined!;
+  assert.ok(after.free > 0 && after.free < after.of, `some, not all, of the rectangle moves: ${JSON.stringify(after)}`);
 });
 
 test("every command the pane types is one the command line takes", async () => {

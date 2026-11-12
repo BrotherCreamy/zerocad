@@ -902,7 +902,7 @@ export function neocadScope(h: EnvHandles): Bag {
     if (!h.exportFile) throw new Error("no download or share sheet in this environment");
     const bodies = out.bodies.map((b) => b.name);
     const said = [`${bodies.join(", ")} (${bodies.length} ${bodies.length === 1 ? "body" : "bodies"})`];
-    if (out.curves > 0) said.push(`${out.curves} sketch curve${out.curves === 1 ? "" : "s"}`);
+    if (out.curves > 0) said.push(`${out.curves} loose curve${out.curves === 1 ? "" : "s"}`);
     if (out.skipped.length) said.push(`left out ${out.skipped.map((x) => `${x.feature} (${x.why})`).join(", ")}`);
     return h.exportFile(out.text, stepFileName(title), STEP_TYPE).then((how) => `${how}: ${said.join("; ")}`);
   };
@@ -935,7 +935,7 @@ export function neocadScope(h: EnvHandles): Bag {
       return h.log ? "opened" : ["opened", ...notices].join("\n");
     },
     // Named for the document when there is one, as saveFile() names its file.
-    download: (filename = h.document ? fileNameFor(h.document().name) : "sketch.zerocad.json") => {
+    download: (filename = h.document ? fileNameFor(h.document().name) : "drawing.zerocad.json") => {
       if (!h.download) throw new Error("no download in this environment");
       h.download(saveModel(model, true, sources.all()), filename);
       return filename;
@@ -1531,7 +1531,7 @@ export function neocadScope(h: EnvHandles): Bag {
     },
     /** `modules()` — what is loaded, in order, and what each registers. */
     modules: () => loadedModules().map((m) => `${m.name.padEnd(10)} ${describeModule(m)}`),
-    /** `workbench()` names the current one; `workbench("sketch")` switches the tray and the menu to it. */
+    /** `workbench()` names the current one; `workbench("drawing")` switches the tray and the menu to it. */
     workbench: (name?: string) => {
       if (name === undefined) return activeWorkbench();
       if (h.workbench) return h.workbench(name);

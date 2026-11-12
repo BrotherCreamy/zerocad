@@ -37,7 +37,7 @@ export interface FileItem { label: string; command: string }
  */
 export interface WorkbenchRow { name: string; label: string; current: boolean; added: boolean }
 
-/** The command a workbench row types: `workbench("sketch")`. */
+/** The command a workbench row types: `workbench("drawing")`. */
 export function workbenchCommand(name: string): string {
   return `workbench(${JSON.stringify(name)})`;
 }

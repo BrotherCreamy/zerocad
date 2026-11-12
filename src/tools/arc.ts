@@ -134,7 +134,7 @@ interface Leaving { curve: string; at: 0 | 1; arc: Arc3 }
 
 export class ArcTool extends Tool {
   static readonly options: OptionSpecs = { ...DRAWING_OPTIONS, method: methodOption(ARC_METHODS) };
-  static readonly summary = "Draws an arc: drag end to end and click its bulge, or click its centre";
+  static readonly summary = "Draws an arc: drag end to end and {tap} its bulge, or {tap} its centre";
   static readonly how: How = (o) =>
     o.method === "3pt" ? ["{Tap} one end, the other, then where it bulges to.", "Locked to 3 points: the options unlock it."]
       : o.method === "centre" ? ["{Tap} its centre, then its start, then its end.", "Locked to centre · ends: the options unlock it."]
@@ -324,7 +324,7 @@ export class ArcTool extends Tool {
       // them, and committing one would leave a CONFLICT over a drawing that
       // should never have been made. Staying armed on the two ends means the
       // obvious next move — aim the bulge off the line — just works.
-      guide(this.ctx, `${this.name}: those three are on one line — click the third off it`);
+      guide(this.ctx, `${this.name}: those three are on one line — {tap} the third off it`);
       this.ctx.requestRender();
       return;
     }

@@ -115,17 +115,17 @@ export function doneCommand(model: Model): string | null {
 
 /**
  * The plane's menu, from the chip's first part: **Look at** — square-on to it,
- * `lookAt(ref)`; **Change…** — the sketch tool armed, to pick another face;
+ * `lookAt(ref)`; **Change…** — the plane tool armed, to pick another face;
  * **Done** — the plane ended (`doneCommand`). Every item a command string, as
  * every menu here is (menu.ts).
  */
 export function planeMenu(model: Model, plane: ActivePlane): Menu {
   const done = doneCommand(model);
   return {
-    header: `sketching on ${plane.label}`,
+    header: `drawing on ${plane.label}`,
     items: [
       { label: "Look at", action: { do: "run", command: `lookAt(${JSON.stringify(plane.ref)})` } },
-      { label: "Change…", action: { do: "run", command: 'arm("sketch")' } },
+      { label: "Change…", action: { do: "run", command: 'arm("plane")' } },
       ...(done ? [{ label: "Done", action: { do: "run" as const, command: done } }] : []),
     ],
   };
@@ -180,12 +180,12 @@ export class ModeChip {
       b.setAttribute("aria-label", label);
       return b;
     };
-    this.where = part("where", "the sketch plane — its menu");
+    this.where = part("where", "the plane being drawn on — its menu");
     // ⟂, Normal To: one tap back to square-on, beside the plane it looks at.
     this.look = part("look", "Look at the plane — square to it");
     this.look.textContent = "⟂";
     this.look.title = "Look at the plane (Normal To)";
-    this.done = part("done", "Done — end the sketch plane");
+    this.done = part("done", "Done — leave the plane");
     this.done.textContent = "Done";
     this.what = part("what", "the tool in hand — its options");
     this.next = document.createElement("span");

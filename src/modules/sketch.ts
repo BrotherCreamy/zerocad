@@ -156,7 +156,7 @@ const BSPLINE: EntityDecl = {
 };
 
 defineModule("sketch", {
-  label: "Sketch: curves, shapes, the curve relations and the fillet",
+  label: "Drawing: curves, shapes, the curve relations and the fillet",
   // In the tray's order: the shapes group's members after the rectangle, whose
   // button they share; the curves group after the arc, so its button stands
   // where the table puts it (docs/plans/toolbar-groups.md, As built).
@@ -475,7 +475,7 @@ defineModule("sketch", {
     '           par; three numbers are a seed and no more. par("c1", "l1") stands',
     "           a circle square to a line; par/perp/ang read a curve as its normal.",
     "           No frame is ever made for a curve. The circle and arc tools draw",
-    "           where you click — on the plane you sketch on, else a solid's face",
+    "           where you click — on the plane you draw on, else a solid's face",
     "           under the cursor (lit and named before the click), else the",
     "           ground — and on a plane or a flat face hold what they draw with",
     '           onplane on its centre and par on its normal (par("c1", "e1:l2")),',
@@ -546,7 +546,7 @@ defineModule("sketch", {
     "           one dimension drives each (a dist, a rotation): set it. Deleting",
     "           the seed deletes no copy. Tools, under modify: trim (click the",
     "           piece), extend (click near an end), offset, mirror, bevel (the",
-    "           sketch chamfer: two lines or a corner), pattern.",
+    "           two-line chamfer: two lines or a corner), pattern.",
     "           Given a surface first (s1), trim, extend, offset, fillet and",
     "           chamfer are the surface's instead — see surfaces.",
   ],
