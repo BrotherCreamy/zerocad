@@ -8,7 +8,7 @@
 // panel's numbers as they are typed; ✓ types `linear(["l1", …], 20, 0, 3)` or
 // `circular(["c1"], "p1", 6.283185, 6)`, one undo step. Copy k of l1 is l1_k.
 
-import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { COPIES, copyable, drawSet } from "./mirror.ts";
@@ -27,6 +27,11 @@ export class PatternTool extends FeatureTool {
     angle: { default: TAU, unit: "angle", check: (v) => ((v as number) !== 0 && Math.abs(v as number) <= TAU + 1e-9 ? null : "must be more than 0 and at most a whole turn") },
   };
   static readonly summary = "Copies in a row or round a centre: select, then step and count";
+  static readonly how: How = (o) => [
+    "{Tap} what to copy, then ✓.",
+    o.kind === "circular" ? "{Tap} the point to turn about; set the angle and count." : "Set the step and the count in the options.",
+    "✓ again makes the copies.",
+  ];
   readonly name = "pattern";
   set: string[] = [];
   centre: string | null = null;

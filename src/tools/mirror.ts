@@ -7,7 +7,7 @@
 // feature.ts) and ✓, Enter or a second click on the line types `mirror(["l1",
 // "l2"], "l5")`, one undo step. Clicking a picked thing drops it.
 
-import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
 import { pieceSamples, strokeWorld } from "./editdraw.ts";
@@ -51,6 +51,11 @@ export function drawSet(r: RenderContext, model: Parameters<typeof pieceSamples>
 
 export class MirrorTool extends FeatureTool {
   static readonly summary = "Mirrors a copy: select, then click the mirror line or an axis";
+  static readonly how: How = [
+    "{Tap} what to mirror, then ✓.",
+    "{Tap} the mirror line: any line, or an axis arrow.",
+    "✓ again makes the copy.",
+  ];
   readonly name = "mirror";
   set: string[] = [];
   line: string | null = null;

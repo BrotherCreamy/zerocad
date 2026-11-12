@@ -15,7 +15,7 @@
 // is drawn per move without a copy of the model, and cannot promise a copy the
 // call will not make.
 
-import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
@@ -54,6 +54,11 @@ export class OffsetTool extends FeatureTool {
     construction: { default: false },
   };
   static readonly summary = "Offsets a curve or chain: click it, choose a side, ✓ — or drag it";
+  static readonly how: How = [
+    "{Tap} a curve: its whole chain comes with it.",
+    "Drag beside it to pull the copy out.",
+    "✓ makes it.",
+  ];
   readonly name = "offset";
   chain: string[] = [];
   /** Which side of the chain the copy goes: the sign the call's distance takes. */

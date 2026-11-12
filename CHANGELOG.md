@@ -47,8 +47,8 @@ with review item 7; format 22).
   (`hitTest`, picking.ts) within half a pixel of both prefers the real
   curve: the trim tool's click on the shorter line took the construction
   line over it, and the offset tool's chain from it was one line —
-  browser-only bug 77 (docs/ARCHITECTURE.md), found by the sketch-edit e2e
-  with the unit suite green. Seventy-seven.
+  browser-only bug 78 (docs/ARCHITECTURE.md), found by the sketch-edit e2e
+  with the unit suite green. Seventy-eight.
 - **A record standing on the corner sets its half aside and is rebuilt on
   the rounded loop** (`regenerateRounded`, `ExtrudeFeature.aside`): the
   twin lines, the twin corner and the chord between the corners stay,
@@ -95,6 +95,76 @@ with review item 7; format 22).
   re-pointing fillet now assert the kept corner. E2E, mouse and iPhone 13:
   `filletsonething.e2e.ts`. Decisions in TODO.md's register; what was tried
   and dropped in CONVERSATION_LOG.md.
+
+## 2026-11-12 — a tool says how to use it: on a hover, and on a phone as it is chosen
+
+The owner, asked to try adding a parallel relation: *"I don't even know how
+to add a parallel relation. Maybe a little tooltip should pop up when I hover
+over (desktop) or select (phone) a tool."* (docs/plans/tool-howto.md).
+
+| | |
+|---|---|
+| ![iPhone 13, Constrain just chosen from behind the Dimension button: its tip beside the tray's top, over the organiser, the strip and the log — Constrain, what it does, three steps (tap the things to relate; then choose: Parallel, Tangent…; pick several for one relation, hold a line for Leave), and Hold this button for Dimension; the palette below saying what can be picked](docs/images/480-iphone-constrain-chosen-its-tip-says-how.png) | ![Two lines tapped, one of them through the tip, which has gone: the palette lists Parallel, Perpendicular and 6 more…, the section that said "no relation yet" gone to make the room](docs/images/481-iphone-two-lines-tapped-parallel-and-perpendicular-no-more-needed.png) |
+| ![Parallel pressed: par("l2", "l1") in the log, the two lines parallel at their own lengths, a // mark on each (the upper one's partly behind the log), the palette waiting for the next](docs/images/482-iphone-parallel-pressed-the-two-lines-parallel.png) | ![Desktop, the mouse on Constrain in the relate button's flyout: the tooltip under the flyout with its three steps in a mouse's words between what it does and arm("constrain")](docs/images/483-desktop-hovering-constrain-the-tooltip-with-its-steps.png) |
+| ![iPhone 13, Extrude chosen: its tip at the top — tap inside a closed outline; set the depth in the options, ⇅ turns it the other way; ✓ builds the solid; hold this button for Cut, Surface, Edge — and the options pane it speaks of clear below, the rectangle clear between](docs/images/484-iphone-extrude-chosen-its-tip-clear-of-its-options-pane.png) | ![The line tool chosen a second time: the three steps alone, no name, starting at the same line as the first](docs/images/485-iphone-the-second-time-the-steps-alone.png) |
+| ![iPhone 13, a tap on the relate button, whose face is Dimension: its tip, ending Hold this button for Constrain](docs/images/486-iphone-dimension-chosen-its-tip-says-constrain-is-behind-the-button.png) | ![iPhone 13 on its side: the tip at the top right, over the command line's end, the strip, the log and the organiser's top — and over the right-hand ends of the two lines, the limitation filed](docs/images/487-iphone-landscape-the-tip-over-the-organiser-and-the-drawings-corner.png) |
+
+- **Every tool declares how it is used** (`static how`, tools/tool.ts): the
+  steps, three lines at most, in the words of someone doing them — `{tap}`
+  reads *click* under a mouse and *tap* under a finger, a line may be one for
+  each hand where they really differ (a chain ended by Esc or by Cancel), and
+  a tool whose gesture depends on how it is armed says the armed one (a
+  circle locked to 3 points never says to drag). `defineTool` refuses a how
+  that is not lines of text, or is more than three. Select and the Hand have
+  theirs (`ENGINE_HOW`). **Each line was written by doing it in the browser,
+  mouse and finger** — which is how the lines differ from the files' own
+  comments: a rectangle is a drag (two clicks do nothing), a point puts the
+  tool down, a confirm puts a feature tool down. The whole table is in the
+  spec's *As built*.
+- **On a phone, choosing a tool shows its tip** (`Tooltips.announce`): name,
+  what it does, how, and for a button that holds several tools what else is
+  there — *Hold this button for Constrain.* **Constrain shares Dimension's
+  button**; a tap arms the face, and until now nothing on the screen said the
+  button held anything else. The tip takes no touch (no pointer events: a tap
+  on it picks the line under it, e2e-asserted), goes at the next press, when
+  the tool is put down, or once read (a second and 40 ms a character, 3–10 s),
+  and the second time a tool is chosen in a session it is the steps alone
+  (5 s at most). Holding a button still shows the full tooltip without arming.
+- **Where it goes** (`chosenPlacement`, pure): the place that hides least of
+  what matters — over the log and the organiser for nothing, the action strip
+  and the command line at half the drawing's price, the drawing's middle
+  third at four times it — never over the tray, the tool's own options pane,
+  the palette or the logo's corner; and of places about as good, the first
+  reading down, so every tip starts at the same line. On an upright iPhone 13
+  that is beside the tray's top; no tip is taller than 187 px there. The
+  eight-line tips (Constrain, Dimension) are clear of the drawing's middle
+  third; the nine-line ones of twelve tools end 14–32 px inside its top edge.
+- **On a desktop the hover's tooltip has the steps**, between what the tool
+  does and its command; a click shows nothing more.
+- **The parallel case**: with two lines tapped the palette shows Parallel
+  *and* Perpendicular, then "6 more…" — the wasted row (TODO, review of #88)
+  was the section under the rows, "l1, l2 have / no relation yet", 39 px of a
+  164 px pane; where the rows overflow, a section with nothing in it now
+  gives way first. And the palette's empty state says what to pick and what
+  will be offered.
+- **The setting**: `ui({ tips: false })`, and *Tips when a tool is chosen* in
+  the logo menu's View; the viewer's, stored, never journalled.
+- **Bug 77**, found pressing ✓ in the browser: its tooltip said "the tool
+  stays armed", and a confirm has put the tool down since the opaque-solids
+  merge. It says what happens.
+- **Seen on the way**: before `review-solver` was merged in, `par` on two
+  free lines shrank both to a few pixels and read SOLVED — the first picture
+  482 showed two dashes. With it merged they keep their lengths; the picture
+  is retaken on the merged code, and the e2e asserts the directions.
+- **Merged with review-relations**: the constrain tool's steps say that
+  several picked make one relation and that a line's menu has Leave, both
+  done in the browser on the merged code.
+- Tests: `test/toolhowto.test.ts` (15) and `test/e2e/toolhowto.e2e.ts` (13:
+  eight under fingers — every tool on the tray and behind it chosen in turn —
+  one in landscape, four with a mouse). No existing test's code changed
+  (harness.ts's opening comment carries the count, seventy-seven). One of
+  them now says less than it reads: `tooltips.e2e.ts` asserts a tap "shows
+  no tooltip", true of `#tooltip` and silent about `#chosentip`.
 
 ## 2026-11-12 — where linked profiles met the solver package: the merge
 

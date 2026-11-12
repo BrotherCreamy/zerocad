@@ -116,6 +116,16 @@ export function switchCommand(key: keyof SwitchState, on: boolean): string {
   return `panels({ ${key}: ${on} })`;
 }
 
+/**
+ * The View section's row for the tip a tool shows as a finger chooses it
+ * (docs/plans/tool-howto.md): what it is called, and the line its box types
+ * to turn it the other way — `ui({ tips: false })`.
+ */
+export const TIPS_LABEL = "Tips when a tool is chosen";
+export function tipsCommand(on: boolean): string {
+  return `ui({ tips: ${on} })`;
+}
+
 /** What the menu needs of its host. */
 export interface AppMenuHost {
   /** Types one line into the command machinery, as one user action — `submit`. */
@@ -133,6 +143,8 @@ export interface AppMenuHost {
   viewModes: readonly string[];
   /** See-through and locked, as they are now — the View section's two boxes. Absent: no boxes. */
   switches?(): SwitchState;
+  /** Whether a tool chosen by finger shows its tip — the View section's third box. Absent: no box. */
+  tips?(): boolean;
   /** Where SMLib's Apache-2.0 licence is, for About's notice (solidshost.ts) — absent for no notice. */
   solidsLicence?: string;
   /** The build stamp's element, moved into About (the single-file build fills it in). */
@@ -412,6 +424,26 @@ export class AppMenu {
         row.append(box, text, hint);
         view.appendChild(row);
       }
+    }
+    // And whether a tool says how it is used as a finger chooses it: a box
+    // like those two, typing `ui({ tips: false })`.
+    const tips = h.tips?.();
+    if (tips !== undefined) {
+      const row = document.createElement("label");
+      row.className = "item check";
+      row.dataset.tips = "";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = tips;
+      const command = tipsCommand(!tips);
+      box.addEventListener("change", () => this.type(command, true));
+      const text = document.createElement("span");
+      text.textContent = TIPS_LABEL;
+      const hint = document.createElement("span");
+      hint.className = "cmd";
+      hint.textContent = command;
+      row.append(box, text, hint);
+      view.appendChild(row);
     }
 
     // About: the build, and where the source is.

@@ -54,6 +54,13 @@ defineModule("interface", {
     "           lifting does not press it; a tap does. Every icon and short",
     "           word in the chrome has one: the action strip, the organiser's",
     "           ＋ and eyes, the spin box, a panel's strip, the logo.",
+    "           A tool's tooltip also says how it is used, a line a step — and",
+    "           a tool chosen by finger shows that tip unasked: its name, what",
+    "           it does and how, over the log and the organiser, taking no",
+    "           touch (a tap goes through it) and gone at the next press or",
+    "           once read; the second time, the steps alone. A group's button",
+    "           says what else it holds. ui({ tips: false }) turns it off, as",
+    "           does the logo menu's View: Tips when a tool is chosen.",
     // Which tools share a button, said from the same table the toolbar is
     // built from (docs/plans/toolbar-groups.md).
     ...groupLines(),
@@ -220,5 +227,10 @@ defineModule("interface", {
     '           static summary = "Stamps a point where you click" says what it',
     "           does, in one line: its tooltip, tools() and help() show it.",
     "           Not inherited — a class extending a built-in says its own.",
+    '           static how = ["{Tap} where the stamp goes", "Esc puts it down"]',
+    "           says how it is used, three lines at most, in its tooltip and",
+    "           as a finger chooses it: {tap} reads click or tap; a line may",
+    '           be { mouse: "…", finger: "…" }; a function of the options',
+    "           where the gesture depends on them. Not inherited either.",
   ],
 });

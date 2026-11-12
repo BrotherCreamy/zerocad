@@ -20,7 +20,7 @@
 // tangents hold it in the corner (docs/plans/frameless-curves.md); it used to
 // need a frame's plane, and a fillet in a fresh model typed one first.
 
-import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { fillet } from "../operations.ts";
 import { linksOf } from "../twins.ts";
@@ -69,6 +69,10 @@ export class FilletTool extends FeatureTool {
     radius: { default: DEFAULT_RADIUS, unit: "length", check: (v) => ((v as number) > 0 ? null : "must be more than 0") },
   };
   static readonly summary: string = "Rounds a corner: click two lines that meet, or their corner";
+  static readonly how: How = [
+    "{Tap} a corner, or the two lines that meet at it.",
+    "Set the radius in the options, then ✓.",
+  ];
   readonly name: string = "fillet";
   // Its picks are lines, and a corner's point: a snap marker would only echo the pick.
   readonly snaps = false;

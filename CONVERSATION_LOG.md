@@ -70,7 +70,7 @@ the pictures show the counts without the verdict; nothing is unsolved. The
 hidden-line view doubles every mark, which crowds the corner in 490 and
 491 — the linked-profiles register already files that.
 
-**Browser-only bug 77.** The unit suite passed with the kept corner; the
+**Browser-only bug 78.** The unit suite passed with the kept corner; the
 sketch-edit e2e did not: the trim tool's click halfway along the shorter
 line typed `trim("l3", …)` — the construction line lying along it, first in
 entity order and exactly as near — and on the iPhone the offset tool's chain
@@ -103,6 +103,62 @@ closed: not a concern now, left as it is.
 Rejected: renaming the module id `sketch` that files name in
 `ui({ modules })` — a format change for a word nobody reads; the label
 changes, the id stays.
+
+## 2026-11-12 — a tool says how to use it: what was rejected, and what the browser said
+
+Built from `tool-howto.md` in a worktree, a PR against the working branch.
+The diff says what; these are the whys that are not in it.
+
+**The obstacle was not only the missing words.** The owner could not add a
+parallel relation. The spec read that as "the tip says what a tool is, not
+what to do", which is true — but doing it on the iPhone profile showed the
+nearer cause: there is no Constrain button. It shares Dimension's (the
+fourteenth button ran the column onto the command line, 2026-11-05), a tap
+arms the face, and only a hold or a slide opens the rest. Nothing on the
+screen said so. So a chosen tip's last line is *Hold this button for
+Constrain.* It was not asked for; it is the line the owner needed.
+
+**Rejected: showing the chosen tip in the tooltip's own element.** Simpler,
+one element, one look. But the tooltip is one of the things "open": Escape
+closes the top-most, Android's back closes it and logs "tooltip closed", and
+the back stack watches its `hidden`. A tip nobody asked for, up after every
+tap on a tool, would have put a phantom "open thing" in front of the tool it
+describes. It is a status, not a tooltip, and got its own element. That also
+left `tooltips.e2e.ts`'s old assertion — a tap "shows no tooltip" — passing
+unchanged, which is convenient and slightly too convenient: it is true of
+the tooltip and silent about the tip. Said in the spec's *As built* rather
+than papered over.
+
+**Rejected: a fixed place** ("top right, under the logo's row"). It is where
+the tip ends up on an upright iPhone 13, and it would have been ten lines.
+But the panes move, the phone turns, a tablet has a different default, and
+the one rule that matters — never over the tool's own options — needs the
+boxes anyway. So the place is the cheapest by what it hides. The first
+version of that jittered (tips of different heights settled 20 to 70 px
+apart, each at its own optimum); the `STAY` rule — take the first place
+reading down unless another is better by a third of a tip — is what makes it
+look like one fixed place while being none.
+
+**Rejected: steps as free text with "click" swapped for "tap" by a
+pattern.** "Right-click" would have become "right-tap". The placeholder
+`{tap}` is explicit, and a line that differs by more than the verb is two
+lines, one a hand.
+
+**The steps were shortened three times, by the picture.** Written to be
+complete they made a tip 245 px tall on the phone, over the top line of the
+drawing the tool was about to be used on — the very thing the pass-through
+is not an answer to: a tap goes through, but nobody taps a line they cannot
+see. At 68 characters a step and three steps, the tallest is 187 px and sits
+in the chrome above the drawing. Things that went: the constrain tool's
+"tap one again to drop it", the extend tool's dashed preview, every
+"or tap each" beside a drag.
+
+**What using the tools found that reading them had not**: a rectangle takes
+no clicks; a confirm puts the tool down while its own tooltip said it stays
+(bug 77); and `par` shrinks two free lines to dashes while reading SOLVED —
+in picture 422 since the palette package and in nobody's notes. The last was
+`review-solver.md`'s; picture 482 was two dashes until that was merged in,
+and is retaken.
 
 ## 2026-11-12 — linked profiles built: twins that hold nothing, an extrude that opens, a feature that owns nothing
 

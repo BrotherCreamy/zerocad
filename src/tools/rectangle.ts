@@ -40,7 +40,7 @@
 // drag. With a plane picked every corner is on it already, and that is the
 // flatness.
 
-import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { perpendicular } from "../relations/geometry.ts";
 import { coplanar } from "../relations/basic.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
@@ -63,6 +63,10 @@ function otherCorners(a: number[], c: number[], plane?: Plane): [number[], numbe
 export class RectangleTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
   static readonly summary = "Draws a rectangle: drag from corner to corner";
+  static readonly how: How = [
+    "Press at one corner, drag to the opposite one, let go.",
+    "Its corners stay square; its size and angle are free.",
+  ];
   readonly name = "rectangle";
   /**
    * The whole of the first press, not only its coordinate: the corner is not

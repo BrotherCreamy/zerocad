@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Seventy-seven bugs so far were invisible to the unit tests and
+// once it is assembled. Seventy-eight bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
