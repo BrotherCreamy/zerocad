@@ -570,7 +570,21 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
     status: () => page.$eval("#status", (el) => el.textContent ?? ""),
     log: () => page.$eval("#log", (el) => el.textContent ?? ""),
     async close() {
-      await browser.close();
+      // Bounded: after a renderer crash under load ("Target crashed", load
+      // 40) `browser.close()` never returned, and a file whose fourteen
+      // tests had all reported sat for 38 minutes in its `after` hook with
+      // nothing to say. A browser that will not close in 15 s is left to
+      // Playwright's own exit hook, which kills what it launched once the
+      // test process is allowed to end.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<"late">((r) => { timer = setTimeout(() => r("late"), 15_000); });
+      try {
+        if ((await Promise.race([browser.close().then(() => "closed" as const), late])) === "late") {
+          console.error("# the browser did not close in 15 s (a crashed renderer, most likely): left for the exit hook");
+        }
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }
