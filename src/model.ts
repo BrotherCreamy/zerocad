@@ -3654,7 +3654,11 @@ export class Model {
               // irreducible but not the smallest, and a rectangle held by a
               // perp at every corner disagrees with a `par` across one corner
               // both in that corner's perp and in the two far ones together.
-              const one = ring.slice(0, SINGLES).find((c) => clash([c]));
+              // Asked of the nearest of all the others, not of the ring alone:
+              // where the solve folded a side, the ring is the relations
+              // naming that side — the two far perps — and the corner's own
+              // perp, the one a person reads, lies outside it.
+              const one = others.slice(0, SINGLES).find((c) => clash([c]));
               against = one ? [one] : quickXplain(ring, clash);
             }
           } catch (e) {

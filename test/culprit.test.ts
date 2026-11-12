@@ -16,6 +16,9 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model, type Conflict } from "../src/model.ts";
 import { dist, fix, onPlane } from "../src/relations/basic.ts";
 import { parallel, perpendicular } from "../src/relations/geometry.ts";
+import { among } from "../src/relations/among.ts";
+import { join, leave } from "../src/among.ts";
+import { describeRelation } from "../src/picking.ts";
 import { del, extrude, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { diagnosisLine } from "../src/statusline.ts";
@@ -190,6 +193,58 @@ for (const dim of [2, 3]) {
     redone.searchMs = Infinity;
     redone.inheritHeld(undone);
     assert.deepEqual(conflictsOf(redone).conflicts, [{ culprit: par, set: [perps[0]], found: true }]);
+  });
+}
+
+// --- one relation among many (docs/plans/review-relations.md) ------------------------------------------
+//
+// `par("l1", "l2", "m1")` is one relation owning a row block for each member
+// with the first: a conflict names it once, whichever of its blocks is the
+// one that cannot hold, with every member in what it says. And who is in it
+// can change (`join`, `leave`): the relation as it now stands has not held,
+// so it is what made a conflict that follows a join.
+
+/** What the status says of `conflicts`, as the app asks it: each relation by its name, the culprit with what it says. */
+function said(m: Model, conflicts: Conflict[]): string {
+  const says = (r: string) => describeRelation(m.relationOf(r)).slice(r.length).trim();
+  return diagnosisLine(false, null, conflicts, [], [], says).parts.map((p) => (typeof p === "string" ? p : p.relation)).join("");
+}
+
+for (const dim of [2, 3]) {
+  const D = `${dim}D`;
+
+  test(`${D}: a par among three across a rectangle's corner is one culprit — named once with all three members, against that corner's perp`, () => {
+    const { m, perps, pt } = rectangle(dim);
+    pt(80, 0, "q1"); pt(95, 14, "q2"); m.addLine("q1", "q2", "m1");
+    assert.equal(m.solve().solved, true);
+    const before = m.problem.snapshot();
+    const par = among(m, "parallel", "l1", "l2", "m1");
+    assert.equal(m.relationOf(par).blocks.length >= 2, true, "one relation, a row block for each member with the first");
+    const { conflicts, relations } = conflictsOf(m);
+    assert.deepEqual(conflicts, [{ culprit: par, set: [perps[0]], found: true }]);
+    assert.deepEqual(relations, [par, perps[0]]);
+    assert.equal(said(m, conflicts), `${par} par l1 l2 m1 — against ${perps[0]}`);
+    assert.deepEqual(m.problem.snapshot(), before, "and nothing moved — the free line it also names least of all");
+  });
+
+  test(`${D}: a line joining a relation that held makes the relation the culprit, as it now stands; the line leaving it clears it`, () => {
+    const { m, perps, pt } = rectangle(dim);
+    pt(80, 0, "q1"); pt(95, 14, "q2"); m.addLine("q1", "q2", "m1");
+    const par = parallel(m, "l1", "m1");
+    assert.equal(m.solve().solved, true, "l1 and the free line parallel: it holds");
+    const before = m.problem.snapshot();
+    assert.equal(join(m, par, "l2"), par, "the same relation, under the same name, among three");
+    const { conflicts } = conflictsOf(m);
+    assert.deepEqual(conflicts, [{ culprit: par, set: [perps[0]], found: true }], "it held among two; among these three it has not");
+    assert.equal(said(m, conflicts), `${par} par l1 m1 l2 — against ${perps[0]}`);
+    assert.deepEqual(m.problem.snapshot(), before);
+    assert.equal(leave(m, par, "l2"), par);
+    const report = m.solve();
+    assert.equal(report.solved, true);
+    assert.deepEqual(m.conflicting(report).conflicts, []);
+    // And having held again as it stands, it is no longer what makes the next one.
+    const other = parallel(m, "l2", "l3");
+    assert.equal(conflictsOf(m).conflicts[0].culprit, other);
   });
 }
 

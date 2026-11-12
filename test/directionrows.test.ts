@@ -24,7 +24,8 @@ import { Dual } from "../src/kernel/dual.ts";
 import { Model } from "../src/model.ts";
 import { coplanar, dist, fix } from "../src/relations/basic.ts";
 import { angle, collinear, parallel, perpendicular, pointOnLine, symmetric, tangent } from "../src/relations/geometry.ts";
-import { angle3 } from "../src/relations/smartdim.ts";
+import { among } from "../src/relations/among.ts";
+import { angle3, cornerAngle } from "../src/relations/smartdim.ts";
 import { extrude } from "../src/operations.ts";
 import { open } from "../src/persist.ts";
 import { pullTo } from "../src/tools/engine.ts";
@@ -73,7 +74,20 @@ const TURNS: [string, string[], (m: Model) => void, (m: Model) => number][] = [
   ["sym(p3, p4, l1)", ["l1"], (m) => { symmetric(m, "p3", "p4", "l1"); }, () => 0],
   ["par(l1, origin.x)", ["l1"], (m) => { parallel(m, "l1", "origin.x"); }, () => 0],
   ["dist(p3, l1, 10)", ["l1"], (m) => { dist(m, "p3", "l1", 10); }, () => 0],
+  // The angle in the corner two lines make (docs/plans/review-relations.md): `ang`'s row on the two rays out of it.
+  ["corner(l1, l2, 60°)", ["l1", "l2"], (m) => { cornerAngle(m, "l1", "l2", Math.PI / 3); }, (m) => Math.abs(Math.abs(cosBetween(m, "l1", "l2")) - 0.5)],
 ];
+
+/** Four free lines, none parallel to another and in 3D no three ends in a plane: `twoLines` and two more. */
+function fourLines(dim: number): Model {
+  const m = twoLines(dim, true);
+  const z = (h: number) => (dim === 3 ? [h] : []);
+  m.addPoint([-28, 40, ...z(-4)], "p5"); m.addPoint([26, 52, ...z(6)], "p6");
+  m.addPoint([-20, -30, ...z(8)], "p7"); m.addPoint([34, -12, ...z(-7)], "p8");
+  m.addLine("p5", "p6", "l3"); m.addLine("p7", "p8", "l4");
+  return m;
+}
+const FOUR = ["l1", "l2", "l3", "l4"];
 
 for (const dim of [2, 3]) {
   for (const [name, lines, add, off] of TURNS) {
@@ -85,6 +99,26 @@ for (const dim of [2, 3]) {
       assert.equal(report.solved, true, JSON.stringify(report.offenders));
       assert.ok(off(m) < 1e-9, `and the relation holds: off by ${off(m)}`);
       lines.forEach((l, i) => {
+        const now = lengthOf(m, l);
+        assert.ok(Math.abs(now - was[i]) / was[i] < 1e-6, `${l} was ${was[i].toFixed(6)} long and is ${now.toFixed(6)}`);
+      });
+    });
+  }
+
+  // One relation among many (docs/plans/review-relations.md) is the pair's
+  // rows, each member with the first listed, inside one relation: what was
+  // done to the pair's rows is done to these. Before: `par` among these four
+  // left them 41, 31, 89 and 123 long in 2D, `col` 25, 23, 73 and 99.
+  for (const [word, op] of [["par", "parallel"], ["col", "collinear"]] as const) {
+    test(`${dim}D: ${word}(l1, l2, l3, l4), one relation among four free lines, turns all four — each keeps its length to 1e-6 of it`, () => {
+      const m = fourLines(dim);
+      const was = FOUR.map((l) => lengthOf(m, l));
+      const r = among(m, op, ...FOUR);
+      assert.deepEqual(m.relations.get(r)!.args, FOUR, "one relation, every member in it");
+      const report = m.solve();
+      assert.equal(report.solved, true, JSON.stringify(report.offenders));
+      for (const l of FOUR.slice(1)) assert.ok(sinBetween(m, "l1", l) < 1e-9, `${l} is parallel to l1: off by ${sinBetween(m, "l1", l)}`);
+      FOUR.forEach((l, i) => {
         const now = lengthOf(m, l);
         assert.ok(Math.abs(now - was[i]) / was[i] < 1e-6, `${l} was ${was[i].toFixed(6)} long and is ${now.toFixed(6)}`);
       });
@@ -270,6 +304,7 @@ for (const dim of [2, 3]) {
     ["dist(l1, l2, 10)", (m) => { dist(m, "l1", "l2", 10); }, [L1, ["p3", "p4", "scale"]]],
     // Its arms run from the vertex: either far end slid along its arm changes nothing.
     ["ang3(p1, p2, p4, 40°)", (m) => { angle3(m, "p1", "p2", "p4", (40 * Math.PI) / 180); }, [["p1", "p2", "ray"], ["p1", "p4", "ray"]]],
+    ["corner(l1, l2, 35°)", (m) => { cornerAngle(m, "l1", "l2", (35 * Math.PI) / 180); }, [L1, L2]],
   ];
   for (const [name, add, segments] of CASES) {
     test(`${dim}D: ${name} — every row's gradient along its lines is zero, and is the finite differences'`, () => {
@@ -482,7 +517,8 @@ test("every old-file fixture reopens to the shape it was saved as: nothing moves
   // than the extrude's own perpendicular and regenerates under it on open;
   // it moved 1.8e-3 before the rows changed and moves the same now.
   const moved: Record<string, number> = {};
-  for (const name of ["bracket.zerocad", "curves-v12.neocad", "features-v12.neocad", "flat2d-v12.neocad", "pre-explicit-regions.neocad", "shapes-v15.neocad"]) {
+  for (const name of ["bracket.zerocad", "curves-v12.neocad", "features-v12.neocad", "flat2d-v12.neocad", "pre-explicit-regions.neocad", "shapes-v15.neocad",
+    "review-relations-v19.neocad", "review-relations-drift-v19.neocad", "review-relations-wedge-v19.neocad"]) {
     const m = open(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
     const filed = m.problem.snapshot();
     const report = m.solve();
@@ -491,6 +527,11 @@ test("every old-file fixture reopens to the shape it was saved as: nothing moves
   }
   for (const [name, d] of Object.entries(moved)) {
     if (name === "pre-explicit-regions.neocad") assert.ok(d > 1e-4 && d < 2e-3, `${name} moved ${d}`);
+    // Kept as it was found on the base (docs/plans/review-relations.md: a
+    // point held to a wall by its place in a profile a trim re-numbered), and
+    // 4.3e-5 off its relations as filed. A solve takes that up: 4.33e-5,
+    // measured the same by the rows it was saved with and by these.
+    else if (name === "review-relations-drift-v19.neocad") assert.ok(Math.abs(d - 4.33e-5) < 1e-6, `${name} moved ${d}`);
     else assert.ok(d < 1e-9, `${name} moved ${d}`);
   }
 });

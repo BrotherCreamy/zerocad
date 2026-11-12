@@ -431,6 +431,47 @@ for (const which of ["desktop", "iPhone 13"] as const) {
   });
 }
 
+// --- one relation among many (docs/plans/review-relations.md) ---------------------------------------
+
+test("desktop: par typed among four free lines turns all four, each as long as it was; among three across a rectangle's corner it is one culprit, and the line leaving it clears it", async () => {
+  await fresh(desk);
+  await type(desk, "ln(pt(-30, 0), pt(30, 4)); ln(pt(-30, 25), pt(30, 15)); ln(pt(-28, 40), pt(26, 52)); ln(pt(-20, -30), pt(34, -12))");
+  const four = ["l1", "l2", "l3", "l4"];
+  const was = await lengths(desk, four);
+  await type(desk, 'par("l1", "l2", "l3", "l4")');
+  await verdict(desk, "SOLVED");
+  const pars = (await relations(desk)).filter((r) => r.op === "parallel");
+  assert.deepEqual(pars.map((r) => r.args), [four], "one relation among the four");
+  (await lengths(desk, four)).forEach((v, i) => assert.ok(Math.abs(v - was[i]) / was[i] < 1e-6, `${four[i]} was ${was[i].toFixed(6)} long and is ${v.toFixed(6)}`));
+  for (const l of four.slice(1)) assert.ok((await sine(desk, "l1", l)) < 1e-9, `${l} parallel to l1`);
+
+  // A rectangle and a free line beside it; the par among two of its sides and the line.
+  await fresh(desk);
+  const drawn = await drawRectangle(desk);
+  await type(desk, "ln(pt(40, -10), pt(52, 6))");
+  const free = (await desk.model()).lines.map((l) => l.name).find((n) => !drawn.lines.includes(n))!;
+  const before = await lengths(desk, [...drawn.lines, free]);
+  await patient(desk);
+  await type(desk, `par("${drawn.lines[0]}", "${drawn.lines[1]}", "${free}")`);
+  await verdict(desk, "CONFLICT");
+  const par = (await relations(desk)).find((r) => r.op === "parallel")!.name;
+  assert.equal(await diagnosisText(desk), `${par} par ${drawn.lines[0]} ${drawn.lines[1]} ${free} — against ${drawn.perps[0]}`);
+  (await lengths(desk, [...drawn.lines, free])).forEach((l, i) => assert.ok(Math.abs(l - before[i]) < 1e-6, `nothing moved: ${l} vs ${before[i]}`));
+  await park(desk);
+  const inks = await glyphInks(desk);
+  assert.ok(inks[par]?.length === 3 && inks[par].every((k) => k === "filled"), `a filled glyph on each of the par's three members: ${JSON.stringify(inks)}`);
+  assert.ok(inks[drawn.perps[0]]?.every((k) => k === "against"), `the corner's perp in the quieter ink: ${JSON.stringify(inks)}`);
+
+  // The side that cannot be parallel leaves: the relation stays, among the two that can, and holds.
+  await type(desk, `leave("${par}", "${drawn.lines[1]}")`);
+  await verdict(desk, "SOLVED");
+  assert.deepEqual((await relations(desk)).find((r) => r.name === par)!.args, [drawn.lines[0], free]);
+  assert.ok((await sine(desk, drawn.lines[0], free)) < 1e-9);
+  await park(desk);
+  const after = await glyphInks(desk);
+  assert.deepEqual(Object.entries(after).filter(([, ks]) => ks.some((k) => k !== "plain")), [], "no glyph left in a conflict's ink");
+});
+
 test("desktop: a dimension set to what cannot hold — that dimension named, and nothing moved", async () => {
   await fresh(desk);
   // A level rectangle 40 by 25, its diagonal dimensioned at what it is.

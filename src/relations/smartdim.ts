@@ -11,7 +11,7 @@
 import { Dual } from "../kernel/dual.ts";
 import type { Model } from "../model.ts";
 import { chunk, curveNormal, directionOf, fadeUnder, frameBasis, joinVars, lengthBefore, lineVars, rowLength, unitDuals } from "./refs.ts";
-import { angleBetween, dot, norm, unit, vecSub, wedge } from "./vec.ts";
+import { angleBetween, dot, unit, vecSub, wedge } from "./vec.ts";
 
 function requireLength(op: string, v: unknown): number {
   if (typeof v !== "number" || !Number.isFinite(v) || v < 0) throw new Error(`${op} needs a length of 0 or more, got ${JSON.stringify(v)}`);
@@ -113,8 +113,12 @@ function cornerEnds(model: Model, l1: string, l2: string, at: number[][]): [numb
  * re-points out from under it. The corner is found each time the relation is
  * read (`cornerEnds`), so it follows a line an operation re-points.
  *
- * u·w = |u||w| cos θ, `ang`'s form: smooth at 0 and π, nowhere a square, and
- * the same in any dimension (test/reviewrelations.test.ts: 2D and 3D).
+ * `ang`'s form (docs/plans/review-solver.md): the angle between the two
+ * rays at unit length, less θ, times the longer line as the solve began —
+ * so it turns the lines and is not met by a change of their length (raw,
+ * u·w − |u||w| cos θ, it left two free 60-long lines 69 and 89 long in 3D).
+ * Nowhere a square, and the same in any dimension
+ * (test/reviewrelations.test.ts, test/directionrows.test.ts: 2D and 3D).
  */
 export function cornerAngle(model: Model, l1: string, l2: string, radians: number): string {
   if (typeof radians !== "number" || !Number.isFinite(radians)) throw new Error(`corner needs an angle in radians, got ${JSON.stringify(radians)}`);
@@ -123,13 +127,17 @@ export function cornerAngle(model: Model, l1: string, l2: string, radians: numbe
   if (l1 === l2) throw new Error(`corner takes the two lines that make it: ${l1} twice is one`);
   return model.relation("cornerAngle", [l1, l2, radians], () => {
     const dim = model.dim;
-    const target = Math.cos(radians);
-    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
+    // What the cosine form meant by any number of radians: the angle in [0, π] with that cosine.
+    const target = Math.acos(Math.max(-1, Math.min(1, Math.cos(radians))));
+    const [v1, v2] = [lineVars(model, l1), lineVars(model, l2)];
+    model.addResidual(joinVars(v1, v2), (l) => {
       const ends = chunk(l, dim, 4);
       const [i, j] = cornerEnds(model, l1, l2, ends.map((p) => p.map((x) => x.val)));
       const u = vecSub(ends[1 - i], ends[i]), w = vecSub(ends[3 - j], ends[2 + j]);
-      return [dot(u, w).sub(norm(u).mul(norm(w)).mul(target))];
-    }, `corner(${l1},${l2})`);
+      const floor = model.lengthFloor();
+      const k = rowLength(lengthBefore(model, v1()), lengthBefore(model, v2()));
+      return [fadeUnder(angleBetween(unit(u, floor), unit(w, floor)).sub(target).mul(k), floor, u, w)];
+    }, `corner(${l1},${l2})`, [l1, l2]);
   });
 }
 

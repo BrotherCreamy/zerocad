@@ -13,6 +13,8 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { coplanar, dist, fix } from "../src/relations/basic.ts";
 import { angle, collinear, parallel, perpendicular, pointOnLine, symmetric } from "../src/relations/geometry.ts";
+import { among } from "../src/relations/among.ts";
+import { cornerAngle } from "../src/relations/smartdim.ts";
 import { extrude } from "../src/operations.ts";
 import { open } from "../src/persist.ts";
 import { pullTo } from "../src/tools/engine.ts";
@@ -83,6 +85,67 @@ for (const dim of [2, 3]) {
   const u = sub(m.coords("p2"), m.coords("p1")), v = sub(m.coords("p4"), m.coords("p3"));
   const sin = dim === 3 ? len(cross(u, v)) / (len(u) * len(v)) : Math.abs(u[0] * v[1] - u[1] * v[0]) / (len(u) * len(v));
   console.log(`| ${dim}D | ${f3(was[0])} → ${f3(now[0])} | ${f3(was[1])} → ${f3(now[1])} | ${e2(Math.abs(now[1] - was[1]) / was[1])} | ${e2(sin)} |`);
+}
+
+/**
+ * Four free lines, none parallel to another; in 3D no three of their ends in
+ * a plane. For one relation among many (docs/plans/review-relations.md), whose
+ * rows are the pair's, each member with the first listed; and for `corner`,
+ * the angle two walls' lines make. "Before" for these is that branch alone.
+ */
+function fourLines(dim: number, parallelAlready = false): Model {
+  const m = new Model(dim);
+  const z = (h: number) => (dim === 3 ? [parallelAlready ? 0 : h] : []);
+  const ends = parallelAlready
+    ? [[-30, 0], [30, 4], [-30, 25], [30, 29], [-28, 40], [26, 43.6], [-20, -30], [34, -26.4]]
+    : [[-30, 0], [30, 4], [-30, 25], [30, 15], [-28, 40], [26, 52], [-20, -30], [34, -12]];
+  const lift = [3, -5, 11, 2, -4, 6, 8, -7];
+  ends.forEach((e, i) => m.addPoint([e[0], e[1], ...z(lift[i])], `p${i + 1}`));
+  for (let i = 0; i < 4; i++) m.addLine(`p${2 * i + 1}`, `p${2 * i + 2}`, `l${i + 1}`);
+  return m;
+}
+const FOUR = ["l1", "l2", "l3", "l4"];
+
+console.log("\n## four free lines, one relation among them (and `corner` of two), then solve");
+console.log("| relation | dim | lines it reads for direction: before → after | worst relative change | iterations | solved |");
+console.log("|---|---|---|---|---|---|");
+const many: [string, string[], (m: Model) => void][] = [
+  ["par(l1, l2, l3, l4)", FOUR, (m) => { among(m, "parallel", ...FOUR); }],
+  ["col(l1, l2, l3, l4)", FOUR, (m) => { among(m, "collinear", ...FOUR); }],
+  ["corner(l1, l2, 60°)", ["l1", "l2"], (m) => { cornerAngle(m, "l1", "l2", Math.PI / 3); }],
+];
+for (const [name, lines, add] of many) {
+  for (const dim of [2, 3]) {
+    const m = fourLines(dim);
+    const was = lines.map((l) => lengthOf(m, l));
+    add(m);
+    const r = m.solve();
+    const now = lines.map((l) => lengthOf(m, l));
+    const rel = Math.max(...now.map((v, i) => Math.abs(v - was[i]) / was[i]));
+    console.log(`| ${name} | ${dim}D | ${lines.map((l, i) => `${l} ${f3(was[i])} → ${f3(now[i])}`).join(", ")} | ${e2(rel)} | ${r.iterations} | ${r.solved} |`);
+  }
+}
+
+console.log("\n## a drag of one end of one of four lines parallel as one relation (p2 pulled by [0, 20], 12 frames, then released)");
+console.log("| dim | l1 (dragged) before → after | the three not touched, before → after | worst relative change of those | still parallel (worst sin) |");
+console.log("|---|---|---|---|---|");
+for (const dim of [2, 3]) {
+  const m = fourLines(dim, true);
+  among(m, "parallel", ...FOUR);
+  m.solve();
+  const was = FOUR.map((l) => lengthOf(m, l));
+  const from = m.coords("p2");
+  const by = dim === 3 ? [0, 20, 0] : [0, 20];
+  for (let k = 1; k <= 12; k++) m.solveFrame(pullTo(m, "p2", from.map((c, i) => c + (by[i] * k) / 12)));
+  m.solve();
+  const now = FOUR.map((l) => lengthOf(m, l));
+  const dir = (l: string) => sub(m.coords(m.line(l).refs[1]), m.coords(m.line(l).refs[0]));
+  const sinTo = (l: string) => {
+    const [u, v] = [dir("l1"), dir(l)];
+    return (dim === 3 ? len(cross(u, v)) : Math.abs(u[0] * v[1] - u[1] * v[0])) / (len(u) * len(v));
+  };
+  const rest = [1, 2, 3];
+  console.log(`| ${dim}D | ${f3(was[0])} → ${f3(now[0])} | ${rest.map((i) => `${FOUR[i]} ${f3(was[i])} → ${f3(now[i])}`).join(", ")} | ${e2(Math.max(...rest.map((i) => Math.abs(now[i] - was[i]) / was[i])))} | ${e2(Math.max(...rest.map((i) => sinTo(FOUR[i]))))} |`);
 }
 
 /** A 40 × 30 rectangle as the tool leaves one: four perps, and in 3D the flat. */
@@ -202,7 +265,9 @@ function fixtureRow(name: string, m: Model, jig: () => void): void {
     + `| ${bare.out.iterations} | ${bare.ms.toFixed(2)} | ${whole.out.iterations} | ${whole.ms.toFixed(2)} | ${whole.out.solved} |`);
 }
 
-const fixtures = ["bracket.zerocad", "curves-v12.neocad", "features-v12.neocad", "flat2d-v12.neocad", "pre-explicit-regions.neocad", "shapes-v15.neocad"];
+const fixtures = ["bracket.zerocad", "curves-v12.neocad", "features-v12.neocad", "flat2d-v12.neocad", "pre-explicit-regions.neocad", "shapes-v15.neocad",
+  // Saved by review-relations (format 19, before the rows were normalised): relations among many, walls by name, `corner`.
+  "review-relations-v19.neocad", "review-relations-drift-v19.neocad", "review-relations-wedge-v19.neocad"];
 for (const name of fixtures) {
   const m = open(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
   fixtureRow(name, m, () => jiggle(m));
