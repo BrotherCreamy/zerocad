@@ -2596,6 +2596,25 @@ are flagged as such.
           156 → 960 ms, 22 iterations for 8), which an edit is not. Wants
           measuring on a quiet machine and on the phone before anything is
           done about it.
+          **Measured at the review (2026-11-12, load 5–9, best of five,
+          base → merged):** a drag frame — one rectangle 1.1 → 1.3 ms; ten
+          rectangles of four perps chained by `par` 48.8 → 27.7; forty of
+          them 385 → 178; forty held `par` to the axes and dimensioned
+          4.2 → 20.6; features-v12 61.9 → 53.2; shapes-v15 77.8 → 81.4. One
+          dimension set and solved — forty chained rectangles each with its
+          width dimensioned 1815 → 1121 ms, twenty 305 → 358, ten 68 → 109,
+          forty separate 20.7 → 21.5. So not a blanket cost: perp-heavy
+          drags are twice as fast and most edits within 1–3× either way.
+          **The case to fix first: forty chained rectangles whose widths
+          are free, one dimension set, 165 → 1407 ms** — `keptSizes`
+          bringing forty free lengths back at once. Likely fix: do not
+          re-pull a size that drifted less than can be seen (`KEPT` is
+          1e-9). The par-to-axes drag frame at 5× is the second. Still
+          wants the phone.
+    - [ ] **A conflict on a solid says two things in the log.** The status
+          names the culprit (`r7 par l5 l6 — against r6`) and the log line
+          under it reads "collapsing l6, l2, l4, l8", the collapse path's
+          wording (docs/images/467). One verdict, one wording.
     - [ ] **A failing solve is solved once more before it is believed**, and
           a collapse's steered retry runs to 120 iterations. Measured, it
           costs nothing that shows: forty rectangles with a `par` across a
