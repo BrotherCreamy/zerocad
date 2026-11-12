@@ -9,6 +9,13 @@ decisions.
 
 ## 2026-11-12 — there is no sketch: the Plane tool, Draw on this face, a group's definedness, and a tool's guidance in the hand's word
 
+*Merged into the working branch (`3fc5372`), a clean merge. The gate on
+the merge: typecheck 0; unit 2145/2145 (load 3–6); the nine browser files
+the rename touches most — nosketch, panels, tooltips, toolhowto,
+organiser, sketchmode, sketchmodephone, workbenches, contextmenu —
+106/106. The full browser suite was run by the worker on this same tree
+(841/845, the four its own expectations, fixed and rerun 49/49).*
+
 The owner: *"There is no such thing as a sketch. There are geometry groups
 (you can come up with a better name… reason I don't want to use sketch is
 it implied exclusivity, but I want geometry to be able to belong to
