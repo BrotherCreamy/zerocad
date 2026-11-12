@@ -3,9 +3,16 @@
 // relation lines. This is a bug." A rectangle drawn with the tool, its
 // inferred relations in place, and Parallel added between two adjacent sides
 // from the constrain tool: CONFLICT, the two relations that cannot both hold
-// drawn red, the rectangle not folded, and Delete on one of them clearing it.
-// With a mouse and on an iPhone 13; then undo, a reload by autosave and a drag
-// on the drawing holding the conflict.
+// drawn in the conflict's inks, the rectangle not folded, and Delete on one of
+// them clearing it. With a mouse and on an iPhone 13; then undo, a reload by
+// autosave and a drag on the drawing holding the conflict.
+//
+// Since docs/plans/review-solver.md the two are not said alike: the par is
+// the relation that made the conflict (its glyph in the conflict's red, its
+// name first in the status) and the corner's perp is what it is against (the
+// quieter ink). A drawing reopened in conflict singles out neither, and both
+// are the red they were. test/e2e/reviewsolver.e2e.ts looks at the inks
+// closely; this file keeps what it always asked, in the new words.
 //
 // The unit suite proves which relations are named. What only a browser shows
 // is that the rectangle on the screen did not fold, that the verdict says
@@ -31,8 +38,9 @@ async function shot(app: AppContext, name: string): Promise<void> {
   await app.page.screenshot({ path: join(SHOTS, `conflicts-${name}.png`) });
 }
 
-/** The conflict ink, as main.ts draws it. */
+/** The conflict ink, as main.ts draws it, and the quieter ink of what a culprit is against. */
 const RED = [0xe0, 0x60, 0x5c];
+const AGAINST = [0xb9, 0x8a, 0x86];
 
 interface Probe {
   __neocad: {
@@ -41,7 +49,7 @@ interface Probe {
       coords(n: string): number[];
       line(n: string): { refs: [string, string] };
     };
-    engine: { glyphs(): { relation: string; symbol: string; screen: [number, number]; halfW: number; halfH: number }[] };
+    engine: { glyphs(): { relation: string; symbol: string; screen: [number, number]; halfW: number; halfH: number }[]; model: { searchMs: number } };
     files: { flush(): Promise<void> };
   };
 }
@@ -77,6 +85,16 @@ async function fresh(app: AppContext): Promise<void> {
   await forgetAutosave(app.page);
   await app.page.reload({ waitUntil: "networkidle" });
   await app.page.waitForFunction(() => document.getElementById("status")?.textContent?.includes("ready"), null, { timeout: 20_000 });
+  await patient(app);
+}
+
+/**
+ * Lifts the conflict search's clock from the model on the page: what is named
+ * is asked of the trials, not of how busy the machine is (reviewsolver.e2e.ts
+ * says what a loaded box did to it). The bound has a unit test.
+ */
+async function patient(app: AppContext): Promise<void> {
+  await app.page.evaluate(() => { (window as never as Probe).__neocad.engine.model.searchMs = Infinity; });
 }
 
 /** A point along a line, `t` of the way from its first end, in canvas pixels. */
@@ -100,15 +118,15 @@ async function inkNear(app: AppContext, [x, y]: [number, number], want: number[]
 const close = (p: number[], want: number[], tol = 30) => Math.hypot(p[0] - want[0], p[1] - want[1], p[2] - want[2]) < tol;
 
 /**
- * Whether each glyph of each relation wears the conflict ink, by relation: a
- * relation between two lines is drawn once on each. Read on the top edge of
- * its box, at its middle, since boxes side by side share their left and right
- * edges.
+ * Whether each glyph of each relation wears `ink` (the conflict's, unless
+ * given), by relation: a relation between two lines is drawn once on each.
+ * Read on the top edge of its box, at its middle, since boxes side by side
+ * share their left and right edges.
  */
-async function redGlyphs(app: AppContext): Promise<Record<string, boolean[]>> {
+async function redGlyphs(app: AppContext, ink: number[] = RED): Promise<Record<string, boolean[]>> {
   const out: Record<string, boolean[]> = {};
   for (const g of await glyphs(app)) {
-    (out[g.relation] ??= []).push(close(await inkNear(app, [g.screen[0], g.screen[1] - g.halfH], RED), RED));
+    (out[g.relation] ??= []).push(close(await inkNear(app, [g.screen[0], g.screen[1] - g.halfH], ink), ink));
   }
   return out;
 }
@@ -171,30 +189,44 @@ async function parallelFromConstrain(app: AppContext, lines: string[]): Promise<
   return (await relations(app)).find((r) => r.op === "parallel" && r.args[0] === lines[0] && r.args[1] === lines[1])!.name;
 }
 
-/** CONFLICT, named exactly `names`, both red and nothing else red, and the rectangle as it was. */
-async function assertConflict(app: AppContext, drawn: Drawn, names: string[]): Promise<void> {
+/**
+ * CONFLICT, named exactly `names` — the perp, then the par — and the
+ * rectangle as it was. `made`: the par is said to have made it (first, in the
+ * conflict's red; the perp after "against", in the quieter ink). Not `made`:
+ * a drawing reopened in conflict, where neither is singled out and both are
+ * the red they always were.
+ */
+async function assertConflict(app: AppContext, drawn: Drawn, names: string[], made = true): Promise<void> {
   await verdict(app, "CONFLICT");
+  const [perp, par] = names;
   const said = await diagnosisText(app);
-  assert.match(said, / cannot all hold$/);
+  if (made) assert.equal(said, `${par} par ${drawn.lines[0]} ${drawn.lines[1]} — against ${perp}`);
+  else assert.match(said, / cannot all hold$/);
   const named = await app.page.$$eval("#diagnosis .rel", (els) => els.map((e) => (e as HTMLElement).dataset.relation!));
   assert.deepEqual(named.sort(), [...names].sort(), `the diagnosis names the two: ${said}`);
+  assert.deepEqual(await app.page.$$eval("#diagnosis .rel.culprit", (els) => els.map((e) => (e as HTMLElement).dataset.relation!)), made ? [par] : []);
   const now = await lengths(app, drawn.lines);
   now.forEach((l, i) => assert.ok(Math.abs(l - drawn.before[i]) < 1e-6, `${drawn.lines[i]} as it was: ${l} vs ${drawn.before[i]}`));
   await park(app);
   await app.page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   const red = await redGlyphs(app);
-  for (const n of names) assert.ok(red[n]?.length && red[n].every(Boolean), `${n} in the conflict ink, every glyph of it: ${JSON.stringify(red)}`);
-  for (const [n, on] of Object.entries(red)) if (!names.includes(n)) assert.ok(!on.some(Boolean), `${n} is not in the conflict: ${JSON.stringify(red)}`);
+  const quiet = await redGlyphs(app, AGAINST);
+  const inRed = made ? [par] : names;
+  for (const n of inRed) assert.ok(red[n]?.length && red[n].every(Boolean), `${n} in the conflict ink, every glyph of it: ${JSON.stringify(red)}`);
+  if (made) assert.ok(quiet[perp]?.length && quiet[perp].every(Boolean), `${perp}, what the par is against, in the quieter ink: ${JSON.stringify(quiet)}`);
+  for (const [n, on] of Object.entries(red)) if (!inRed.includes(n)) assert.ok(!on.some(Boolean), `${n} is not in the conflict's red: ${JSON.stringify(red)}`);
+  for (const [n, on] of Object.entries(quiet)) if (!(made && n === perp)) assert.ok(!on.some(Boolean), `${n} is not what a culprit is against: ${JSON.stringify(quiet)}`);
 }
 
-test("desktop: Parallel across the rectangle tool's right angle — CONFLICT, both red, nothing folds; Delete on one clears it", async () => {
+test("desktop: Parallel across the rectangle tool's right angle — CONFLICT, the par red and the perp in the quieter ink, nothing folds; Delete on one clears it", async () => {
   await fresh(desk);
   const drawn = await drawRectangle(desk);
   const par = await parallelFromConstrain(desk, drawn.lines);
   await assertConflict(desk, drawn, [drawn.perp, par]);
-  // Two sides since the rectangle is a perp at every corner: a par across one
-  // corner folds the side it names and the one across from it.
-  assert.match(await desk.log(), /CONFLICT — these cannot all hold without collapsing l\d(, l\d)*:/, "the log says what would have folded");
+  // Nothing is folded to find it out since the direction rows read unit
+  // directions (docs/plans/review-solver.md): the log says who made it, and
+  // against what, and no longer has a collapse to name.
+  assert.match(await desk.log(), /CONFLICT — r\d+\s+par l1 l2 made it: it cannot hold against r\d+\s+perp l1 l2/, "the log says which relation made it, and against which");
   await shot(desk, "1-parallel-across-a-right-angle");
 
   // The par, clicked in the status and deleted.
@@ -221,7 +253,7 @@ test("desktop: undo after the conflict — SOLVED, the par gone", async () => {
   assert.ok(!(await relations(desk)).some((r) => r.op === "parallel" && r.args[1] === drawn.lines[1]), "the par undone");
 });
 
-test("desktop: a reload by autosave opens the drawing still in CONFLICT, the same two named", async () => {
+test("desktop: a reload by autosave opens the drawing still in CONFLICT, the same two named — and neither singled out", async () => {
   await fresh(desk);
   const drawn = await drawRectangle(desk);
   const par = await parallelFromConstrain(desk, drawn.lines);
@@ -229,7 +261,12 @@ test("desktop: a reload by autosave opens the drawing still in CONFLICT, the sam
   await desk.page.evaluate(() => (window as never as Probe).__neocad.files.flush());
   await desk.page.reload({ waitUntil: "networkidle" });
   await desk.page.waitForFunction(() => (window as never as Probe).__neocad?.model?.relations?.size >= 4, null, { timeout: 20_000 });
-  await assertConflict(desk, drawn, [drawn.perp, par]);
+  await verdict(desk, "CONFLICT");
+  // Off the clock, as every test here: the model a reload opens is a new one.
+  await patient(desk);
+  await desk.type("solve()");
+  // Nothing in an opened file has held here, so neither is the one that made it.
+  await assertConflict(desk, drawn, [drawn.perp, par], false);
 });
 
 test("desktop: a drag on the drawing holding the conflict folds nothing, and the verdict stays", async () => {
@@ -243,9 +280,10 @@ test("desktop: a drag on the drawing holding the conflict folds nothing, and the
   await desk.page.mouse.move(from.x, from.y);
   await desk.page.mouse.down();
   for (let i = 1; i <= 10; i++) await desk.page.mouse.move(from.x - 8 * i, from.y + 3 * i);
-  // Mid-drag: still nothing folded.
+  // Mid-drag: nothing folded, and nothing sheared to a compromise either —
+  // the part that holds the conflict is left where it is (`Model.solveFrame`).
   const mid = await lengths(desk, drawn.lines);
-  assert.ok(mid.every((l) => l > 5), `mid-drag: ${mid}`);
+  mid.forEach((l, i) => assert.ok(Math.abs(l - drawn.before[i]) < 1e-6, `mid-drag, ${drawn.lines[i]} as it was: ${l} vs ${drawn.before[i]}`));
   await desk.page.mouse.up();
   await assertConflict(desk, drawn, [drawn.perp, par]);
 });
@@ -273,7 +311,7 @@ async function tap(at: [number, number], chrome = false): Promise<void> {
   await f.tap(...at);
 }
 
-test("iPhone 13: a rectangle drawn with a finger, two sides tapped, Parallel tapped — CONFLICT, both red, Delete clears it", async () => {
+test("iPhone 13: a rectangle drawn with a finger, two sides tapped, Parallel tapped — CONFLICT, the par red and the perp in the quieter ink, Delete clears it", async () => {
   await fresh(phone);
   await phone.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   f = await fingers(phone);

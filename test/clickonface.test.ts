@@ -171,15 +171,32 @@ test("the hold survives a save and an open, and a set on the copy", () => {
   assert.ok(Math.abs(copy.coords(p)[0] - 60) < 1e-9);
 });
 
-test("deleting the feature takes the relation naming its face; the point stays", () => {
+// Until linked profiles the relation went with the feature. The face's
+// geometry stays now (docs/plans/linked-profiles.md, item 4), so the hold is
+// re-pointed at it: the same relation, by name, over three points of the wall.
+test("deleting the feature re-holds a point on its face onto the geometry that remains — the relation kept, by name", () => {
   const { m, e, ls } = block();
   const wall = wallOf(m, e, ls[1]);
   const p = m.addPoint([60, 10, 5]).name;
   const r = onPlane(m, p, wall);
-  del(m, e);
-  assert.equal(m.relations.has(r), false, "the onplane went with e1");
-  assert.equal(m.entities.has(p), true, "the point was never the feature's");
   solved(m);
+  del(m, e);
+  assert.equal(m.relations.has(r), true, "the hold stayed");
+  assert.equal(m.relationOf(r).op, "coplanar", "on three of the wall's own points now");
+  assert.deepEqual(m.relationOf(r).args[0], p);
+  assert.equal(m.entities.has(p), true);
+  solved(m);
+  // And it still holds, both ways: the point pulled off comes back to the wall's plane.
+  m.setCoords(p, [70, 10, 5]);
+  solved(m);
+  const [a, b, c] = (m.relationOf(r).args.slice(1) as string[]).map((n) => m.coords(n));
+  const n = [(b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])];
+  const off = m.coords(p).reduce((s, x, i) => s + (x - a[i]) * n[i], 0) / Math.hypot(...n);
+  assert.ok(Math.abs(off) < 1e-6, `in the wall's plane: ${off}`);
+  // Replayed, the same: the journal carries the re-hold ahead of the deletion.
+  const copy = open(save(m, false), 3);
+  assert.equal(copy.relationOf(r).op, "coplanar");
+  solved(copy);
 });
 
 test("a round face holds nothing: onplane refuses it with the reason, and a point placed on it is placed and said", () => {

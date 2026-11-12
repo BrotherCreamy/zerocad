@@ -339,14 +339,22 @@ test("deleting a face a region subtracts: the region loses that step, the solid 
   assert.equal(regionText(undone, "rg1"), `rg1 = ${lines[0]}–${lines[3]} − ${ring}`, "one undo: the face and the step back");
 });
 
-test("deleting a region's first face takes the region with the features on it; del(\"rg1\") takes them too, the sketch kept", async () => {
+// The first block took the region and its feature until linked profiles
+// (docs/plans/linked-profiles.md): an outline's edge deleted leaves the
+// extrude open, and so its region with it, to be closed again.
+test("deleting an edge of a region's first face leaves the region with the open extrude on it; del(\"rg1\") takes them, the sketch kept", async () => {
   await loadKernel();
   {
     const { m, lines } = sheet();
     const e = extrude(m, lines[0], 10);
     const gone = del(m, lines[2]);
-    assert.ok(gone.includes(e) && gone.includes("rg1"));
-    assert.equal(m.regions.size, 0);
+    assert.ok(!gone.includes(e) && !gone.includes("rg1"));
+    assert.equal(m.featureOf(e, "extrude").open, true);
+    assert.equal(m.regions.size, 1);
+    // A region with no feature on it still goes with its first face, as before.
+    const bare = sheet();
+    region(bare.m, bare.lines[0]);
+    assert.ok(del(bare.m, bare.lines[2]).includes("rg1"));
   }
   {
     const { m, lines, ring } = sheet();

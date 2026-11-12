@@ -104,7 +104,16 @@ export class StatusLine {
  * data — the model's `diagnose` and `conflicting` answers — so the wording is
  * tested without a browser.
  *
- * - a conflict: the relations that cannot all hold — `d1 · d2 cannot all hold`;
+ * - a conflict **with the relation that made it** (docs/plans/review-solver.md;
+ *   `Model.conflicting`'s culprit — the one just added, or the dimension just
+ *   `set`): that relation first, in the conflict's ink, with what it says,
+ *   then what it cannot hold with, in the quieter ink — `r7 par l1 l2 —
+ *   against r1, r2`. Alone where it cannot hold by itself (`r7 perp l1 l1
+ *   cannot hold`), and `against a set not found in time` where the search's
+ *   bound ran out before it could say;
+ * - a conflict with none singled out (a file opened in conflict, an edit of
+ *   more than one relation): the relations that cannot all hold — `d1 · d2
+ *   cannot all hold` — as it was;
  * - solved with agreement: the count of what is free, then how many relations
  *   say one thing together, muted as the count is — `3 free · 4 agreeing` —
  *   never blocking, never a warning, and **naming none**: an agreeing relation
@@ -113,7 +122,14 @@ export class StatusLine {
  *   are, the constraints palette lists (docs/plans/constraints-palette.md).
  * - solved: how many ways the drawing can still move — `3 free`, `0 free`.
  */
-export type DiagnosisPart = string | { relation: string };
+export type DiagnosisPart = string | {
+  relation: string;
+  /**
+   * `culprit`: the relation that made a conflict; `against`: one it cannot
+   * hold with. Absent for a relation of a set with none singled out.
+   */
+  role?: "culprit" | "against";
+};
 
 export interface DiagnosisLine {
   cls: "" | "conflict" | "agreeing";
@@ -122,17 +138,38 @@ export interface DiagnosisLine {
   fades: boolean;
 }
 
+/** One conflict as the status is told of it: `Model.conflicting`'s, by its shape, so this file imports no model. */
+export interface StatusConflict {
+  culprit: string | null;
+  set: readonly string[];
+  found: boolean;
+}
+
+/**
+ * `says`, when given, is what a relation says after its name (`par l1 l2`):
+ * written after a culprit, so the status reads as the relation the viewer
+ * just made and not only as a name they have yet to learn.
+ */
 export function diagnosisLine(
-  solved: boolean, dof: number | null, conflicts: readonly string[], unowned: readonly string[],
-  agreeing: readonly (readonly string[])[],
+  solved: boolean, dof: number | null, conflicts: readonly StatusConflict[], unowned: readonly string[],
+  agreeing: readonly (readonly string[])[], says?: (relation: string) => string,
 ): DiagnosisLine {
-  const names = (rs: readonly string[]): DiagnosisPart[] => rs.flatMap((r, i) => (i ? [" · ", { relation: r }] : [{ relation: r }]));
   if (!solved) {
-    const parts: DiagnosisPart[] = [...names(conflicts)];
-    if (unowned.length) parts.push(...(parts.length ? [" · "] : []), unowned.join(" · "));
-    if (!parts.length) return { cls: "conflict", parts: [], fades: false };
-    parts.push(conflicts.length + unowned.length > 1 ? " cannot all hold" : " cannot hold");
-    return { cls: "conflict", parts, fades: false };
+    const said: DiagnosisPart[][] = [];
+    for (const c of conflicts) {
+      if (c.culprit === null) {
+        if (!c.set.length) continue;
+        said.push([...c.set.flatMap((r, i): DiagnosisPart[] => (i ? [" · ", { relation: r }] : [{ relation: r }])), c.set.length > 1 ? " cannot all hold" : " cannot hold"]);
+        continue;
+      }
+      const words = says?.(c.culprit);
+      const made: DiagnosisPart[] = [{ relation: c.culprit, role: "culprit" }, ...(words ? [` ${words}`] : [])];
+      if (!c.found) said.push([...made, " — against a set not found in time"]);
+      else if (!c.set.length) said.push([...made, " cannot hold"]);
+      else said.push([...made, " — against ", ...c.set.flatMap((r, i): DiagnosisPart[] => (i ? [", ", { relation: r, role: "against" }] : [{ relation: r, role: "against" }]))]);
+    }
+    if (unowned.length) said.push([unowned.join(" · "), unowned.length > 1 ? " cannot all hold" : " cannot hold"]);
+    return { cls: "conflict", parts: said.flatMap((p, i) => (i ? ["; ", ...p] : p)), fades: false };
   }
   const count: DiagnosisPart[] = dof === null ? [] : [`${dof} free`];
   const together = new Set(agreeing.flat()).size;

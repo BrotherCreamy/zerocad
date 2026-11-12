@@ -6,6 +6,15 @@
 // Every example is run in 2D and in 3D (the 3D drawing on a frame tipped off
 // every kernel axis, so a 2D assumption cannot pass), and every conflict is
 // named exactly: the irreducible set, no more and no less.
+//
+// Since docs/plans/review-solver.md the direction rows read unit directions,
+// so most of what used to fold a side now has no answer at all: the solve
+// fails, and is put back, where it used to collapse and be put back. What a
+// user sees is the same — CONFLICT, the drawing where it was, the relation
+// kept — and the tests that read `collapsed` say which it is now. A conflict
+// that runs through shared corners (a triangle's two right angles, a lid
+// against its base) still ends in a side of no length, and still reads as a
+// collapse. Who made a conflict, and against what, is at the end of this file.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -63,6 +72,12 @@ function rectangle(dim: number) {
  * collapse, that every point of what would have folded is where it was.
  */
 function conflict(m: Model, names: string[], what: string): ModelSolveReport {
+  // What is named is asked of the trials, not of the clock: with three other
+  // suites running on this box the 500 ms budget ran out on the spline (one
+  // run in three) and the culprit was named without its set, which is the
+  // bound doing its job and not the answer being wrong. The bound has its own
+  // test below.
+  m.searchMs = Infinity;
   const before = m.problem.snapshot();
   const report = m.solve();
   assert.equal(report.solved, false, `${what}: solved — collapsed ${report.collapsed}`);
@@ -86,7 +101,9 @@ for (const dim of [2, 3]) {
     const before = m.problem.snapshot();
     const r = parallel(m, "l1", "l2");
     const report = conflict(m, [perps[0], r], "rectangle");
-    assert.deepEqual(report.collapsed, ["l2"], "l2 is what the solver folded");
+    // No side is folded to find it out any more: a `par` and a `perp` on one
+    // pair of lines have no answer once neither can be met by a shorter line.
+    assert.deepEqual(report.collapsed, [], "a failure, not a collapse");
     const lengths = ["l1", "l2", "l3", "l4"].map((l) => lengthOf(m, l));
     assert.ok(lengths.every((v) => v > 3), `nothing folded: ${lengths}`);
     assert.deepEqual(m.problem.snapshot(), before, "the geometry exactly as before the par");
@@ -304,14 +321,15 @@ test("3D: a chain through an extrude's twins — a relation on the lid against o
   assert.ok(!m.conflicting(report).relations.includes(f.depth!), "the extrude's depth is the feature's, never named");
 });
 
-// --- a collapse the solver could have avoided -------------------------------------------
+// --- a collapse the solver used to have to be steered off ---------------------------------
 
-test("3D: par(l1, l2) and perp(l2, l3) on a rectangle hold without a fold — the steered retry turns a side", () => {
+test("3D: par(l1, l2) and perp(l2, l3) on a rectangle hold without a fold — a side turns, and the bare solver turns it too", () => {
   // Consistent: three corners in a row and the fourth off it square. From the
-  // rectangle as drawn the bare solver's nearest root can fold l2 instead,
-  // which is the locality `solve` retries steered against (and every trial of
-  // the conflict search with it: before the retry, the search called this
-  // pair a conflict and named it in the owner's rectangle).
+  // rectangle as drawn the bare solver used to fold l2 instead (measured at
+  // 1e-7 long), which is the locality `solve` retries steered against. With
+  // the direction rows normalised (docs/plans/review-solver.md) a `par` across
+  // a square corner is an angle of 90° to turn through, not a product that
+  // only a shorter line lowers, and the bare solver turns the side itself.
   const make = () => {
     const s = sketch(3);
     [[0, 0], [6, 0], [6, 4], [0, 4]].forEach(([x, y], i) => s.pt(x, y, `p${i + 1}`));
@@ -321,8 +339,8 @@ test("3D: par(l1, l2) and perp(l2, l3) on a rectangle hold without a fold — th
     return s.m;
   };
   const bare = make();
-  bare.problem.solve();
-  assert.ok(lengthOf(bare, "l2") < 1e-6, `the bare solver folds l2: ${lengthOf(bare, "l2")}`);
+  assert.equal(bare.problem.solve().solved, true);
+  assert.ok(["l1", "l2", "l3", "l4"].every((l) => lengthOf(bare, l) > 0.5), `the bare solver folds nothing: ${["l1", "l2", "l3", "l4"].map((l) => lengthOf(bare, l))}`);
   const m = make();
   const report = m.solve();
   assert.equal(report.solved, true, `collapsed ${report.collapsed}`);
@@ -342,14 +360,19 @@ test("2D: the own-zero rule is one relation — two coins through a third point 
   conflict(m, [one, two], "a chain of coins");
 });
 
-test("2D: …and one relation that folds what it names by itself reads as meant: perp(l1, l1) solves, the line at nothing", () => {
+test("2D: …and perp(l1, l1) is a conflict of one: a line is not square to itself, and no longer folds to pretend so", () => {
+  // It used to solve, the line at nothing, and read as meant: the own-zero
+  // rule saw one relation fold what it named. A unit direction cannot be made
+  // square to itself by any length, so it fails, the line stays, and the
+  // relation is named alone, against nothing.
   const m = new Model(2);
   m.addPoint([0, 0], "a"); m.addPoint([10, 3], "b");
   m.addLine("a", "b", "l1");
-  perpendicular(m, "l1", "l1");
-  const report = m.solve();
-  assert.equal(report.solved, true, `collapsed ${report.collapsed}`);
-  assert.ok(lengthOf(m, "l1") < 1e-3, `folded: ${lengthOf(m, "l1")}`);
+  const r = perpendicular(m, "l1", "l1");
+  const report = conflict(m, [r], "perp(l1, l1)");
+  assert.deepEqual(report.collapsed, []);
+  assert.ok(Math.abs(lengthOf(m, "l1") - Math.hypot(10, 3)) < 1e-9, `the line is as it was: ${lengthOf(m, "l1")}`);
+  assert.deepEqual(m.conflicting(report).conflicts, [{ culprit: r, set: [], found: true }]);
 });
 
 // --- every kind declares its measures ------------------------------------------------

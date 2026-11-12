@@ -159,7 +159,7 @@ words, then each line was done. What came out differently:
   clicks. The rectangle's how says press, drag, let go.
 - **Most tools put themselves down after one use** — a point, every shape, a
   confirmed feature — and the line, trim, extend, dimension and constrain do
-  not. The ✓'s tooltip said the opposite (bug 74).
+  not. The ✓'s tooltip said the opposite (bug 77).
 - **A circle's third click along a line makes a tangent only off the line's
   middle**: at the middle the midpoint snap wins and the point is a rim
   point. The how says "along a line", which is true where a hand lands.
@@ -168,9 +168,10 @@ words, then each line was done. What came out differently:
   Hence the group's line.
 - **A double-tap on a dimension's number** opens its value under a finger
   too (tried, with the tool armed and not).
-- **`par` on two free lines shrinks them** to a few pixels and reads SOLVED
-  (picture 482) — `review-solver.md`'s, already in picture 422 and unseen
-  there. Not fixed here; the e2e asserts the directions.
+- **`par` on two free lines shrank them** to a few pixels and read SOLVED
+  — `review-solver.md`'s, already in picture 422 and unseen there. Fixed
+  there; with it merged in, picture 482 (retaken) shows the two lines
+  parallel at their own lengths.
 
 ### Deviations and additions — each a decision, vetoable (TODO.md's register)
 
@@ -202,11 +203,16 @@ words, then each line was done. What came out differently:
 8. **The empty palette's line keeps its first four words.**
 9. **`ui()`'s refusal** reads *ui() takes scale, show and hide, and tips*,
    so `chrome.e2e.ts`'s match of the old words holds.
-10. **The ✓'s sentence** (bug 74).
+10. **The ✓'s sentence** (bug 77).
 
 ### Limitations left in place, deliberately
 
 - **Landscape** (picture 487): the tip lies over the drawing's right. Filed.
+- **Merged with the working branch at 93abd3d** (review-relations,
+  review-solver, linked-profiles): the trim tool now also takes a lid's edge
+  and an extrude can be typed `open`; neither changes a step said here
+  (trim's "the piece of a curve" holds of a lid's edge; `open` has no
+  control in the extrude tool's options). The browser bug is 77.
 - **Timings are arithmetic** (25 characters a second), not a person's
   reading on a phone.
 - **The guidance lines and the summaries still say "click" on a phone**,

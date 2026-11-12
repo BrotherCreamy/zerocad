@@ -511,7 +511,7 @@ test("desktop: a circle locked to three points says so on its hover — the step
   assert.deepEqual(desk.pageErrors, []);
 });
 
-test("desktop: the ✓'s tooltip says what a confirm does now — it puts the tool down (bug 74: it said the tool stays armed)", async () => {
+test("desktop: the ✓'s tooltip says what a confirm does now — it puts the tool down (bug 77: it said the tool stays armed)", async () => {
   await fresh(desk);
   await desk.type("const a = pt(-30,-20), b = pt(30,-20), c = pt(30,20), d = pt(-30,20); ln(a,b); ln(b,c); ln(c,d); ln(d,a)");
   await desk.type("extrude");

@@ -31,7 +31,7 @@
 import { Tool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { callText } from "./feature.ts";
 import { SUBTRACT_RED } from "./regiontool.ts";
-import { anyCurve, curveUnder, ownedBySolid, pieceSamples, rounded, strokeWorld } from "./editdraw.ts";
+import { anyCurve, curveUnder, ownedBySolid, pieceSamples, placeOn, rounded, strokeWorld } from "./editdraw.ts";
 import { trim, trimPiece } from "../sketchedit.ts";
 import { strokeCrossings } from "../sketchgeom.ts";
 import { trimSurface } from "../surfaces.ts";
@@ -175,7 +175,7 @@ export class TrimTool extends Tool {
     }
     const curve = curveUnder(this.ctx, p, anyCurve);
     const was = this.hover;
-    this.hover = curve ? this.look(curve, p.world) : null;
+    this.hover = curve ? this.look(curve, placeOn(this.ctx, p, curve)) : null;
     const key = (h: Hover | null) => (h ? `${h.curve}:${h.piece?.join(",") ?? h.why}` : "");
     if (key(was) !== key(this.hover)) this.ctx.requestRender();
   }
@@ -244,13 +244,15 @@ export class TrimTool extends Tool {
       this.guide("click on a curve — the piece under the click goes — drag across pieces, or press a surface where it is kept");
       return;
     }
-    const h = this.look(curve, p.world);
+    // Where on the curve the press is: a lid's edge is not on the plane the press was read on.
+    const at = placeOn(this.ctx, p, curve);
+    const h = this.look(curve, at);
     this.hover = h;
     if (!h.piece) {
       this.guide(h.why ?? `${curve} has no piece to trim there`);
       return;
     }
-    this.type([[curve, rounded(p.world)]]);
+    this.type([[curve, rounded(at)]]);
   }
 
   /** A stroke: every piece it crossed, one entry. */

@@ -695,7 +695,8 @@ test("the analysis costs milliseconds on a large sketch, and is never asked duri
 test("the diagnosis line: a count that fades, a conflict that names, an agreement counted and not blamed", () => {
   assert.deepEqual(diagnosisLine(true, 3, [], [], []), { cls: "", parts: ["3 free"], fades: true });
   assert.deepEqual(diagnosisLine(true, 0, [], [], []).parts, ["0 free"]);
-  assert.deepEqual(diagnosisLine(false, null, ["d1", "d2"], [], []),
+  // A set with none singled out (test/culprit.test.ts has the conflict that names who made it).
+  assert.deepEqual(diagnosisLine(false, null, [{ culprit: null, set: ["d1", "d2"], found: true }], [], []),
     { cls: "conflict", parts: [{ relation: "d1" }, " · ", { relation: "d2" }, " cannot all hold"], fades: false });
   assert.deepEqual(diagnosisLine(false, null, [], ["mine"], []).parts, ["mine", " cannot hold"]);
   // It used to say `redundant r5`, naming the relation added last; the owner's

@@ -106,10 +106,255 @@ otherwise.
   - **The palette's empty line keeps its first four words** (*pick what to
     relate — two lines, a line and a circle…*). Reason: two suites match
     them, and they were right.
-  - **The ✓'s tooltip now says "…and puts the tool down"** (bug 74). The
+  - **The ✓'s tooltip now says "…and puts the tool down"** (bug 77). The
     other way to make it true — keep the tool armed after a confirm — is a
     behaviour change and the owner's call.
 
+- **An extrude's two profiles are peers; a feature relates, it does not own**
+  (the owner, 2026-11-09 and 2026-11-12: *"kind of like mirror relations"*,
+  *"i don't like the idea of anything being 'consumed'"*, *"If you change one
+  the other follows automatically"*; docs/plans/linked-profiles.md, built,
+  with review item 4). The owner decided the peers, that deleting the extrude
+  leaves both, that an edit to one is an edit to both, and that a trim lands
+  on both. These are the choices made building it, one line each. Each
+  vetoable:
+  - **A twin is a registry entry of its own, named for its partner**
+    (`r3_e1`): so it can be picked, set, deleted and listed like any
+    relation, and claims no name counter (old files' later names stay).
+  - **Its name says which was typed** — `r3` and `r3_e1` are told apart; the
+    geometry and the relations are not. A symmetric naming would have renamed
+    every old file's base relations.
+  - **The link is the `extrusion` relation**, no new one: it already holds
+    each point at its partner plus one chord, both ways. Delete it and the
+    profiles are unlinked.
+  - **A linked twin holds no rows**: its statement is carried by the
+    extrusion; its rows, tried, changed the solver's path (a frame-turn test
+    stopped solving). On unlink it is given its own rows.
+  - **What twins**: shapes (`dist`, `coin`, `mid`, `on`, `eq`, `sym`, `col`,
+    equal spacing, `coplanar`, `rad`, `dia`, on-circle, concentric, coradial,
+    equal radius, `tan`, arc ends, intersection, ellipse axes) and directions
+    (`par`, `perp`, `ang`, which may name a frame axis). A translation keeps
+    both.
+  - **What does not twin**: `fix`, `onplane`, `pierce`, `measure`, on-spline,
+    and the feature relations themselves (`extrusion`, `revolution`,
+    `translated`, `rotated`) — positions, or links; and any relation naming
+    an entity outside the profile, which would pin the lid where the base is.
+  - **A profile that is a piece of longer lines has no twins** (a region a
+    crossing split): the lid's edge is the piece, the base's line is longer,
+    and there is no partner edge for edge.
+  - **Two base corners joined by `coin` share one lid point**, so that
+    `coin` has no twin (it would relate a point to itself).
+  - **A relation typed on the lid that repeats the base's adopts it** as the
+    twin instead of making a third; nothing is said twice by this package.
+  - **A conflict names the pair once, by the relation that was typed, and
+    lights both ends** — not "whichever end is in view": the search has no
+    view, and lighting both needs none.
+  - **A dimension's label is drawn once, on the end nearer the viewer** (in
+    sight first); marks (`⊥`, `∥`) on both ends. In hidden-line and wire
+    views that doubles the marks, which is crowded on a phone.
+  - **`del("e1")` takes the record, its depth and `e1_perp`, and no entity**;
+    the walls stay as four lines, the `extrusion` goes with the depth, every
+    twin becomes ordinary.
+  - **The region stays on the profile the extrude was made from** (`rg1`):
+    after `del("e1")` one rectangle wears a region and the other does not,
+    which does say which was drawn. Regions are not twinned here.
+  - **Deleting an entity of a profile takes its partner and leaves the record
+    open** (`unsweep`, journalled ahead of the deletions), not deleted: a
+    slip of the finger should not cost the feature.
+  - **An open extrude's walls are drawn by the renderer, both sides, and no
+    kernel body is made** (the spec's fallback, in part): the walls are the
+    model's own quads; an SMLib sheet body per open extrude was not built.
+    Nothing can be cut from, filleted or measured on an open extrude.
+  - **Closing is by joins, for lines**: a line whose ends are joined (shared
+    point or `coin`) to two open corners gets its partner and the profile is
+    rebuilt (`relinkOpen`, in the follower, no journal entry). A fork (two
+    candidates) stays open.
+  - **Closing by position is the host's**, after a person's edit
+    (`closeOpen`, journalled as `regen`): an arc drawn back, an end extended
+    onto an edge. A script closes with `regen`.
+  - **A record goes only when it cannot stand** (every edge of a loop gone),
+    and then leaves its depth dimension as an orphan relation rather than
+    taking it — the inward rule as it was.
+  - **A feature-made relation is deletable; the depth leaves the record
+    *unbuilt***, drawn as nothing, with the reason in the organiser and the
+    status. `del("e1")` then takes the record.
+  - **Feature-made relations are still background to the conflict search
+    and the agreeing sets** (`removable` unchanged): naming them is review
+    item 3's package.
+  - **A trim that takes the loop apart opens the extrude**; it used to be
+    refused. A revolve's profile still refuses.
+  - **A trim on a lid's edge is journalled as the trim of its base partner**
+    with the cut's place carried across, so replay needs no new op; a cutter
+    that lies on the lid only holds the lid's end, its twin holding nothing.
+  - **A lid edge that nothing cuts is not the trim tool's**: the press falls
+    through to the sketch edge under it, as every solid edge did.
+  - **Power-trim's stroke does not take lid edges** (it reads the sketch
+    plane; a click does). The spec also names `split`: there is no split
+    operation in this build to carry across.
+  - **A lid's edge can now be offset, mirrored or patterned** (the refusal
+    "part of e1's solid" stands only for an edge with no partner, a wall):
+    the copy is related to the lid edge like any other.
+  - **`extend` on a lid's end moves the lid's point and seats the base's**;
+    walls at the end are not counted as "another curve's end".
+  - **`onplane(p, "e1:l2")` outlives the extrude as `coplanar`** over three
+    of the face's points, same name (`rehold`, journalled); `fdist`,
+    `par(c, "e1:l2")` and a hold on a round face go with the record — they
+    read the record.
+  - **Format 21, nothing new saved**: a pre-21 `deleteFeature` is marked
+    `"unlinked"` on the way in and takes what it took; every standing extrude
+    in an old file is linked from the moment it opens. (20 is the relations
+    among many, merged first; this is one more.)
+  - **A relation among many has one twin among the partners** (review items
+    5 and 6 were merged under this): the twin is the relation as written,
+    over the partner members, and never joins another. A name typed with a
+    member only a twin holds joins the **relation it is the twin of**, by its
+    partner (`join` and `leave` given a twin's name do the same), and the
+    journal has that one `join`; a name with no partner cannot join a twin
+    and is related on its own.
+  - **A member deleted from a linked profile journals one `leave`**, the
+    made relation's; its twin is forgotten and made again over the rest, as
+    no entry is written for a twin's making.
+  - **A wall written `e1:l2` in a relation is a face, outside any profile**:
+    such a relation has no twin, as one naming `e1.lid` has none.
+  - **An edge extrude is linked the same way; a revolve's ends are not** (a
+    rotation turns directions, so `par`/`perp` to an axis would not carry;
+    its shape relations could twin and do not yet).
+  - **Regeneration (a sketch fillet, a region edit) makes the lid again by
+    the inward rule**, twins re-made by name; a relation typed on a lid edge
+    that survives keeps its name.
+  - **The follower also runs after an entity is placed outside an
+    operation**, so a line drawn by hand can close a profile; it is
+    idempotent and reads names and joins only, never positions.
+  - **A 3D fillet or chamfer outlives the extrude it rounds**, as a record
+    left out of every body and saying why ("it fillets edges of e1, which is
+    no longer there"); it is not deleted with the extrude.
+  - **Offset, mirror and the patterns were already only relations**: no
+    record, nothing owned; nothing changed there but the test that says so.
+
+- **A direction relation turns a line and never scales it; a conflict names
+  the relation that made it** (review items 1 and 3 below, the owner's *"All
+  good."*; docs/plans/review-solver.md, built 2026-11-12 on
+  `claude/review-solver`; CONVERSATION_LOG has what was tried first). The
+  choices made building it, each vetoable:
+  - **The rows are an angle, not a sine or a cosine**: the turn that would
+    make two unit directions parallel (`par`, `col`, a mirrored pair of
+    lines, two arcs at a joint), square (`perp`, `tan` at a shared end), or
+    at the angle asked (`ang`, `ang3`). A sine is flat at 90°, so `par` on
+    two lines exactly square could not move once it could no longer shrink.
+  - **Each row is times the longer of its own lines as the solve began**,
+    never under one unit — not the model's size, which the spec named: on
+    forty rectangles two thousand across that took the solve from 8
+    iterations to 23. **Not the product of both lines either**, which is
+    the size the raw row had: measured, it brings the shrinking back
+    (`perp` 74 and 64 long, a drag 47%). So a sketch's right angles are no
+    longer some twenty times stiffer than a feature's rows, as they were by
+    accident of scale.
+  - **`set` of a revolve's angle seats its end face before the solve**
+    (`seatTurned`; one call in operations.ts, which was another package's
+    file this cycle), as `set` of a depth seats an extrude's lid. Left to
+    the solve the swing was shared with the profile: 0.2 on the base, 6
+    with the sketch no longer stiff (bug 75, found by `revolve.e2e.ts`).
+  - **A line shorter than a thousandth of the drawing has no direction**
+    (`DIRECTIONLESS`), and a row on it runs down to nothing with it — not
+    the collapse threshold, which the spec named: a unit direction is one
+    over the length stiff, and a triangle's collapse then crept and was
+    called solved.
+  - **Which rows**: `par`, `perp`, `ang`, `col`, `on`, `sym` (points, lines,
+    an arc's ends and centres), `tan` at a shared end (line–arc, arc–arc),
+    `ang3`, and `perp(chord, e1)`'s edges. `on` and `sym` read the line's
+    unit direction and are plain distances, with no multiplier.
+  - **And `corner`, which review-relations made** (the angle between two
+    walls' lines): it was a raw u·w − |u||w| cos row, merged in under this
+    package, and left two free lines 69 and 89 long. Changed here rather
+    than handed back, the rows in `src/relations/` being this package's.
+    Its fixture reopens moving nothing.
+  - **A relation among many is one culprit**, named once with every member
+    (`r5 par l1 l2 m1 — against r1`), and every member's glyph is filled —
+    the status does not say which member is the one that cannot.
+  - **A line joining a relation makes the relation the culprit**, as it now
+    stands: it held among two and has not held among three. Not "the line
+    that joined", which is not a relation and has no name to delete.
+  - **`col` is a direction row and the second line's middle on the first**
+    (blocks `|dir`, `|mid`; they were each end's wedge, `|start`, `|end`): an
+    end's offset is still lowered by pulling that end in along its own line.
+  - **`perp(chord, e1)` keeps a cosine**, normalised: flat only when the
+    chord lies along a profile edge, an extrude lying in its own sketch.
+  - **Every solve keeps the length of every line some relation reads for its
+    direction, unless a relation changes it** (`Model.keptSizes`; a block
+    says which lines it turns). The rows alone left `perp` between two free
+    60-long lines 169 long: the kernel's step is a straight move, and a
+    straight move that turns a line stretches it. So a rectangle pinned by
+    one corner now moves whole, a width set on it leaves its height exact,
+    and a level line pinned at one end is carried whole, as it always was.
+  - **A line no relation reads for its direction still stretches** to a
+    `coin` or a `fix` on its end, as before.
+  - **A drag's frame is not steered**: a pull on a size there would move a
+    free rectangle whole under a dragged corner instead of resizing it. A
+    drag of one end of a par pair costs the other line 3.1% (it cost 47%).
+  - **A solve that fails is put back, as a collapse is**, after one more
+    solve from where it stopped. Without a way to shrink, a `par` and a
+    `perp` on one pair end at the least-squares compromise, the rectangle
+    sheared 45°; so does a `set` to a value that cannot hold, which now
+    leaves the drawing where it was and names the dimension.
+  - **The part that holds a conflict is left out of a drag's frames**: it
+    used to stop because the frame folded a side, and no longer folds.
+  - **A relation that does not hold is never redundant or agreeing**: a `par`
+    and a `perp` on one pair are one row to first order now, and the rank
+    analysis called the conflict an agreement.
+  - **A collapse is also a suspect the release did not settle, or one pushed
+    down that stayed under half its size** (`UNSETTLED`, `SANK`); and the
+    user's own collapsing solve is retried steered for 120 iterations, not
+    30 (a rectangle's extrude whose sketch frame is turned 76° in one move
+    needs 77).
+  - **`perp("l1", "l1")` is a conflict of one.** It solved, the line at
+    nothing, and was read as meant; a unit direction is not square to itself
+    at any length.
+  - **The culprit is the one relation of the failed part that has not yet
+    held in a solve** — just added, or its value just `set`. Known without a
+    trial, so it survives the search's bound, a later edit elsewhere, and
+    the deletion of what it was against. Not the journal's last entry: that
+    is the culprit only until the next thing is drawn.
+  - **An undo and a redo hand on which relations had held**
+    (`Model.inheritHeld`), so a redone `par` is named as it was. A file
+    opened in conflict singles out none, as the spec says: nothing in it
+    has held here.
+  - **A feature's own dimension can be a culprit** when it is the one that
+    was just `set`, though it cannot be deleted alone: it can be set back.
+  - **One relation is tried before any larger set** (the nearest dozen): a
+    rectangle's `par` disagrees with its own corner's perp alone and with
+    the two far ones together, and the one is what a person reads. The
+    dozen are the nearest of all the others, not of the ring that first
+    clashed: where the failing solve folded a side, that ring is the two
+    far perps (found by a `join`, in 3D).
+  - **On a four-perp rectangle the set is that corner's one perp**, where
+    the spec's e2e says "the two perps": one is the least. Delete it and the
+    two far ones are named next.
+  - **Past the bound**: `r7 par l1 l2 — against a set not found in time`.
+  - **The inks**: the culprit's glyph is its box **filled** with the
+    conflict's red (#e0605c), its mark cut out dark; what it is against is
+    outlined in a quieter ink, the red let down toward grey (#b98a86); a set
+    with none singled out keeps the red outline it had. Told apart by fill
+    as well as hue, since no hue is free (amber hover, violet selection,
+    blue free, green tools) and two reds on a phone's glyph are one. Looked
+    at on the canvas and over a solid's lit face, by mouse and at an iPhone's
+    size (pictures 462–467).
+  - **The status** reads `r7 par l1 l2 — against r1, r2`, the culprit on a
+    pill of the conflict's ink; several conflicts are joined by `;`.
+  - **The palette lists a conflict first whatever is selected**, one heading
+    a conflict, the culprit first, × on each; and a relation's row wears its
+    part in a conflict wherever else the pane lists it.
+  - **A relation in a conflict is always drawn**, quiet anchor or not (bug
+    74: a conflict on a solid's edges drew nothing red).
+  - **The kernel learned three geometry-free things**: `solve({ stall })`,
+    `unmet(tol)` and `handles()`.
+  - **A feature's own relations are still background to the search**;
+    `test/culprit.test.ts` has a test written to fail when that changes.
+    **It failed at the merge with linked profiles (2026-11-12), as meant**:
+    the extrusion is deleted like any other relation now. Decided there:
+    the set stays the user's relations alone; a relation a feature's record
+    names is background by the search's own rule (`removable`), no longer
+    because `del` refuses it. The test now says that, and still fails when
+    the rule changes.
 - **Many at once is one relation among equals, and a wall is named by the
   line it is swept from** (review items 5 and 6, the owner 2026-11-12: *"All
   good."*; the principle: *"correct relationships BETWEEN entities …
@@ -274,8 +519,9 @@ otherwise.
   - **An extrude's two profiles are peers, related "kind of like mirror
     relations"**; *"i don't like the idea of anything being 'consumed' as
     this implies unidirectional hierarchy"*. Spec:
-    [`linked-profiles.md`](docs/plans/linked-profiles.md), queued with four
-    questions for the owner (Q-A–Q-D there).
+    [`linked-profiles.md`](docs/plans/linked-profiles.md), **built**
+    (2026-11-12, `claude/linked-profiles`; the choices made building it are
+    the register's first entry).
   - **3D fillets keep the original geometry as construction, unmodified**,
     and a fillet on one end only is ordinary (same spec, Design 3).
   - **The constraint list is its own palette, installed as a workbench**,
@@ -342,7 +588,7 @@ otherwise.
     held to its face is pulled (#89's both-ways `onplane`); nothing is made
     a datum to stop it. Stands as built.
   - Review items 1 and 3–8 below: *"All good."* All queued:
-    `review-solver.md` (1, 3), `linked-profiles.md` (4),
+    `review-solver.md` (1, 3; **built**), `linked-profiles.md` (4),
     `review-relations.md` (5, 6), `fillets-one-thing.md` (7), and 8 after
     linked profiles.
   - **Deleting the extrude leaves both profiles and the chords**: *"Yes."*
@@ -375,12 +621,15 @@ otherwise.
   the reasoning)** — *a relation between entities, never an owner; both
   ways; agreeing over-constraint is normal* — these register entries are
   weak and should change, in this order unless the owner says otherwise:
-  1. [ ] normalise the direction residuals (`par`, `perp`, `tan`), so a
+  1. [x] normalise the direction residuals (`par`, `perp`, `tan`), so a
          collapsed line no longer satisfies them; keep collapse detection as
          the backstop. Seen again building the palette (2026-11-09): a
          `par` typed between two free 60-long lines leaves them 8.8 and 1.2
          long, headless and in the browser (docs/images/422), SOLVED — a
-         shrink, not a collapse, so nothing catches it;
+         shrink, not a collapse, so nothing catches it. **Built**
+         (2026-11-12, docs/plans/review-solver.md): 60.133 and 60.828 long
+         before and after, to 1e-10 of it; every row of that shape, as an
+         angle of unit directions; the register entry above;
   2. [x] redundancy counted, not blamed on the newest relation; the status
          note "redundant rN" goes, the palette shows the agreeing set —
          built with the constraints palette (2026-11-09): the status says
@@ -389,11 +638,23 @@ otherwise.
          kernel's `analyse({ agreeing })` are in the register entry below.
          `Diagnosis.redundant` stays, unsaid, for the dimension tool's
          "already held";
-  3. [ ] a conflict names the relation whose addition made it, with the set
-         it disagrees with (replaces "two of a set");
-  4. [ ] features relate, they do not own: `deleteFeature`'s cascade, the
-         undeletable feature-held relations, `edgeExtrude` owning entities
-         (linked-profiles.md starts this for the extrude);
+  3. [x] a conflict names the relation whose addition made it, with the set
+         it disagrees with (replaces "two of a set"). **Built** (2026-11-12,
+         docs/plans/review-solver.md): `r7 par l1 l2 — against r1`, the
+         culprit known without a search; "two where two will do" stays only
+         for a set with none singled out;
+  4. [x] features relate, they do not own: `deleteFeature`'s cascade, the
+         undeletable feature-held relations, `edgeExtrude` owning entities —
+         built with linked profiles (2026-11-12): deleting an extrude, a
+         cut, an edge extrude or a revolve leaves its geometry and its
+         relations; a feature-made relation is deleted like any other, the
+         record left *unbuilt* where the body needed it; `onplane` on a face
+         is re-pointed to the geometry that remains. Offset, mirror and the
+         patterns owned nothing. The per-feature table is in
+         linked-profiles.md's *As built*; what is left (`fdist` goes with the
+         record, a revolve's profile edit still takes the record, a 3D
+         fillet of a deleted extrude stays as a record with nothing to
+         round) is filed under Next up;
   5. [x] many-at-once as one n-ary relation, not a star on the first pick —
          built (2026-11-12, docs/plans/review-relations.md): `par("l1",
          "l2", "l3", "l4")` is one relation whose rows are the pair's own;
@@ -406,7 +667,9 @@ otherwise.
          re-journalled by its line. The choices are the register entry
          below;
   7. [ ] a chamfer face's sketch plane follows the solid or is refused;
-  8. [ ] Through all as a relation to the far face's geometry, not a hook.
+  8. [ ] Through all as a relation to the far face's geometry, not a hook —
+         specified in `docs/plans/through-all-relation.md` (2026-11-12),
+         queued after linked profiles; Up to face is the same relation.
 
 - **A prism stays a prism: relations between a feature's entities, both
   ways** (the owner, 2026-11-08/09: *"Why is it that after I extrude I can
@@ -2510,6 +2773,173 @@ are flagged as such.
 
 ## Next up
 
+- [x] **An extrude's two profiles are peers; features relate, they do not
+  own** (the owner, 2026-11-09 and 2026-11-12; spec
+  [`linked-profiles.md`](docs/plans/linked-profiles.md)). **Built**
+  (2026-11-12, branch `claude/linked-profiles`): twins across the
+  `extrusion`, a pair set and deleted as one, an extrude that opens rather
+  than dies and closes when its edge is drawn back, a trim and an extend on
+  either profile landing on both, a feature deleted leaving its geometry and
+  relations, format 21. Decisions in the register above. Left:
+    - [ ] **`fillets-one-thing.md`** is next and stands on this: a twin for
+          an entity added to a profile (`relinkOpen` does lines by their
+          joins; an arc needs `regen`/`closeOpen`), construction carried
+          through a twin (a pair flagged construction is still a pair and
+          keeps its twins — tested; the `construction` operation still
+          refuses an outline member and does not flag the partner, which is
+          the fillet package's to define), the body rebuilt from the
+          profiles' non-construction loops (`regen` walks past construction;
+          `rebuildOpen`/`regenerateGiven` take the loops as given).
+    - [ ] **The region still says which profile was drawn**: after
+          `del("e1")` the profile the extrude was made from wears `rg1` and
+          the other does not (docs/images/448). Either the region made for
+          an extrude goes with it, or the other profile gets one.
+    - [ ] **A twin's name says which was typed** (`r3` and `r3_e1`). A
+          neutral pair of names would rename old files' relations.
+    - [ ] **A profile that is a piece of longer lines has no twins** (a
+          region split by a crossing): the lid's relations are missing
+          there, and its shape follows through the extrusion alone, as every
+          lid did before this.
+    - [ ] **Two corners joined by `coin` share one lid point**, so the
+          `coin` has no twin and, the extrude deleted, the lid is the one
+          with a shared corner. An extrude that made a lid point per base
+          point would fix it; old files would need the points made.
+    - [ ] **An open extrude is the renderer's, not the kernel's**: no SMLib
+          sheet body, so nothing is cut from it, filleted on it or measured
+          on its faces; a 3D fillet already on a body that opens stays a
+          record and is left out with its body.
+    - [ ] **An arc or a spline drawn back does not close a profile by
+          itself** from the command line (`relinkOpen` pairs lines); the
+          host's `closeOpen` after a person's edit does, by `regen`.
+    - [ ] **A trim leaves the lid's far side untidied**: the piece trimmed
+          away takes its partner, but a cutter with no partner holds only
+          its own end (`on`), and a trim on the base by a base cutter gives
+          the lid's end no relation of its own until the link is deleted.
+    - [ ] **Power-trim's stroke on a lid**: the stroke is read on the sketch
+          plane; only a click takes a lid's edge.
+    - [ ] **`fdist` and `par(c, "e1:l2")` on a deleted extrude's faces go
+          with the record** where `onplane` is re-pointed (`rehold`); a face
+          distance over two `coplanar` point sets, and a `par` to the plane
+          of three points, would keep them.
+    - [ ] **A revolve's ends are not linked** and an edit to its profile
+          still takes the record (`del` of a profile line answers the
+          revolve); its shape relations could twin across the `revolution`
+          (a rotation keeps lengths and angles within the profile, not
+          directions to an axis).
+    - [ ] **Feature-made relations are still background to the conflict
+          search** (`removable`): with them deletable, a conflict that
+          `e1_perp` is part of could name it. Review item 3.
+    - [ ] **Marks are doubled in hidden-line and wire views**: eight `⊥`
+          pairs on a block (docs/images/443). On a phone that is crowded; a
+          mark could be drawn on the nearer end only, as a dimension is.
+          And a twin's mark sits on the lid's edge, where it wins the pick
+          over the solid's own edge under it: `solidfillets.e2e.ts` hovered
+          the middle of the plate's right lid edge and got `r6_e1`, and now
+          hovers off the middle.
+    - [ ] **A `set` of a profile dimension on a block nothing holds tilts
+          it**: a free 40 × 25 × 10 block, `set` of the 40 to 55, leaves the
+          base corners at z = +4.2, −4.1, −4.1, +4.2. Measured the same on
+          the build before this one, so not this package's doing: the
+          rebuild's minimum-norm solve. review-solver.md's.
+    - [ ] **`extend`'s nearest reach on an open profile may be a wall**:
+          walls are lines in the model, and an end extended "to the next
+          thing" can stop on one. Name the target (`extend(l, end, "l3")`).
+
+- [x] **A direction relation never shrinks a line, and a conflict names what
+  made it** (review items 1 and 3; spec:
+  [`review-solver.md`](docs/plans/review-solver.md)). **Built** (2026-11-12,
+  branch `claude/review-solver`); decisions in the register above,
+  measurements in the spec's *As built*. Left, each measured or pinned:
+    - [ ] **A sketch no longer anchors what is built on it by being
+          stiff.** Any solve that has far to go and is not seated first may
+          share the move with the sketch. Found once (a revolve's angle,
+          fixed by seating); looked for across 64 dimension edits of the
+          fixtures and not found again (the sum of moves within 5% of what
+          it was, mostly equal or less). Not looked for: drags of a
+          feature's own geometry, patterns, a draft angle set far from
+          where it stands. If one turns up, the answer is to seat it, not
+          to stiffen the rows.
+    - [ ] **A drag still costs a turned line a little length.** One end of a
+          par pair dragged 20 in twelve frames: the line not touched ends
+          3.1% shorter (it ended 47% shorter). The rows ask for none of it;
+          the kernel's step is each end moved along a straight line, damped
+          per coordinate (λ·(1 + diag JᵀJ)), which is not a rotation, so the
+          loss is first order in the turn however many frames it is spread
+          over. A pull on the size cannot go in a frame (a free rectangle
+          would move whole under a dragged corner). Either a rotation-aware
+          damping in `kernel-rs` — every solve in the app would change — or
+          the sizes put back at the drag's release, which would be seen as a
+          jump. Pinned at 5% by `test/directionrows.test.ts`.
+    - [ ] **A direction row costs more to solve.** A unit direction depends
+          on every coordinate of both ends, so `par(l, "origin.x")` in 3D has
+          6 non-zeros a row where it had 2, and the kernel's CG pays by the
+          non-zero: forty rectangles, 8 iterations before and after, 1.5×
+          to 2.3× the time (135 → 209 ms by one measure, 126 → 295 by the
+          spec's table, both at a load of thirty; not told apart). And a
+          solve that changes a turned line's length is solved on, pulled and
+          released: 2× to 6× the plain solve when every length in the
+          drawing was wrong at once (forty rectangles, every point moved:
+          156 → 960 ms, 22 iterations for 8), which an edit is not. Wants
+          measuring on a quiet machine and on the phone before anything is
+          done about it.
+          **Measured at the review (2026-11-12, load 5–9, best of five,
+          base → merged):** a drag frame — one rectangle 1.1 → 1.3 ms; ten
+          rectangles of four perps chained by `par` 48.8 → 27.7; forty of
+          them 385 → 178; forty held `par` to the axes and dimensioned
+          4.2 → 20.6; features-v12 61.9 → 53.2; shapes-v15 77.8 → 81.4. One
+          dimension set and solved — forty chained rectangles each with its
+          width dimensioned 1815 → 1121 ms, twenty 305 → 358, ten 68 → 109,
+          forty separate 20.7 → 21.5. So not a blanket cost: perp-heavy
+          drags are twice as fast and most edits within 1–3× either way.
+          **The case to fix first: forty chained rectangles whose widths
+          are free, one dimension set, 165 → 1407 ms** — `keptSizes`
+          bringing forty free lengths back at once. Likely fix: do not
+          re-pull a size that drifted less than can be seen (`KEPT` is
+          1e-9). The par-to-axes drag frame at 5× is the second. Still
+          wants the phone.
+    - [ ] **A conflict on a solid says two things in the log.** The status
+          names the culprit (`r7 par l5 l6 — against r6`) and the log line
+          under it reads "collapsing l6, l2, l4, l8", the collapse path's
+          wording (docs/images/467). One verdict, one wording.
+    - [ ] **A failing solve is solved once more before it is believed**, and
+          a collapse's steered retry runs to 120 iterations. Measured, it
+          costs nothing that shows: forty rectangles with a `par` across a
+          corner, 874 ms the best seen before and 780 ms as built (a load of
+          thirty; an earlier build of this package read 2.4 s). Both are
+          most of a second for one refused relation, and were.
+    - [ ] **The kernel calls a row an offender past an absolute 0.05**, and a
+          direction row is an angle times a length never under one. In a
+          drawing under a unit across, a conflict that leaves an angle under
+          3° off (a thin sliver between two near-right angles) reads SOLVED,
+          unconverged. Out of this package's reach: the threshold is the
+          kernel's and is not a share of anything.
+    - [ ] **`perp(chord, e1)` is still a cosine** (normalised): flat when the
+          chord lies exactly along a profile edge.
+    - [ ] **A line tangent to a spline's end is not kept its length**: that
+          row was unit already and was left alone, so it does not say which
+          line it turns (`Model.addResidual`'s `turns`).
+    - [ ] **`sym` of two lines about a mirror line of no length** divides by
+          zero (`mirrored`, 2(d·u)/(u·u)); as it did before.
+    - [ ] **A culprit among many does not say which member**: `r5 par l1 l2
+          m1 — against r1` fills all three members' glyphs, where l2 is the
+          one that cannot be parallel. A trial of the relation less each
+          member in turn would find it (`leave` is what would then be
+          offered); not built.
+    - [ ] **review-relations' tests still pin their lines' lengths** with a
+          `dist` each, "so the solve turns them rather than shrinking one",
+          and say why (test/reviewrelations.test.ts; its e2e's lines made
+          parallel). They no longer need to. Left as written: they are that
+          package's, and its pictures were taken that way.
+    - [ ] **A redone conflict in a file opened in conflict** singles out
+          none, as the opened file did: nothing there had held.
+    - [ ] **The status line of a conflict against several** wraps on a phone
+          (`r7 par l1 l2 — against r4, r3` is two lines at 390 px); it is
+          never cut, and the palette has room.
+    - [ ] **On a phone under load the search's 500 ms may not find the set**
+          for a conflict through a solid (measured 250 ms at a load of
+          thirty on a desktop): the culprit is still named, the set reads
+          "not found in time". The bound was not retuned.
+
 - [x] **Many at once is a star on the first pick; a face is named by its
   place in the profile** (review items 5 and 6; the owner, 2026-11-12: *"All
   good."*). Spec: [`review-relations.md`](docs/plans/review-relations.md).
@@ -2865,9 +3295,11 @@ are flagged as such.
         of a line's ends are no collapse. But `coin(a, c)` with `coin(c, b)`
         on a line `a`–`b` is one, and both are named. The other way round,
         one relation that folds what it names by itself is read as meant:
-        `perp("l1", "l1")`, or `oncircle` of a circle's own centre, solves
-        SOLVED with the line or circle at nothing. Both come from the same
-        rule, deliberately; the owner may want either changed.
+        `oncircle` of a circle's own centre solves SOLVED with the circle at
+        nothing. Both come from the same rule, deliberately; the owner may
+        want either changed. (`perp("l1", "l1")` was the other example; it is
+        a conflict of one since the direction rows were normalised,
+        2026-11-12.)
   - [ ] **A standing conflict costs its search on every solve.** Measured on
         forty chained rectangles (280 relations, one component): ~130 ms of
         solve and ~145 ms of search per edit while the conflict stands; on
@@ -2875,9 +3307,11 @@ are flagged as such.
         component's blocks and values would make the repeats free; not built,
         because what a block's closure reads outside its declared variables
         (a frame's points) would have to be in the key too.
-  - [ ] **Prevention, considered and not built** (Design 6): residuals
+  - [x] **Prevention, considered and not built** (Design 6): residuals
         normalised so a collapse no longer satisfies them would change every
-        drawing's solving.
+        drawing's solving. **Built** (2026-11-12, docs/plans/review-solver.md):
+        a unit-direction row has the same roots less the spurious one, and
+        every old file reopens to the shape it was saved as.
 
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
@@ -4259,8 +4693,6 @@ extended the way `defineTool` extends the tool registry would close it.
     and whether nine seconds is the right time to read one, are the device's
     to judge. (Whether iOS fires `click` as a pointer event is not relied
     on: the last `pointerdown`'s type is what is read.)
-  - **The parallel picture wants retaking** (482) once `review-solver.md`
-    lands: `par` on two free lines shrinks both to a few pixels today.
   - **A chosen tip for `arm()` typed or the context menu**: none. A person
     who types a tool's name asked for nothing; could be revisited.
 

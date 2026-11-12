@@ -247,13 +247,20 @@ test("save and open: the same file back, byte for byte, the plate and the revolv
   assert.deepEqual((await features()).map((x) => [x.name, x.kind, x.value]), [["e1", "extrude", 8], ["e2", "revolve", Math.PI]]);
 });
 
-test('del("e2") takes the end face and the angle and leaves the profile where it was', async () => {
+// It took the end face until linked profiles (docs/plans/linked-profiles.md,
+// item 4: a feature relates, it does not own): the record goes with its
+// angle, and the end face it made is plain geometry, where it was.
+test('del("e2") takes the record and the angle, and leaves the end face and the profile where they were', async () => {
   const before = await app.model();
   const f = (await features())[1];
   await app.type('del("e2")');
   assert.deepEqual((await features()).map((x) => x.name), ["e1"]);
   const after = await app.model();
-  for (const n of f.owns) assert.ok(!(n in after.points) && !after.lines.some((l) => l.name === n), `${n} went`);
+  const there = (n: string) => n in after.points || after.lines.some((l) => l.name === n) || after.arcs.some((a) => a.name === n) || after.circles.some((c) => c.name === n);
+  const was = (n: string) => n in before.points || before.lines.some((l) => l.name === n) || before.arcs.some((a) => a.name === n) || before.circles.some((c) => c.name === n);
+  for (const n of f.owns.filter(was)) assert.ok(there(n), `${n}, which the revolve made, stayed`);
+  assert.ok(f.owns.filter(was).length > 0, "and it had made something");
+  assert.equal((await app.repl('[...model.relations.values()].filter((r) => r.op === "revolution").length')).value, 0, "the angle went with the record");
   for (const n of f.loops[0]) assert.ok(after.lines.some((l) => l.name === n) || after.arcs.some((a) => a.name === n), `${n} stayed`);
   for (const [n, p] of Object.entries(after.points)) assert.ok(dist3(p, before.points[n]) < 1e-9, `${n} did not move`);
   assert.equal(await app.status(), "SOLVED");

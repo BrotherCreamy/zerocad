@@ -212,6 +212,25 @@ export class Problem {
     for (const i of vars) if (i >= 0 && i < saved.length && i < this.values.length) this.values[i] = saved[i];
   }
 
+  /**
+   * **The stored blocks not met at the current values**: those with a row
+   * farther from zero than `tol`. One evaluation, no step; handles ascending.
+   * What a caller asks before reading anything into a block's rank: a row
+   * that is implied by others to first order says nothing new only if it
+   * also holds.
+   */
+  unmet(tol: number): BlockHandle[] {
+    const { r, storedRows, owners } = this.evaluate();
+    const out = new Set<BlockHandle>();
+    for (let i = 0; i < storedRows; i++) if (!(Math.abs(r[i]) <= tol)) out.add(owners[i]);
+    return [...out].sort((a, b) => a - b);
+  }
+
+  /** Every stored block's handle, in the order they were stored. */
+  handles(): BlockHandle[] {
+    return this.blocks.map((e) => e.id);
+  }
+
   /** The variables a stored block reads now (a thunk is asked again), or [] for no such block. */
   varsOf(handle: BlockHandle): number[] {
     const e = this.blocks.find((x) => x.id === handle);
@@ -362,10 +381,17 @@ export class Problem {
    * alone agree?" needs (the conflict search, model.ts's `conflicting`)
    * without removing anything it would then have to put back: a block is a
    * closure, and a removed one cannot be.
+   *
+   * `stall`, when given, ends the solve once an accepted step lowers the
+   * residual's norm by less than that share of it. For a solve that is meant
+   * to settle on a compromise (weak `extra` rows against stored ones): its
+   * norm never reaches `tol`, and without this it creeps on to `maxIter` by
+   * improvements that change nothing a caller would read.
    */
-  solve(opts: { maxIter?: number; tol?: number; extra?: ResidualBlock[]; only?: ReadonlySet<BlockHandle> } = {}): SolveReport {
+  solve(opts: { maxIter?: number; tol?: number; extra?: ResidualBlock[]; only?: ReadonlySet<BlockHandle>; stall?: number } = {}): SolveReport {
     const maxIter = opts.maxIter ?? 60;
     const tol = opts.tol ?? 1e-9;
+    const stall = opts.stall ?? 0;
     const extra = opts.extra ?? [];
     const only = opts.only;
     const n = this.values.length;
@@ -380,6 +406,7 @@ export class Problem {
     let iterations = 0;
     for (; iterations < maxIter && norm > tol; iterations++) {
       let improved = false;
+      const was = norm;
       for (let tries = 0; tries < 8 && !improved; tries++) {
         const dx = solve_step(
           new Uint32Array(rows), new Uint32Array(cols), new Float64Array(vals),
@@ -401,6 +428,7 @@ export class Problem {
         }
       }
       if (!improved) break;
+      if (was - norm < stall * was) { iterations++; break; }
     }
 
     // Only the stored rows may accuse, or report how far off the model is.

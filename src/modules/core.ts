@@ -106,7 +106,7 @@ defineModule("core", {
   },
   relations: {
     // dimension-generic, from relations/basic.ts
-    dist: { names: ["dist"], slots: slots("a", "b", "#distance"), fn: basic.dist },
+    dist: { names: ["dist"], slots: slots("a", "b", "#distance"), fn: basic.dist, twin: "shape" },
     fix: {
       names: ["fix"], slots: slots("point", "#coordinates", "frame"), fn: basic.fix,
       typed: (model: Model, name: string, at: number[], frame?: string | null) => basic.fix(model, name, lifted(model, at), frame),
@@ -115,25 +115,27 @@ defineModule("core", {
     onPlane: { names: ["onplane", "onPlane"], slots: slots("point", "frame"), fn: basic.onPlane },
     // 3D only: the point in the plane of three others, all four moving — the
     // both-ways hold an offset keeps its copy in its chain's plane by (profiles-held.md).
-    coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar },
+    coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar, twin: "shape" },
     // The relations that hold among many equals — `par("l1", "l2", "l3", "l4")`
     // is one relation, not a star on the first (docs/plans/review-relations.md).
-    coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), ...amongEntry("coincident") },
-    midpoint: { names: ["mid", "midpoint"], slots: slots("midpoint", "a", "b"), fn: basic.midpoint },
+    // A twin on a linked profile is the relation as written — the entry's `fn`,
+    // which never joins — over the partner members (docs/plans/linked-profiles.md).
+    coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), ...amongEntry("coincident"), twin: "shape" },
+    midpoint: { names: ["mid", "midpoint"], slots: slots("midpoint", "a", "b"), fn: basic.midpoint, twin: "shape" },
     // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
     // frame-axis reference — `par("l1", yaxis())` is what `ver("l1")` was.
-    parallel: { names: ["par", "parallel"], slots: slots("a", "b", "c"), ...amongEntry("parallel") },
-    perpendicular: { names: ["perp", "perpendicular"], slots: slots("a", "b", "c"), fn: geom.perpendicular },
-    angle: { names: ["ang", "angle"], slots: slots("a", "b", "#angle"), fn: geom.angle },
-    pointOnLine: { names: ["on", "pointOnLine"], slots: slots("point", "line"), fn: geom.pointOnLine },
-    equalLength: { names: ["eq", "equalLength"], slots: slots("line", "line"), ...amongEntry("equalLength") },
-    symmetric: { names: ["sym", "symmetric"], slots: slots("a", "b", "line"), fn: geom.symmetric },
+    parallel: { names: ["par", "parallel"], slots: slots("a", "b", "c"), ...amongEntry("parallel"), twin: "direction" },
+    perpendicular: { names: ["perp", "perpendicular"], slots: slots("a", "b", "c"), fn: geom.perpendicular, twin: "direction" },
+    angle: { names: ["ang", "angle"], slots: slots("a", "b", "#angle"), fn: geom.angle, twin: "direction" },
+    pointOnLine: { names: ["on", "pointOnLine"], slots: slots("point", "line"), fn: geom.pointOnLine, twin: "shape" },
+    equalLength: { names: ["eq", "equalLength"], slots: slots("line", "line"), ...amongEntry("equalLength"), twin: "shape" },
+    symmetric: { names: ["sym", "symmetric"], slots: slots("a", "b", "line"), fn: geom.symmetric, twin: "shape" },
     // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
     // `vertical` are the words an Onshape hand types, and they **expand to
     // par** against the default frame's axis — `par("l1", xaxis())` is what is
     // journalled and drawn (`—`), so there is still no hor/ver relation, only a
     // second spelling of the one that exists.
-    collinear: { names: ["col", "collinear"], slots: slots("line", "line"), ...amongEntry("collinear") },
+    collinear: { names: ["col", "collinear"], slots: slots("line", "line"), ...amongEntry("collinear"), twin: "shape" },
     horizontal: {
       names: ["horizontal"], slots: slots("a", "b"), op: false,
       fn: (model: Model, a: string, ...more: (string | null)[]) => level(model, "x", "horizontal", a, ...more),
@@ -142,7 +144,7 @@ defineModule("core", {
       names: ["vertical"], slots: slots("a", "b"), op: false,
       fn: (model: Model, a: string, ...more: (string | null)[]) => level(model, "y", "vertical", a, ...more),
     },
-    equalSpacing: { names: ["spacing", "equalSpacing"], slots: slots("point", "point", "point"), fn: geom.equalSpacing },
+    equalSpacing: { names: ["spacing", "equalSpacing"], slots: slots("point", "point", "point"), fn: geom.equalSpacing, twin: "shape" },
     measure: { names: ["measure"], slots: slots("#kind", "a", "b"), fn: measure },
   },
   operations: {
@@ -269,13 +271,19 @@ defineModule("core", {
     "           ones in the sketch's ink, and the status says SOLVED · 3 free —",
     "           how many ways the drawing can still move. A point on the drawing",
     "           plane or the ground is not counted free off it; a curve's normal",
-    "           length is no freedom. CONFLICT names the relations that cannot",
-    "           all hold, drawn red: click one in the status to select it, Delete",
-    "           removes it. A solve that could only hold them by collapsing",
-    "           something — a side to nothing, a radius to zero — is a CONFLICT",
-    "           too, and the drawing stays as it was. The names are the fewest",
-    "           that cannot hold: take any one away and the rest can. A size",
-    "           your own relation sets to zero (dist(p, q, 0)) is no collapse.",
+    "           length is no freedom. CONFLICT names the relation that made it —",
+    "           the one just added, or the dimension just set — and what it",
+    "           cannot hold with: r7 par l1 l2 — against r1. Its mark is filled",
+    "           red, what it is against outlined in a quieter ink, and the",
+    "           constraints palette lists both first. Click a name in the status",
+    "           to select it, Delete removes it. The drawing stays as it was: a",
+    "           solve that fails, or could only hold by collapsing something — a",
+    "           side to nothing, a radius to zero — is put back. What it is",
+    "           against is the fewest that cannot hold with it. A file opened in",
+    "           conflict names the set and singles out none. A size your own",
+    "           relation sets to zero (dist(p, q, 0)) is no collapse. A relation",
+    "           that reads a line for its direction (par, perp, ang, col, on,",
+    "           sym) turns the line and leaves its length as it was.",
     "           Relations that say one thing together — a rectangle's four",
     "           right angles — agree: counted muted in the status (0 free ·",
     "           4 agreeing), none of them blamed, drawn in ordinary ink, never",

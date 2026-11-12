@@ -75,6 +75,15 @@
     #diagnosis .rel{pointer-events:auto;cursor:pointer;font:inherit;color:inherit;background:none;border:none;padding:0 2px;
       text-decoration:underline dotted;text-underline-offset:2px}
     #diagnosis .rel:hover{color:#e8a33d}
+    /* A conflict's two parts (docs/plans/review-solver.md): the relation that
+       made it, heavier and on a pill of the conflict's ink — the glyph's
+       filled box, said in text — and what it cannot hold with in the quieter
+       ink, the conflict's red let down toward grey. The words between them
+       ("par l1 l2 — against") stay the conflict's red. */
+    #diagnosis .rel.culprit{color:#0a0e13;background:#e0605c;border-radius:3px;padding:0 4px;font-weight:700;text-decoration:none}
+    #diagnosis .rel.against{color:#b98a86}
+    #diagnosis .rel.culprit:hover{color:#0a0e13;background:#e8a33d}
+    #diagnosis .rel.against:hover{color:#e8a33d}
     /* What the last undo or redo did, beside the verdict rather than over it
        (see stepNote in main.ts). Amber, the colour of what just happened. */
     #stepnote{color:#e8a33d}
@@ -456,6 +465,19 @@
     #constraints .crow.on .cname{color:#dcb6ff}
     #constraints .cglyph{flex:none;min-width:calc(20px * var(--ui));text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;color:#d5e1ec}
     #constraints .cname{flex:none;color:#d5e1ec}
+    /* A relation's part in a conflict that stands, wherever its row is
+       (docs/plans/review-solver.md), as its glyph wears it on the drawing:
+       the one that made it, its mark on a block of the conflict's ink and its
+       name in that ink; what it cannot hold with, mark and name in the
+       quieter ink, the mark outlined; one of a set with none singled out,
+       the conflict's ink, outlined. */
+    #constraints .csect[data-section="conflict"] .chead{color:#e0605c}
+    #constraints .csect[data-section="conflict"] .chead .cnote{color:#b98a86}
+    #constraints .crow[data-role] .cglyph{border-radius:3px;box-shadow:inset 0 0 0 1px currentColor}
+    #constraints .crow[data-role="culprit"] .cglyph{color:#0a0e13;background:#e0605c;box-shadow:none;font-weight:700}
+    #constraints .crow[data-role="culprit"] .cname{color:#e0605c;font-weight:700}
+    #constraints .crow[data-role="against"] .cglyph,#constraints .crow[data-role="against"] .cname{color:#b98a86}
+    #constraints .crow[data-role="conflict"] .cglyph,#constraints .crow[data-role="conflict"] .cname{color:#e0605c}
     #constraints .cdesc{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#56697b}
     #constraints .cval{flex:none;width:calc(58px * var(--ui));height:calc(18px * var(--ui));padding:0 5px;font-family:inherit;font-size:calc(11px * var(--ui));
       color:#d5e1ec;background:#0b1016;border:1px solid #223041;border-radius:3px;text-align:right}

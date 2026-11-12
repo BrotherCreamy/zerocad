@@ -16,7 +16,7 @@ over (desktop) or select (phone) a tool."* (docs/plans/tool-howto.md).
 | | |
 |---|---|
 | ![iPhone 13, Constrain just chosen from behind the Dimension button: its tip beside the tray's top, over the organiser, the strip and the log — Constrain, what it does, three steps (tap the things to relate; then choose: Parallel, Tangent…; pick several for one relation, hold a line for Leave), and Hold this button for Dimension; the palette below saying what can be picked](docs/images/480-iphone-constrain-chosen-its-tip-says-how.png) | ![Two lines tapped, one of them through the tip, which has gone: the palette lists Parallel, Perpendicular and 6 more…, the section that said "no relation yet" gone to make the room](docs/images/481-iphone-two-lines-tapped-parallel-and-perpendicular-no-more-needed.png) |
-| ![Parallel pressed: par("l2", "l1") in the log, a // glyph on each line — and both lines shrunk to a few pixels, which is the solver's open fault, not this package's (see below)](docs/images/482-iphone-parallel-pressed-the-two-lines-parallel.png) | ![Desktop, the mouse on Constrain in the relate button's flyout: the tooltip under the flyout with its three steps in a mouse's words between what it does and arm("constrain")](docs/images/483-desktop-hovering-constrain-the-tooltip-with-its-steps.png) |
+| ![Parallel pressed: par("l2", "l1") in the log, the two lines parallel at their own lengths, a // mark on each (the upper one's partly behind the log), the palette waiting for the next](docs/images/482-iphone-parallel-pressed-the-two-lines-parallel.png) | ![Desktop, the mouse on Constrain in the relate button's flyout: the tooltip under the flyout with its three steps in a mouse's words between what it does and arm("constrain")](docs/images/483-desktop-hovering-constrain-the-tooltip-with-its-steps.png) |
 | ![iPhone 13, Extrude chosen: its tip at the top — tap inside a closed outline; set the depth in the options, ⇅ turns it the other way; ✓ builds the solid; hold this button for Cut, Surface, Edge — and the options pane it speaks of clear below, the rectangle clear between](docs/images/484-iphone-extrude-chosen-its-tip-clear-of-its-options-pane.png) | ![The line tool chosen a second time: the three steps alone, no name, starting at the same line as the first](docs/images/485-iphone-the-second-time-the-steps-alone.png) |
 | ![iPhone 13, a tap on the relate button, whose face is Dimension: its tip, ending Hold this button for Constrain](docs/images/486-iphone-dimension-chosen-its-tip-says-constrain-is-behind-the-button.png) | ![iPhone 13 on its side: the tip at the top right, over the command line's end, the strip, the log and the organiser's top — and over the right-hand ends of the two lines, the limitation filed](docs/images/487-iphone-landscape-the-tip-over-the-organiser-and-the-drawings-corner.png) |
 
@@ -60,22 +60,230 @@ over (desktop) or select (phone) a tool."* (docs/plans/tool-howto.md).
   will be offered.
 - **The setting**: `ui({ tips: false })`, and *Tips when a tool is chosen* in
   the logo menu's View; the viewer's, stored, never journalled.
-- **Bug 74**, found pressing ✓ in the browser: its tooltip said "the tool
+- **Bug 77**, found pressing ✓ in the browser: its tooltip said "the tool
   stays armed", and a confirm has put the tool down since the opaque-solids
   merge. It says what happens.
-- **Seen and not this package's**: `par` on two free lines shrinks both to a
-  few pixels and reads SOLVED (picture 482; already in picture 422, unseen).
-  It is `review-solver.md`'s, in flight; the e2e here asserts the directions,
-  which hold either way, and the picture wants retaking once that lands.
+- **Seen on the way**: before `review-solver` was merged in, `par` on two
+  free lines shrank both to a few pixels and read SOLVED — the first picture
+  482 showed two dashes. With it merged they keep their lengths; the picture
+  is retaken on the merged code, and the e2e asserts the directions.
 - **Merged with review-relations**: the constrain tool's steps say that
   several picked make one relation and that a line's menu has Leave, both
   done in the browser on the merged code.
 - Tests: `test/toolhowto.test.ts` (15) and `test/e2e/toolhowto.e2e.ts` (13:
   eight under fingers — every tool on the tray and behind it chosen in turn —
   one in landscape, four with a mouse). No existing test's code changed
-  (harness.ts's opening comment carries the count, seventy-four). One of
+  (harness.ts's opening comment carries the count, seventy-seven). One of
   them now says less than it reads: `tooltips.e2e.ts` asserts a tap "shows
   no tooltip", true of `#tooltip` and silent about `#chosentip`.
+
+## 2026-11-12 — where linked profiles met the solver package: the merge
+
+Linked profiles (#93) was built beside review-solver (#92) and merged after
+it. Two places met:
+
+- **A conflict's inks on both ends.** The solver package gave each relation
+  in a conflict a part (culprit, against, plain); linked profiles lit a
+  conflict on a relation's twin as well. Together: the twin wears the same
+  part as its partner (`solveAndRender`, main.ts).
+- **The tripwire fired.** `test/culprit.test.ts` held a test written to fail
+  when features stopped owning their relations, and it did: the extrusion is
+  deleted like any other relation now. Decided: a conflict's set stays the
+  user's relations alone; a relation a feature's record names is background
+  by the search's own rule (`removable`), no longer because `del` refuses
+  it. The test says that now.
+- Browser-only bugs renumbered: the solver's are 74 and 75, the trim tool on
+  a lid's edge is 76. Seventy-six.
+
+Measured on the merge: typecheck 0; unit 2080 of 2080. The browser suite's
+result is in the commit that follows it.
+
+## 2026-11-12 — an extrude's two profiles are peers: every relation has a twin, an edit to one is an edit to both, and nothing is owned
+
+The owner: *"i mean kind of like mirror relations"*; *"i don't like the idea
+of anything being 'consumed' as this implies unidirectional hierarchy"*;
+*"after extrude, it should be impossible to tell which was the original and
+which is the derivative"*; *"Deleting a line would break it obviously. The
+other side of an extrude profile is an identically linked profile/sketch
+entities. If you change one the other follows automatically."*; *"If they
+are truly twinned profiles, then reining in one side should trim on the
+other also."*; *"hierarchies do exist, but they are not timeline based"*
+(docs/plans/linked-profiles.md, with review item 4: features relate, they do
+not own).
+
+| | |
+|---|---|
+| ![Desktop, hidden-line view of a 50 × 30 × 10 block seen from above its front: a ⊥ pair at each of the eight corners, base and lid alike, the dimension 50 drawn once, along the lid's front edge, the depth 10 at the left](docs/images/443-a-dimension-on-the-base-drawn-once-on-the-lid.png) | ![set("d2_e1.value", 64) typed in the log: the label reads 64 and both front edges, the lid's and the base's, are longer; the block is still a right prism](docs/images/444-the-lids-dimension-set-the-base-follows.png) |
+| ![A back corner of the lid dragged away: the back edge of the lid and of the base have both moved, the block deeper, every ⊥ still in place](docs/images/445-a-lid-corner-dragged-the-base-corner-with-it.png) | ![The lid's right-hand edge deleted: three walls standing with no lid, no base face and no right wall; the organiser's row reads e1 extrude · open, the Bodies section is gone, and the log says e1 is left out because it is open](docs/images/446-a-lid-edge-deleted-both-edges-gone-the-body-open.png) |
+| ![The edge drawn back on the base with the line tool: a whole shaded block again, e1 back under Bodies, its row plain extrude](docs/images/447-the-edge-drawn-back-on-the-base-a-solid-again.png) | ![del("e1"): two blue rectangles one above the other joined by four chords, ⊥ marks on both, no feature in the organiser; the region rg1 still drawn on the lower one](docs/images/448-the-extrude-deleted-both-sketches-and-the-chords.png) |
+| ![A short line drawn on the lid's face across the middle of its front edge](docs/images/449-a-line-drawn-on-the-lid-across-an-edge.png) | ![The trim tool clicked on the right half of the lid's front edge: the front wall is half as long, ending at the line; the other three walls stand; no lid; the row reads extrude · open and the log shows trim("l5", …) and e1 is open now](docs/images/450-the-lids-edge-trimmed-and-the-bases-with-it.png) |
+| ![iPhone 13, shaded: the block with 50 along the lid's front edge and the depth 10](docs/images/451-iphone-a-dimension-on-the-base-drawn-once-on-the-lid.png) | ![iPhone 13: the label reads 64, the log's last line d2_e1, the block longer along both front edges](docs/images/452-iphone-the-lids-dimension-set-the-base-follows.png) |
+| ![iPhone 13: a back lid corner dragged by a finger, the block deeper, lid and base together](docs/images/453-iphone-a-lid-corner-dragged-the-base-corner-with-it.png) | ![iPhone 13: del of the lid's right edge answered r1, r1_e1, r2, r2_e1, l2, l6 in the log; three walls standing, open to the right, no caps](docs/images/454-iphone-a-lid-edge-deleted-the-body-open.png) |
+| ![iPhone 13: the edge drawn back by two taps with the line tool, a whole block, e1 under Bodies](docs/images/455-iphone-the-edge-drawn-back-a-solid-again.png) | ![iPhone 13: del("e1") in the log; two blue rectangles joined by four chords with their ⊥ marks, the region still drawn on the lower one](docs/images/456-iphone-the-extrude-deleted-both-sketches.png) |
+| ![iPhone 13: the short line on the lid across its front edge, typed with onplane on e1.lid](docs/images/457-iphone-a-line-drawn-on-the-lid-across-an-edge.png) | ![iPhone 13: the trim tool tapped on the lid's front edge; the front wall is half as long, the other three stand, no lid](docs/images/458-iphone-the-lids-edge-trimmed-and-the-bases-with-it.png) |
+
+- **Every relation within a profile has a twin on the other** (`src/twins.ts`):
+  the same relation over the partner entities, a registry entry of its own
+  under a name derived from its partner's (`r3_e1` — no counter claimed, so an
+  old file's later names stay theirs). Shapes twin (`dist`, `coin`, `tan`,
+  `eq`, `rad`, `sym`…), directions twin (`par`, `perp`, `ang`, which may name
+  a frame's axis); positions do not (`fix`, `onplane`), nor anything that
+  names an entity outside the profile. Each relation says which it is in its
+  own module entry (`RelationDecl.twin`). A relation typed later on either
+  profile gets its twin before the call returns; one that only repeats what
+  is there adopts it.
+- **The pair is one thing.** `set` either and both change; `del` either and
+  both go, one undo step; a conflict names the pair once and lights both
+  ends; the status counts nothing extra for a twin, free or agreeing. A
+  linked twin **holds no rows**: what it says is carried across by
+  the extrusion, and its rows in the problem were measured to change the
+  solver's path (CONVERSATION_LOG). A mark is drawn on both ends; a
+  dimension's label once, on the end nearer the viewer.
+- **Deleting the extrude leaves everything**: both profiles, the chords, and
+  each profile's relations, each an ordinary relation holding its own rows.
+  `del("e1")` answers `[e1, d1, e1_perp]` and takes no entity. The same for a
+  cut, an edge extrude (now linked the same way) and a revolve.
+- **Deleting an edge of either profile takes its partner and leaves the body
+  open**: the record stays, the surviving walls are drawn from both sides
+  with no cap, no kernel body is made and the status says why, the
+  organiser's row reads `extrude · open`. Draw the edge back on either
+  profile — corner to corner, as the line tool joins — and its partner is
+  made and the solid is back, with no step asked of the user.
+- **A trim on a lid's edge is a trim on the base's**, each cut carried
+  across the link; a trim that takes the loop apart leaves the extrude open
+  where it used to be refused. `extend` on either end seats the other. The
+  trim tool takes a lid's edge that something cuts (bug 76: it read every
+  press on the sketch plane, so a lid edge seen from the side was never
+  under it).
+- **A relation a feature made is deleted like any other**: `del("e1_perp")`
+  lets the chord lean; `del` of the depth leaves the record *unbuilt*
+  (`extrude · unbuilt`, "its depth d3 is deleted") and both profiles their
+  own relations. `onplane(p, "e1:l2")` outlives the extrude as `coplanar`
+  with three of the face's own points, under its own name (`rehold`).
+- **Format 21.** Nothing new is saved — twins are made again by replay from
+  the relation that made them — but a deletion means something else now, so
+  a pre-21 file's `deleteFeature` entries are marked on the way in and take
+  what they took. `test/fixtures/linked-v19.neocad.json`, saved by the build
+  before this one, opens to the model it was, every name kept, and is linked
+  from then on.
+- **With the entry below** (relations among many, merged first): a relation
+  among many has one twin among the partners; a name typed with a member
+  only a twin holds joins the relation it is the twin of, by its partner on
+  the other profile; a member deleted journals the one `leave`; a wall
+  written `e1:l2` is a face, and a relation to one has no twin.
+- Unit: `test/linkedprofiles.test.ts` (29). E2E, mouse and iPhone 13:
+  `linkedprofiles.e2e.ts`. The per-feature table of what was owned and what
+  is now related is in the spec's *As built*; the decisions in TODO.md's
+  register; what was tried and dropped in CONVERSATION_LOG.md.
+
+## 2026-11-12 — a direction relation turns a line and never scales it; a conflict names the relation that made it
+
+Review items 1 and 3 of the register (*Reviewed against the owner's
+principle*; the owner: *"All good."*), built from
+docs/plans/review-solver.md, whose *As built* has every measurement.
+
+| | |
+|---|---|
+| ![Desktop: Parallel pressed in the constraints palette over two free lines — both still sixty long, turned parallel, a // on each, SOLVED · 7 free](docs/images/460-parallel-pressed-over-two-free-lines-both-as-long-as-they-were.png) | ![iPhone 13: the same by finger — the two lines parallel and as long as they were, the palette up at the bottom](docs/images/461-iphone-parallel-tapped-both-lines-as-long-as-they-were.png) |
+| ![Desktop: the owner's first bug — CONFLICT, r6 on a red pill, par l1 l2 — against r1; the palette's conflict heading with r6 first and r1 under it, a delete on each; the par's two glyphs filled red, the corner perp's two outlined pink, the other perps plain](docs/images/462-the-owners-first-bug-the-par-named-against-its-corners-perp.png) | ![The rectangle's glyphs close, at the size they are drawn: two // filled red, two ⊥ outlined in the quieter ink, the rest plain](docs/images/463-the-glyphs-close-the-culprit-filled-what-it-is-against-outlined.png) |
+| ![iPhone 13: the same conflict by finger — the status on two lines, r6 on its red pill, against r1; the rectangle unmoved with its two filled-red // and two pink-outlined ⊥; the palette's conflict heading, r6 par l1 l2 then r1 perp l1 l2](docs/images/464-iphone-the-par-named-against-its-corners-perp.png) | ![iPhone 13, the glyphs close: the culprit's two // solid red blocks with dark slashes, what it is against two ⊥ with a pink outline and a pink mark, four plain ⊥ in grey](docs/images/465-iphone-the-glyphs-close.png) |
+| ![Desktop: the two inks over a solid's lit face, the lightest ground a glyph is drawn on — a filled-red // and a pink-outlined ⊥ on the pale lid, another pair beside it on the dark canvas](docs/images/466-over-a-solids-lit-face-the-culprit-filled-what-it-is-against-outlined.png) | ![iPhone 13: the same over a lid — r7 par l5 l6 — against r6](docs/images/467-iphone-over-a-solids-lit-face.png) |
+| ![The corner's perp deleted: the par is still what made it, now against r4, r3 — its glyphs filled red, the two far corners' perps outlined pink](docs/images/468-the-corners-perp-deleted-the-par-still-named-against-the-two-far-perps.png) | ![Reopened by autosave: r6 · r4 · r3 cannot all hold, none singled out, every one of the three outlined in the conflict's red and none filled](docs/images/469-reopened-the-set-none-singled-out-every-member-outlined-red.png) |
+
+- **The bug, as a test, first** (`test/directionrows.test.ts`): `par` between
+  two free lines 60.133 and 60.828 long left them **8.763 and 1.183**,
+  SOLVED, in 2D and 3D. The row was |u||v|·sin θ, and a shorter line is a
+  smaller residual. Every row of that shape did it: `perp` left the pair 56
+  and 87 long, `col` 17 and 3, `on` shortened the line a point was put on
+  from 60 to 21, `sym` its mirror line to 37.
+- **Now** each of those leaves its lines as long as they were to 3e-9 of the
+  length (1e-6 was asked). The rows read **unit directions** (`unit`,
+  vec.ts), so their gradient along a line is exactly zero; they are **the
+  angle**, not its sine or cosine (`turnToParallel`, `turnToSquare`,
+  `angleBetween`), because a sine is flat at 90° and `par` on two lines
+  exactly square otherwise could not move; and each is times how long the
+  longer of its lines was when the solve began, a plain number, so it is
+  still a length and the Jacobian still exact. Normalised: `par`, `perp`,
+  `ang`, `col`, `on`, `sym`, `tan` at a shared end, `ang3`, and
+  `perp(chord, e1)`.
+- **The rows alone were not enough**, and that is the measurement that
+  matters: with every row's gradient along its lines zero and nothing else,
+  `perp` between the two free lines left them **169** long. The kernel's
+  step moves each end along a straight line, and a straight move that turns
+  a line stretches it. So a block says which lines it reads for direction
+  only, and after any solve that changed the length of one `Model.solve`
+  solves on with those lengths pulled back, then released
+  (`Model.keptSizes`). A width set on a rectangle leaves its height exact;
+  a rectangle pinned by a corner moves whole; a bare line still stretches to
+  a `coin` on its end.
+- **A drag** is one solve and is not steered (a pull on a size there would
+  move a free rectangle whole under a dragged corner): one end of a par pair
+  dragged costs the other line **3.1%** of its length, where it cost 47%.
+- **A solve that fails is put back, as a collapse is.** A `par` and a `perp`
+  on one pair no longer fold a side — they have no answer — and least
+  squares would leave the rectangle sheared 45°. The drawing stays where it
+  was, the relation stays, the verdict is CONFLICT; so too for a `set` to a
+  value that cannot hold. `perp("l1", "l1")` is a conflict of one (it
+  solved, the line at nothing).
+- **A conflict names the relation that made it**: `r6 par l1 l2 — against
+  r1`. The drawing solved before the edit that broke it, so the culprit is
+  known without a search — the one relation of the failed part that has not
+  yet held in a solve, just added or its value just `set` — and the search
+  is only for the least set it cannot hold with, one relation tried before
+  any larger set. Past the bound the culprit is still named: `— against a
+  set not found in time`. A file opened in conflict, or an edit of more than
+  one relation, names the set and singles out none; an undo and a redo hand
+  on who had held, so a redone `par` reads as it did.
+- **Told apart on a phone**: the culprit's glyph is its box filled with the
+  conflict's red, its mark cut out dark; what it is against is outlined in a
+  quieter ink (#b98a86, the red let down toward grey); in the status the
+  culprit is on a red pill; the constraints palette lists the conflict
+  first, whatever is selected, the culprit first, × on each.
+- **Bug 74** (seventy-five now, with 75 below): a conflict on a solid's edges drew nothing
+  red — a glyph follows its anchor, and a solid's edges are quiet until
+  hovered. A relation in a conflict is always drawn.
+- **What it costs** (best of three, on a box at a load of thirty): the same
+  iterations on every fixture opened as filed, and every old file reopens to
+  the shape it was saved as. A par-heavy drawing solves 1.5× to 2.3× slower
+  at the same iterations (135 → 209 ms by one measure, 126 → 295 by the
+  other; the load does not let them be told apart) — forty rectangles'
+  Jacobian has 2629 non-zeros where it had 1353, a unit direction depending
+  on every coordinate of both ends. A solve that has to bring every length
+  back at once is 2× to 6× (forty rectangles with every point moved: 156 →
+  960 ms, 8 iterations → 22). A failing solve is no slower than it was (the
+  same forty with a `par` across a corner: 874 ms the best seen before, 780
+  as built) and its set is found sooner (507 → 197 ms). The spec has the
+  table.
+- **With review-relations merged** (the entry below; it went in first, and
+  this was measured again on the two together). One relation among many is
+  the pair's rows, so it needed nothing: `par(l1, l2, l3, l4)` among four
+  free lines left them 41, 31, 89 and 123 long and leaves each as long as it
+  was, to 1.8e-9. **`corner`**, that package's angle between two walls'
+  lines, was a raw u·w − |u||w| cos row and left two free 60-long lines 69
+  and 89 long in 3D; it is `ang`'s row on the two rays out of the corner
+  now, and keeps them (1.3e-9). A conflict names a relation among many once,
+  with every member — `r5 par l1 l2 m1 — against r1` — and a line that
+  **joins** a relation makes the relation, as it now stands, the culprit; the
+  line leaving clears it. The join found a fault here: where the failing
+  solve folded a side, "one relation before any larger set" was asked only
+  of the relations naming the fold, and the status named the two far perps
+  where the corner's own would do. It is asked of the nearest dozen of all
+  of them now.
+- **Bug 75, found by the full gate**: `set` of a revolve's angle slid its
+  profile six units. A quarter-turn swing left to the solve is shared
+  between the end face and the profile; it always had been (0.2, and an
+  edge 1% short), and was small only while a sketch's right angles were
+  twenty times stiffer than a feature's rows — the same products of
+  lengths. Giving the rows that stiffness back was measured and brings the
+  shrinking back with it (`perp` 74 and 64, a drag 47%). So `set` seats a
+  revolve's end face where the new angle puts it before the solve
+  (`seatTurned`), as it already seats an extrude's lid: 0 iterations, the
+  profile exactly where it was. Sixty-four dimension edits across the
+  fixtures move the drawing no further than they did, within 5%.
+- **Tests**: unit 2051 on the merged branch (1923 on the base, 2011 before
+  the merge): `test/directionrows.test.ts` (77), `test/culprit.test.ts`
+  (23), one in `test/revolve.test.ts`. E2E: `reviewsolver.e2e.ts` (10,
+  mouse and iPhone 13), and `conflicts.e2e.ts` in the new words.
 
 ## 2026-11-12 — many at once is one relation among equals, and a wall is named by the line it is swept from
 

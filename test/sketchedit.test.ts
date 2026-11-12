@@ -22,7 +22,7 @@ import { Model } from "../src/model.ts";
 import { dist, fix } from "../src/relations/basic.ts";
 import { onCircle, parallel, pointOnLine } from "../src/relations/geometry.ts";
 import { rotated, rotation, translated } from "../src/relations/pattern.ts";
-import { del, extrude, set } from "../src/operations.ts";
+import { del, extrude, revolve, set } from "../src/operations.ts";
 import { chamfer, circular, extend, linear, mirror, offset, patternNames, trim, walkChain } from "../src/sketchedit.ts";
 import { cutsOf } from "../src/sketchgeom.ts";
 import { open, save } from "../src/persist.ts";
@@ -148,13 +148,31 @@ test("a second trim at a crossing the extrude made real ends the curve at that p
   assert.ok(m.entities.has(l[2]) && m.entities.has(p), "deleting the solid keeps the sketch");
 });
 
-test("trim that would open a profile under an extrude refuses, says why, and leaves the model — names and counters — exactly as it was", () => {
+// Under an extrude this trim was refused until linked profiles
+// (docs/plans/linked-profiles.md; the owner: *"reining in one side should trim
+// on the other also"*): a trim that takes the loop away leaves the extrude
+// open, as a deleted edge does, both profiles trimmed. A feature that cannot
+// be left open — a revolve — still refuses, and that refusal is still whole.
+test("trim that opens a profile under an extrude trims both profiles and leaves it open; under a revolve it refuses, says why, and leaves the model — names and counters — exactly as it was", () => {
+  {
+    const m = new Model(3);
+    const { l } = rect(m, 0, 0, 40, 30);
+    extrude(m, l[0], 10);
+    seg(m, [20, 10], [20, -10]); // a stub across the bottom edge only
+    const lid = m.featureOf("e1", "extrude").twins[0][0];
+    trim(m, l[0], [30, 0, 0]);
+    assert.ok(near(m.coords(m.line(l[0]).refs[1]), [20, 0, 0]));
+    assert.ok(near(m.coords(m.line(lid).refs[1]), [20, 0, 10]), "the lid's edge is reined in with the base's");
+    assert.equal(m.featureOf("e1", "extrude").open, true);
+    assert.equal(m.solve().solved, true);
+    assert.equal(text(open(text(m))), text(m), "and replays");
+  }
   const m = new Model(3);
-  const { l } = rect(m, 0, 0, 40, 30);
-  extrude(m, l[0], 10);
-  seg(m, [20, 10], [20, -10]); // a stub across the bottom edge only
+  const { l } = rect(m, 10, 0, 50, 30);
+  revolve(m, l[0], "origin.y", 2);
+  seg(m, [30, 10], [30, -10]);
   const was = text(m), next = nextNames(m), entries = m.journal.length;
-  assert.throws(() => trim(m, l[0], [30, 0, 0]), (e: Error) => {
+  assert.throws(() => trim(m, l[0], [40, 0, 0]), (e: Error) => {
     assert.match(e.message, /trimming that piece of l1 leaves a feature nothing to stand on — e1:/);
     assert.match(e.message, /is gone|no closed loop/);
     return true;
@@ -164,8 +182,8 @@ test("trim that would open a profile under an extrude refuses, says why, and lea
   assert.deepEqual(nextNames(m), next, "no auto-name moved");
   // Without the solid the same trim is an ordinary trim.
   del(m, "e1");
-  trim(m, l[0], [30, 0, 0]);
-  assert.ok(near(m.coords(m.line(l[0]).refs[1]), [20, 0, 0]));
+  trim(m, l[0], [40, 0, 0]);
+  assert.ok(near(m.coords(m.line(l[0]).refs[1]), [30, 0, 0]));
 });
 
 test("a region with no feature on it follows the regions rule: its face is found again from its members, changed", () => {
@@ -288,8 +306,11 @@ test("trim refuses what it cannot cut, in words that say what would", () => {
   const m3 = new Model(3);
   const { l } = rect(m3, 0, 0, 10, 10);
   const e = m3.featureOf(extrude(m3, l[0], 5), "extrude");
+  // A lid's edge is an edge like its partner on the base now (linked-profiles.md):
+  // refused only for what any curve is refused for. A wall is no edge of either profile.
   const twin = e.owns.find((n) => m3.entities.get(n)?.kind === "line")!;
-  assert.throws(() => trim(m3, twin, [5, 0, 5]), /part of e1's solid/);
+  assert.throws(() => trim(m3, twin, [5, 0, 5]), new RegExp(`nothing cuts ${twin}`));
+  assert.throws(() => trim(m3, e.walls[0], [0, 0, 2]), /part of e1's solid/);
 });
 
 test("cuts: a crossing, a T and a held crossing point, in order along the curve; tangency and its own ends cut nothing", () => {

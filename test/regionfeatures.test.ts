@@ -161,7 +161,11 @@ test("set on either depth moves its own lid exactly, and nothing else — not th
   assert.equal(m.relationOf(e2.depth).args[1], 20);
 });
 
-test("del: the second step takes nothing of the first; the first takes its crossings — and, as for a twin, the record and walls of a step built on them", async () => {
+// Each block said what a step *took* until linked profiles
+// (docs/plans/linked-profiles.md): a step deleted took what it made, the
+// first its crossings and so the second step built on them. A step takes
+// nothing now but itself and its extrusion.
+test("del: a step deleted takes itself and its extrusion — the crossings stay, and so does the step built on them", async () => {
   await loadKernel();
   {
     const { m, lines } = plate();
@@ -169,33 +173,32 @@ test("del: the second step takes nothing of the first; the first takes its cross
     const e2 = m.featureOf(extrude(m, lines[1], 20), "extrude");
     const [x1, x2] = materialised(m, "e1");
     const removed = del(m, "e2");
-    assert.deepEqual(removed.slice().sort(), ["e2", ...e2.owns, "e2_perp"].sort(), "the record and what it made, and its perpendicular");
+    assert.deepEqual(removed, ["e2", e2.depth, "e2_perp"], "the record, its extrusion and its perpendicular");
     assert.ok(m.features.has("e1") && m.entities.has(x1) && m.entities.has(x2));
+    for (const n of e2.owns) if (n !== e2.depth) assert.ok(m.has(n), `${n}, which e2 made, stays`);
   }
   {
     const { m, lines, across, ends } = plate();
     const e1 = m.featureOf(extrude(m, lines[3], 10), "extrude");
     const e2 = m.featureOf(extrude(m, lines[1], 20), "extrude");
     const [x1, x2] = materialised(m, "e1");
-    const standing = e2.walls.filter((w) => !m.line(w).refs.includes(x1) && !m.line(w).refs.includes(x2));
-    assert.equal(standing.length, 2);
     const removed = del(m, "e1");
-    for (const n of e1.owns) assert.ok(removed.includes(n), `${n} was e1's`);
-    assert.ok(removed.includes("e2"), "e2 was built on e1's crossings");
-    for (const w of e2.walls) assert.equal(m.entities.has(w), standing.includes(w), `${w}: a wall on a crossing goes with it`);
-    for (const n of [...lines, across, ...ends]) assert.ok(m.entities.has(n), `${n}: the sketch stays`);
-    assert.ok(!m.entities.has(x1) && !m.entities.has(x2));
+    assert.deepEqual(removed, ["e1", e1.depth, "e1_perp"]);
+    assert.ok(m.features.has("e2"), "e2 stands on e1's crossings, which are points held on both edges still");
+    for (const n of [...lines, across, ...ends, x1, x2, ...e2.walls]) assert.ok(m.entities.has(n), `${n} stays`);
     assert.equal(m.solve().solved, true);
   }
   {
-    // A crossing deleted on its own takes every record naming it.
+    // A crossing deleted on its own opens every extrude whose profile ran to it.
     const { m, lines } = plate();
     extrude(m, lines[3], 10);
     extrude(m, lines[1], 20);
     const [x1] = materialised(m, "e1");
     const removed = del(m, x1);
-    assert.ok(removed.includes("e1") && removed.includes("e2"));
-    assert.equal(m.features.size, 0);
+    assert.ok(!removed.includes("e1") && !removed.includes("e2"));
+    assert.equal(m.featureOf("e1", "extrude").open, true);
+    assert.equal(m.featureOf("e2", "extrude").open, true);
+    assert.equal(m.solve().solved, true);
   }
 });
 
@@ -366,10 +369,19 @@ test("a region cut by Ts is extruded between the held points it already had — 
   assert.deepEqual(materialised(m, f.name), []);
   assert.equal(m.relations.size, relations + 2, "the depth and the chord's perpendicular (profiles-held.md), nothing else");
   assert.ok(f.names.includes(a) && f.names.includes(b));
-  assert.ok(del(m, a).includes(f.name));
+  // Deleting a T took the record until linked profiles; now the edges that
+  // ran to it go — from both profiles — and the record stays, open.
+  const removed = del(m, a);
+  assert.ok(!removed.includes(f.name) && removed.includes(stem));
+  const now = m.featureOf(f.name, "extrude");
+  assert.equal(now.open, true);
+  assert.deepEqual(now.loops, [[{ name: lines[2], from: b, to: points[3] }, lines[3]]], "the two edges that did not end at it");
+  assert.equal(m.solve().solved, true);
 });
 
-test("a crossing materialised by hand — pt(on(_, l1), on(_, l5)) — is a T to the extrude: named, not owned, and left by del", async () => {
+// "Owned" meant "taken by del" until linked profiles; nothing is taken now,
+// so the crossing the extrude made stays as the one made by hand does.
+test("a crossing materialised by hand — pt(on(_, l1), on(_, l5)) — is a T to the extrude: named, not made by it — and del leaves both", async () => {
   await loadKernel();
   const { m, t, lines, across } = plate();
   const x = m.addPoint(t.at(15, 0)).name;
@@ -382,7 +394,8 @@ test("a crossing materialised by hand — pt(on(_, l1), on(_, l5)) — is a T to
   assert.ok(f.names.includes(x) && !f.owns.includes(x));
   del(m, f.name);
   assert.ok(m.entities.has(x));
-  assert.ok(!m.entities.has(made[0]));
+  assert.ok(m.entities.has(made[0]), "the crossing it made is a point held on both edges, and stays");
+  assert.equal(m.relationsNaming(made[0]).filter((r) => r.op === "pointOnLine").length, 2, "with its two holds");
 });
 
 test("the caps and walls are drawn between the points as they are now: drag the line across, and the cap follows its crossings", async () => {

@@ -125,15 +125,20 @@ test("desktop: two faces of a stepped block, then a double-click on the label an
   await desk.page.mouse.move(5, 300);
   await shot(desk, "2b-placed");
   await desk.page.waitForTimeout(400);
+  // The dimension is the walls' lines'; its twin on the lid's lines is made
+  // with it (docs/plans/linked-profiles.md), and the pair's label is drawn
+  // once, on whichever end is nearer the viewer.
   const dims = (await relations(desk)).filter((r) => r.op === "dist");
-  assert.deepEqual(dims.map((r) => r.args), [["l2", "l4", 20]], "the walls are their lines: dist on the sketch");
+  assert.deepEqual(dims.map((r) => r.args), [["l2", "l4", 20], ["l8", "l10", 20]], "the walls are their lines: dist on the sketch, and its twin on the lid");
   // A double-click on the label opens its value, as Set value… does.
-  const label = (await glyphs(desk)).find((g) => g.relation === dims[0].name)!;
+  const labels = (await glyphs(desk)).filter((g) => dims.some((d) => d.name === g.relation));
+  assert.equal(labels.length, 1, "one label for the pair");
+  const label = labels[0];
   assert.equal(label.symbol, "20");
   const at = await desk.at(...label.screen);
   await desk.page.mouse.dblclick(at.x, at.y);
   await desk.page.waitForTimeout(200);
-  assert.equal(await desk.page.inputValue("#cmd"), `set("${dims[0].name}.value", `);
+  assert.equal(await desk.page.inputValue("#cmd"), `set("${label.relation}.value", `);
   await desk.page.type("#cmd", "30)");
   await desk.page.press("#cmd", "Enter");
   await desk.page.waitForTimeout(400);
@@ -142,9 +147,8 @@ test("desktop: two faces of a stepped block, then a double-click on the label an
   assert.equal(await desk.status(), "SOLVED");
   await desk.page.mouse.move(700, 560);
   await shot(desk, "3-the-step-set-to-30");
-  // The dimension is the sketch's, labelled on the sketch: from here the step, set deeper, hides its own label
-  // behind the near wall (looked at, smartdim-3) — a limitation filed in TODO.md, not asserted away.
-  assert.deepEqual((await relations(desk)).find((r) => r.name === dims[0].name)?.args, ["l2", "l4", 30]);
+  // Set from either end, both say 30: the sketch's, and its twin on the lid.
+  assert.deepEqual((await relations(desk)).filter((r) => r.op === "dist").map((r) => r.args), [["l2", "l4", 30], ["l8", "l10", 30]]);
 });
 
 test("desktop: the angle between two faces of a wedge is the wedge's", async () => {
@@ -253,12 +257,13 @@ test("iPhone 13: two faces tapped, a tap to place, a double-tap on the label —
   await phone.page.waitForTimeout(300);
   await phone.page.waitForTimeout(400);
   const dims = (await relations(phone)).filter((r) => r.op === "dist");
-  assert.deepEqual(dims.map((r) => r.args), [["l2", "l4", 20]]);
-  const label = (await glyphs(phone)).find((g) => g.relation === dims[0].name)!;
+  // With its twin on the lid (docs/plans/linked-profiles.md); one label for the pair, on the nearer end.
+  assert.deepEqual(dims.map((r) => r.args), [["l2", "l4", 20], ["l8", "l10", 20]]);
+  const label = (await glyphs(phone)).find((g) => dims.some((d) => d.name === g.relation))!;
   await phone.at(...label.screen);
   await f.doubleTap(...label.screen);
   await phone.page.waitForTimeout(300);
-  assert.equal(await phone.page.inputValue("#cmd"), `set("${dims[0].name}.value", `, `a double-tap opens the value: ${(await phone.log()).split("\n").slice(-4).join(" / ")} · ${JSON.stringify(label.screen)} · ${JSON.stringify((await glyphs(phone)).filter((g) => g.op === "dist"))}`);
+  assert.equal(await phone.page.inputValue("#cmd"), `set("${label.relation}.value", `, `a double-tap opens the value: ${(await phone.log()).split("\n").slice(-4).join(" / ")} · ${JSON.stringify(label.screen)} · ${JSON.stringify((await glyphs(phone)).filter((g) => g.op === "dist"))}`);
   await phone.page.type("#cmd", "22)");
   await phone.page.press("#cmd", "Enter");
   await phone.page.waitForTimeout(400);

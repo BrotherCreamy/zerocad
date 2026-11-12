@@ -20,7 +20,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
-import { parallel } from "../src/relations/geometry.ts";
+import { parallel, perpendicular } from "../src/relations/geometry.ts";
 import { revolution } from "../src/relations/revolution.ts";
 import { checkRevolve, del, extrude, fillet, hole as holeOp, revolve, revolveProfile, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
@@ -266,6 +266,49 @@ test("set swings the end face to exactly the new angle and moves nothing else at
   endAt(m, f.angle, -1, (p, a) => aboutY(t, p, a));
 });
 
+test("set on a free profile's revolve swings the end face alone: the profile stays where it was and as long as it was", async () => {
+  // The drawing of test/e2e/revolve.e2e.ts: a rectangle as the rectangle tool
+  // leaves one — on a plane, a right angle at every corner, fixed nowhere —
+  // with a corner filleted, revolved 270° about the frame's +y, and its angle
+  // then set to 180°. The swing is a quarter turn, which no straight step
+  // makes: a solve left to find it shares it between the end face and the
+  // profile. Measured before the end was seated (`seatTurned`): the profile
+  // slid 0.2 and its base edge came out 17.81 long for 18 while the sketch's
+  // direction rows were products of its lines' lengths and so twenty times
+  // stiffer than the feature's; with those rows turning lines and never
+  // scaling them (docs/plans/review-solver.md) it slid 6. Seated, nothing
+  // but the end face has anything to do.
+  await loadKernel();
+  const m = new Model(3);
+  const t = tiltedFrame(m);
+  const { lines } = polygon(m, t, [[12, 0], [30, 0], [30, 30], [12, 30]]);
+  lines.forEach((l, i) => perpendicular(m, l, lines[(i + 1) % 4]));
+  const arc = fillet(m, lines[1], lines[2], 7);
+  assert.equal(m.solve().solved, true);
+  const f = m.featureOf(revolve(m, lines[0], "t.y", 1.5 * Math.PI), "revolve");
+  assert.equal(m.solve().solved, true);
+
+  const end = new Set(f.owns);
+  const profile = [...m.entities.values()].filter((e) => e.kind === "point" && !end.has(e.name)).map((e) => e.name);
+  const was = new Map(profile.map((p) => [p, m.coords(p)]));
+  const twinArc = f.twins[0][f.loops[0].indexOf(arc)];
+  set(m, `${f.angle}.value`, Math.PI);
+  const report = m.solve();
+  assert.equal(report.solved, true);
+  assert.equal(report.iterations, 0, "seated where the new angle puts it, the solve begins at a root");
+  for (const p of profile) assert.ok(near(m.coords(p), was.get(p)!), `${p} of the profile did not move: ${m.coords(p)} from ${was.get(p)}`);
+  endAt(m, f.angle, Math.PI, (p, a) => aboutY(t, p, a));
+  assert.ok(near(m.normalOf(twinArc), turn(m.normalOf(arc), [0, 0, 0], t.uy, Math.PI)), "and the fillet's twin faces as its base does, turned");
+
+  // The other way round, and a small change: the same.
+  for (const a of [-2, 0.3]) {
+    set(m, `${f.angle}.value`, a);
+    assert.equal(m.solve().solved, true);
+    for (const p of profile) assert.ok(near(m.coords(p), was.get(p)!), `${p} of the profile did not move at ${a}`);
+    endAt(m, f.angle, a, (q, b) => aboutY(t, q, b));
+  }
+});
+
 test("set on a full revolve's angle refuses, saying a partial revolve is a new feature — and leaves it as it was", async () => {
   await loadKernel();
   const m = new Model(3);
@@ -499,7 +542,10 @@ test("a revolve's end face is a loop in the end frame — an extrude takes it", 
 
 // --- deletion --------------------------------------------------------------------------
 
-test('del("e1") takes the end face, its frame and the angle, and leaves the sketch exactly as it was; a full revolve takes only its angle', async () => {
+// It took the end face until linked profiles (docs/plans/linked-profiles.md,
+// item 4: a feature relates, it does not own). The record goes with the
+// relation that is the revolve — the angle — and the end face is plain geometry.
+test('del("e1") takes the record and the angle, and leaves the sketch and the end face; a full revolve had only its angle', async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -514,20 +560,20 @@ test('del("e1") takes the end face, its frame and the angle, and leaves the sket
   const e = revolve(m, lines[0], "t.y", 2);
   const f = m.featureOf(e, "revolve");
   const journalAt = m.journal.length;
+  const made = f.owns.filter((n) => m.entities.has(n));
+  assert.ok(made.length > 0, "a partial turn made an end face");
   const removed = del(m, e);
-  assert.equal(removed[0], e, "the record first");
-  assert.equal(removed[1], f.angle);
-  assert.deepEqual(new Set(removed), new Set([e, ...f.owns]), "exactly what the feature made");
-  assert.deepEqual([...m.entities.keys()], entities, "the sketch, entity for entity");
+  assert.deepEqual(removed, [e, f.angle], "the record first, then the relation that is it");
+  assert.deepEqual([...m.entities.keys()], [...entities, ...made], "the sketch, then the end face — all of it");
   assert.deepEqual([...m.relations.keys()], relations);
   assert.equal(m.solve().solved, true);
   for (const [n, c] of coords) assert.ok(near(m.coords(n), c), `${n} did not move`);
-  assert.deepEqual(m.journal.slice(journalAt).map((j) => j.op),
-    ["deleteFeature", "deleteRelation", ...removed.slice(2).map(() => "deleteEntity")]);
+  assert.deepEqual(m.journal.slice(journalAt).map((j) => j.op), ["deleteFeature", "deleteRelation"]);
 
+  const before = [...m.entities.keys()];
   const full = m.featureOf(revolve(m, lines[0], "t.y"), "revolve");
   assert.deepEqual(del(m, full.name), [full.name, full.angle]);
-  assert.deepEqual([...m.entities.keys()], entities);
+  assert.deepEqual([...m.entities.keys()], before);
 });
 
 test("deleting a piece — a profile edge, an end twin, the angle, the axis line — takes the record, and only what needed that piece", async () => {
@@ -555,10 +601,12 @@ test("deleting a piece — a profile edge, an end twin, the angle, the axis line
     assert.deepEqual(del(m, f.twins[0][1]), [f.name, f.twins[0][1]]);
     assert.ok(m.relations.has(f.angle));
   }
-  // The angle: the record goes and the end face is free.
+  // The angle: deletable like any relation (docs/plans/linked-profiles.md).
+  // The record stays and says why it builds nothing; the end face is free.
   {
     const { m, f } = build();
-    assert.deepEqual(del(m, f.angle), [f.name, f.angle]);
+    assert.deepEqual(del(m, f.angle), [f.angle]);
+    assert.match(m.featureOf(f.name, "revolve").unbuilt ?? "", /angle .* is deleted/);
     assert.equal(m.solve().solved, true);
   }
   // The axis line: the angle reads it, so the angle goes with it, and the
@@ -568,10 +616,9 @@ test("deleting a piece — a profile edge, an end twin, the angle, the axis line
     assert.deepEqual(del(m, axis), [f.name, f.angle, axis]);
     assert.ok(f.twins.flat().every((n) => m.entities.has(n)));
   }
-  // The primitives refuse to leave a record naming nothing.
+  // The primitive refuses to leave a record naming an entity that is gone.
   {
     const { m, f } = build();
-    assert.throws(() => m.deleteRelation(f.angle), new RegExp(`"${f.angle}" is still part of ${f.name}`));
     assert.throws(() => m.deleteEntity(f.twins[0][0]), new RegExp(`"${f.twins[0][0]}" is still part of ${f.name}`));
   }
 });

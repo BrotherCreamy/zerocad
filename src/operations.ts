@@ -11,14 +11,16 @@ import { addBSpline, splineOf } from "./kinds/spline.ts";
 import { addSpline } from "./relations/spline.ts";
 import {
   Model, ORIGIN, SETTABLE_PROPERTY, entityKind, lidReach, isClosedEntity, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
-  EXTENTS, FEATURE_MODES, type Entity, type Expansion, type Extent, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
-  type RegionEntry, type RegionOp, type RegionStep,
+  EXTENTS, FEATURE_MODES, parseFaceName, type BlendFeature, type Entity, type Expansion, type Extent, type FeatureEntry, type FeatureMode,
+  type Portion, type ProfileMember, type RegionEntry, type RegionOp, type RegionStep, type SurfaceEntry,
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
-import { dist } from "./relations/basic.ts";
+import { coplanar, dist } from "./relations/basic.ts";
+import { capPoints, faceSource } from "./relations/solidref.ts";
+import { followWith, linksOf, partnersOf, syncTwins } from "./twins.ts";
 import { angle, arcEndpoints, diameter, majorAxis, minorAxis, onCircle, onEllipse, perpendicular, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { chordPair, extrusion } from "./relations/extrusion.ts";
-import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
+import { FULL_TURN, axisReader, isFullTurn, revolution, seatTurned, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, featurePlane, framePlaneAxes, planeAxes } from "./curveplane.ts";
 import { sketchFrameFor } from "./sketchface.ts";
@@ -1837,7 +1839,7 @@ function sweptFrames(model: Model, frame: string, x: Expansion, given: unknown):
  * seeds, where a profile of free lines has no loop to be found, so a replay is
  * handed the profile and walks it by its joins.
  */
-export type Regenerated = [string, ProfileMember[][]];
+export type Regenerated = [string, ProfileMember[][]] | [string, ProfileMember[][], "open"];
 
 /** Every feature whose profile names one of `names` — whole, or a portion of it — in creation order. */
 export function featuresOnProfile(model: Model, names: readonly string[]): FeatureEntry[] {
@@ -1928,17 +1930,97 @@ export function regenerateNamed(model: Model, features: readonly string[], given
 /** A journal's (or a typed call's) list of regenerated features, checked for shape and copied. */
 export function givenRegenerated(list: unknown, op: string): Regenerated[] {
   const ok = Array.isArray(list)
-    && list.every((e) => Array.isArray(e) && e.length === 2 && typeof e[0] === "string" && Array.isArray(e[1]));
+    && list.every((e) => Array.isArray(e) && (e.length === 2 || (e.length === 3 && e[2] === "open")) && typeof e[0] === "string" && Array.isArray(e[1]));
   if (!ok) throw new Error(`${op}'s regenerated features are [feature, loops] pairs — the profile each was brought into step with`);
-  return (list as Regenerated[]).map(([name, loops]) => [name, loops]);
+  return (list as Regenerated[]).map(([name, loops, how]): Regenerated => (how === "open" ? [name, loops, how] : [name, loops]));
 }
 
 function regenerateGiven(model: Model, given: Regenerated[]): void {
-  for (const [name, loops] of given) {
+  for (const [name, loops, how] of given) {
     const f = model.featureOf(name);
+    if (how === "open" && f.kind === "extrude") {
+      rebuildOpen(model, f, loops);
+      continue;
+    }
     const profile = givenProfile(model, f.member, f.frame, loops, f.kind === "extrude" ? EXTRUDE : REVOLVE);
     rebuildFeature(model, f, planSweep(model, profile));
   }
+}
+
+/**
+ * A sweep plan for an extrude whose profile **no longer closes**
+ * (docs/plans/linked-profiles.md): its members each as they stand, end to
+ * end where they still meet, with no walk round to check. What `rebuildBody`
+ * needs to bring the other profile into step member for member — a trimmed
+ * line's twin re-pointed to the twin of its new end, that end given its twin
+ * and its wall — without the loop a solid needs.
+ */
+function planOpen(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, loops: ProfileMember[][]): SweepPlan {
+  if (!planeAxes(model, f.frame)) throw new Error(`"${f.frame}" has collapsed — it has no plane for a profile to lie in`);
+  const walked = loops.map((members) => members.map((m): Walked => {
+    const e = model.entities.get(memberName(m));
+    if (!e || !isProfileKind(e.kind)) throw new Error(`"${memberName(m)}" is not ${PROFILE_KINDS} — it cannot be part of a profile`);
+    const ends = chainEnds(model, m);
+    return { name: e.name, kind: e.kind as Walked["kind"], from: ends?.[0] ?? null, to: ends?.[1] ?? null, ends, part: typeof m !== "string" };
+  }));
+  return { frame: f.frame, loops, walked, classOf: joinClasses(model), crossings: null, toMake: [], made: new Map(), swept: [] };
+}
+
+/** An extrude rebuilt on a profile that does not close (`planOpen`), and left open. */
+function rebuildOpen(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, loops: ProfileMember[][]): ProfileMember[][] {
+  const out = rebuildFeature(model, f, planOpen(model, f, loops));
+  const { name, ...draft } = model.featureOf(f.name, "extrude");
+  model.rewriteFeature(name, { ...draft, open: true });
+  return out.loops;
+}
+
+/**
+ * Whether a feature named can be **left open** by an edit that takes its
+ * profile's closure away — a trim back from a corner — rather than refuse the
+ * edit: an extrude with its extrusion standing. The owner: *"reining in one
+ * side should trim on the other also"*; a trim that leaves the loop open is
+ * the same thing a deleted edge is, and that leaves the extrude open.
+ */
+export function canOpen(model: Model, feature: string): boolean {
+  const f = model.features.get(feature);
+  return f?.kind === "extrude" && model.relations.get(f.depth)?.op === "extrusion";
+}
+
+/**
+ * The features named brought into step with their profiles **as open**
+ * extrudes: each member's twin re-pointed or made, by `rebuildOpen`, and what
+ * to journal for each — `[name, loops, "open"]`, which a replay rebuilds the
+ * same way. What `trim` calls for a feature its change has opened.
+ */
+export function regenerateOpen(model: Model, features: readonly string[]): Regenerated[] {
+  const out: Regenerated[] = [];
+  for (const name of features) {
+    const f = model.featureOf(name, "extrude");
+    out.push([name, rebuildOpen(model, f, f.loops), "open"]);
+  }
+  return out;
+}
+
+/**
+ * **Closes every open extrude whose profile is a loop again as the drawing
+ * stands** — by any means: an end extended back to an edge, an arc drawn in.
+ * `relinkOpen` closes one by its joins alone, where the model's follower can
+ * run; this reads positions, as `regen` does, so it is the host's to call
+ * after a person's edit, and each closing is journalled as the `regen` it is.
+ * Returns the features closed.
+ */
+export function closeOpen(model: Model): string[] {
+  const closed: string[] = [];
+  for (const f of [...model.features.values()]) {
+    if (f.kind !== "extrude" || !f.open || f.unbuilt !== undefined) continue;
+    try {
+      regen(model, f.name);
+      closed.push(f.name);
+    } catch {
+      // not a loop yet
+    }
+  }
+  return closed;
 }
 
 /**
@@ -2415,13 +2497,18 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
       for (const loop of walked) {
         for (const m of loop) {
           if (m.from === null) continue;
-          const k = classKey(classOf, real(m.from));
-          if (walled.has(k)) continue;
-          walled.add(k);
-          const { base, twin } = byClass.get(k)!;
-          const w = oldWall.get(k);
-          const stands = w !== undefined && model.line(w).refs[0] === base && model.line(w).refs[1] === twin;
-          walls.push(made(stands ? w : model.addLine(base, twin).name));
+          // Each member's start, then its end: in a closed loop the end is the
+          // next member's start, so the order — and every name — is what it
+          // was; an open chain's last vertex (`planOpen`) gets its wall too.
+          for (const v of [m.from, m.to!]) {
+            const k = classKey(classOf, real(v));
+            if (walled.has(k)) continue;
+            walled.add(k);
+            const { base, twin } = byClass.get(k)!;
+            const w = oldWall.get(k);
+            const stands = w !== undefined && model.line(w).refs[0] === base && model.line(w).refs[1] === twin;
+            walls.push(made(stands ? w : model.addLine(base, twin).name));
+          }
         }
       }
     }
@@ -2457,9 +2544,12 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   }
 
   // What has gone, last: nothing of the feature names it now, so the ordinary
-  // cascade takes it and whatever needed it, and leaves the feature be.
+  // cascade takes it and whatever needed it, and leaves the feature be. The
+  // plain inward rule, not the linked one: a twin made again is going because
+  // its profile was restructured, and its partner on the base is what stays.
   const keep = new Set(owns);
-  for (const n of f.owns) if (!keep.has(n) && model.has(n)) delOne(model, n);
+  releaseTwins(model, new Set(f.owns.filter((n) => !keep.has(n) && model.entities.has(n))));
+  for (const n of f.owns) if (!keep.has(n) && model.has(n)) delOne(model, n, false);
   // The perpendicular stands on the chord's pair; if what went took a point of
   // it, it is made again on the new chord — it was the feature's, not deleted
   // by anyone. One the user had deleted stays deleted.
@@ -3812,7 +3902,20 @@ export function set(model: Model, path: string, value: number): string {
   return model.asOperation("set", [path, value], () => {
     const reachWas = entry.op === "extrusion" ? lidReach(model, name, entry.args[1] as number) : 0;
     model.rebuildRelation(name, entry.op, args, () => rebuild(model, args));
+    // **A linked pair shares one value** (docs/plans/linked-profiles.md): the
+    // dimension's twin on the other profile is the same dimension, so setting
+    // either sets both — the lid's 40 drives the base as the base's drives the
+    // lid — inside this one entry, as a replay does it.
+    for (const other of model.linkedRelations(name)) {
+      const o = model.relationOf(other);
+      if (other === name || o.op !== entry.op) continue;
+      const twinned = o.args.slice();
+      twinned[at] = value;
+      model.rebuildRelation(other, o.op, twinned, () => rebuild(model, twinned));
+    }
     if (entry.op === "extrusion") reseatLid(model, name, reachWas);
+    // And a revolve's end face, for the same reason (relations/revolution.ts).
+    if (entry.op === "revolution") seatTurned(model, name);
     return name;
   });
 }
@@ -3913,7 +4016,7 @@ export function del(model: Model, ...names: string[]): string[] {
  *   profile it was built on, which was the user's sketch before the feature
  *   existed. Onshape's rule: deleting an extrude keeps its sketch.
  */
-function delOne(model: Model, name: string): string[] {
+function delOne(model: Model, name: string, linked = true): string[] {
   // A region named goes with the features standing on it — each as del("e1")
   // takes it, the sketch kept — since a feature on no region has nothing to
   // regenerate from.
@@ -3928,25 +4031,209 @@ function delOne(model: Model, name: string): string[] {
   // region, the region loses the face (`regionsLosing`).
   const filled: string[] = [];
   let going = new Set<string>();
-  if (!model.features.has(name)) {
-    going = model.entities.has(name) ? entityClosure(model, [name]) : new Set<string>();
+  const record = model.features.has(name) || model.blends.has(name) || model.surfaces.has(name);
+  if (!record) {
+    // **An edit to one linked profile is an edit to both** (`linkedClosure`):
+    // the partner of everything going goes with it.
+    going = !model.entities.has(name) ? new Set<string>() : linked ? linkedClosure(model, [name]) : entityClosure(model, [name]);
     for (const run of regionsLosing(model, going)) filled.push(...run());
     for (const run of holesGoing(model, going, false)) filled.push(...run());
+    // An extrude losing an edge stays, open (`unsweep`): journalled ahead of
+    // the deletions, so the record names none of what goes next.
+    if (linked) unsweepGoing(model, going);
   }
-  const rest = model.has(name) ? cascade(model, name) : [];
+  // What is still to go: a hole's regeneration may have taken the name itself
+  // (a lid's rim), and its partner on the other profile is still there.
+  const left = [...going].filter((n) => n !== name && model.entities.has(n));
+  const rest = model.has(name) ? cascade(model, name, left) : left.length ? cascade(model, left[0], left.slice(1)) : [];
   // A region whose first face went goes too, once nothing stands on it.
   const regions = going.size ? regionsGone(model, new Set([...going, ...rest])) : [];
   return [...filled, ...rest, ...regions];
 }
 
-/** `delOne` once any hole it fills is filled: the inward rule, for records, relations and entities. */
-function cascade(model: Model, name: string): string[] {
-  // A fillet's or chamfer's record cascades as a feature's does (docs/plans/solid-fillets.md).
-  // A surface's record too (docs/plans/surfaces.md): its dimension goes with it.
+/**
+ * The entities that cannot outlive `names` **on either linked profile**
+ * (docs/plans/linked-profiles.md): `entityClosure`, and then the partner of
+ * each across every link (`linksOf` — an extrude's or an edge extrude's two
+ * profiles), and what cannot outlive those, until nothing is added. The
+ * owner: *"Deleting a line would break it obviously. The other side of an
+ * extrude profile is an identically linked profile/sketch entities. If you
+ * change one the other follows automatically."* So a base line takes its lid
+ * line, a lid corner its base corner — and, both ends of it going, the wall
+ * between them.
+ */
+function linkedClosure(model: Model, names: string[]): Set<string> {
+  let found = entityClosure(model, names);
+  const links = linksOf(model);
+  if (!links.length) return found;
+  for (let grew = true; grew;) {
+    grew = false;
+    const more: string[] = [];
+    for (const n of found) for (const { partner } of partnersOf(model, n, links)) if (!found.has(partner)) more.push(partner);
+    if (more.length) {
+      found = entityClosure(model, [...found, ...more]);
+      grew = true;
+    }
+  }
+  return found;
+}
+
+/** The relation that **is** a record, beside the record: an extrude's depth, a revolve's angle, a blend's or a surface's size. */
+function dimensionOf(f: FeatureEntry | BlendFeature | SurfaceEntry): string | undefined {
+  if (f.kind === "extrude" && "depth" in f) return f.depth;
+  if (f.kind === "revolve" && "angle" in f) return f.angle;
+  return (f as BlendFeature | SurfaceEntry).size;
+}
+
+/**
+ * Whether an extrude (or an edge extrude) can lose `gone` and stay, as
+ * `unsweep` leaves it: its extrusion still there with a chord left to hold,
+ * and nothing going that it is laid out by — its sketch frame, an old file's
+ * lid frame.
+ */
+function canUnsweep(model: Model, record: string, gone: ReadonlySet<string>): boolean {
+  const f = model.features.get(record);
+  const s = model.surfaces.get(record);
+  const depth = f?.kind === "extrude" ? f.depth : s?.kind === "extrude" ? s.size : undefined;
+  const dim = depth === undefined ? undefined : model.relations.get(depth);
+  if (!dim || dim.op !== "extrusion") return false;
+  const frame = (f ?? s)!.frame;
+  if (frame === undefined || planeNames(model, frame).some((n) => gone.has(n))) return false;
+  if (f?.kind === "extrude" && f.top !== undefined) {
+    if (gone.has(f.top) || model.refsOf(model.frame(f.top)).some((p) => gone.has(p))) return false;
+  }
+  const pairs = dim.args.slice(2) as string[];
+  const kept: string[] = [];
+  for (let i = 0; i + 1 < pairs.length; i += 2) if (!gone.has(pairs[i]) && !gone.has(pairs[i + 1])) kept.push(pairs[i], pairs[i + 1]);
+  return chordPair(model, frame, kept) !== null;
+}
+
+/**
+ * **An extrude stops sweeping what is about to be deleted, and stays** —
+ * `unsweep("e1", ["l1", "l5"])` (docs/plans/linked-profiles.md). The owner's
+ * answer, that deleting a line of one profile *"would break it obviously"*,
+ * read with twins editing together: the line and its twin both go, and the
+ * extrude is then **open** — the record kept, its `loops` what is left of the
+ * profile, the walls of the edges that survive still swept and drawn (an edge
+ * extrude is the fundamental feature), no base or lid face, the organiser's
+ * row saying *open* — until the missing edge is drawn again (`relinkOpen`).
+ * Rejected: taking the record on the first missing line, which turns a slip
+ * of the finger into the loss of the feature.
+ *
+ * What it does, and all it does: the members named (and a member whose twin,
+ * or whose portion's end, is named) leave `loops` and `twins`; a wall named
+ * leaves `walls`; a pair with a point named leaves the `extrusion`, rebuilt
+ * in place over the pairs left, and the chord's perpendicular is made again
+ * on the new chord when the old chord's points are going; the record names
+ * none of them any more. An edge extrude loses its curves the same way.
+ * Nothing is deleted here: `del` journals this ahead of the deletions it then
+ * makes, as it journals a hole's filling, so a replay opens the record and
+ * then removes what the call removed. Never typed.
+ */
+export function unsweep(model: Model, record: string, names: unknown): string {
+  if (!Array.isArray(names) || names.some((n) => typeof n !== "string")) {
+    throw new Error("unsweep takes a record and the names it stops sweeping — what a deletion journals ahead of itself");
+  }
+  const gone = new Set(names as string[]);
+  if (!canUnsweep(model, record, gone)) {
+    throw new Error(`"${record}" is no extrude that can lose ${[...gone].join(", ")} and stand — its extrusion, its chord or its plane would go`);
+  }
+  return model.asOperation("unsweep", [record, [...gone]], () => {
+    const f = model.features.get(record);
+    const s = model.surfaces.get(record);
+    const depth = (f?.kind === "extrude" ? f.depth : s!.size)!;
+    const frame = (f ?? s)!.frame!;
+    const dim = model.relationOf(depth);
+    const pairs = dim.args.slice(2) as string[];
+    const kept: string[] = [];
+    for (let i = 0; i + 1 < pairs.length; i += 2) if (!gone.has(pairs[i]) && !gone.has(pairs[i + 1])) kept.push(pairs[i], pairs[i + 1]);
+    if (kept.length !== pairs.length) {
+      const args = [dim.args[0], dim.args[1], ...kept];
+      model.rebuildRelation(depth, "extrusion", args, () => REBUILD.extrusion(model, args));
+      // The perpendicular stands on the chord's own two points: the old chord
+      // going, it is made again on the new one, under its name.
+      const perp = model.relations.get(perpName(record));
+      if (perp && perp.args.some((a) => typeof a === "string" && gone.has(a))) {
+        model.deleteRelation(perp.name);
+        const chord = chordPair(model, frame, kept)!;
+        model.namedRelation(perp.name, () => perpendicular(model, chord.base, chord.twin, record));
+      }
+    }
+    const stays = (n: string) => !gone.has(n);
+    if (f?.kind === "extrude") {
+      let opened = false;
+      const loops: ProfileMember[][] = [];
+      const twins: string[][] = [];
+      f.loops.forEach((loop, i) => {
+        const l: ProfileMember[] = [];
+        const t: string[] = [];
+        loop.forEach((m, j) => {
+          const whole = stays(memberName(m)) && stays(f.twins[i][j]) && (typeof m === "string" || (stays(m.from) && stays(m.to)));
+          if (whole) { l.push(m); t.push(f.twins[i][j]); } else opened = true;
+        });
+        // The outline's place is kept even empty — every reader asks for loop 0 — and a hole with nothing left is no loop.
+        if (l.length || i === 0) { loops.push(l); twins.push(t); }
+      });
+      const { name, ...draft } = f;
+      const member = stays(f.member) ? f.member : loops.flat().map(memberName)[0] ?? f.member;
+      model.rewriteFeature(name, {
+        ...draft, member, loops, twins, walls: f.walls.filter(stays), names: f.names.filter(stays), owns: f.owns.filter(stays),
+        ...(opened || f.open ? { open: true as const } : {}),
+        shed: [...(f.shed ?? []).filter((n) => model.entities.has(n)), ...gone],
+      });
+    } else if (s) {
+      s.curves = (s.curves ?? []).filter(stays);
+      s.loops = (s.loops ?? []).map((l) => l.filter((m) => stays(memberName(m)) && (typeof m === "string" || (stays(m.from) && stays(m.to)))));
+      s.names = s.names.filter(stays);
+      s.owns = s.owns.filter(stays);
+    }
+    return record;
+  });
+}
+
+/**
+ * Every extrude and edge extrude whose record names something of `going`,
+ * opened (`unsweep`) where it can lose it and stand. One that cannot — its
+ * sketch frame going, its last pair — is left to the cascade, which takes the
+ * record with the relation that is the extrude and leaves the rest.
+ */
+function unsweepGoing(model: Model, going: ReadonlySet<string>): void {
+  if (!going.size) return;
+  const records = [
+    ...[...model.features.values()].filter((f) => f.kind === "extrude"),
+    ...[...model.surfaces.values()].filter((s) => s.kind === "extrude" && s.size !== undefined && model.relations.get(s.size)?.op === "extrusion"),
+  ];
+  for (const f of records) {
+    const hit = f.names.filter((n) => going.has(n));
+    if (!hit.length || !canUnsweep(model, f.name, going)) continue;
+    // An edge extrude with no curve left sweeps nothing: the cascade's.
+    if (!("walls" in f) && !(f.curves ?? []).some((c) => !going.has(c))) continue;
+    unsweep(model, f.name, hit);
+  }
+}
+
+/**
+ * `delOne` once any hole it fills is filled and any extrude it opens is
+ * open: the inward rule, for records, relations and entities — `extra` more
+ * entities going in the same deletion (a linked profile's partners).
+ *
+ * **A record asked for takes the relation that is the feature and no
+ * entity** (docs/plans/linked-profiles.md, the register's item 4: *features
+ * relate, they do not own*). The owner: *"i don't like the idea of anything
+ * being 'consumed' as this implies unidirectional hierarchy"*, and of
+ * deleting an extrude leaving both profiles and the chords as plain geometry:
+ * *"Yes."* So `del("e1")` removes the record, its `extrusion` (the link: the
+ * twins made across it are ordinary relations from then on, each profile
+ * keeping its own) and the relations that read the record (`e1_perp`, a
+ * dimension to one of its faces) — and the lid, the walls and every point
+ * stay, as deleting a `sym` leaves both halves. A revolve leaves its end
+ * face, a fillet or a surface nothing but what it was made on.
+ */
+function cascade(model: Model, name: string, extra: readonly string[] = []): string[] {
   const feature = model.features.get(name) ?? model.blends.get(name) ?? model.surfaces.get(name);
-  const owned = (pred: (n: string) => boolean) => (feature ? feature.owns.filter(pred) : []);
-  const seeds = feature ? owned((n) => model.entities.has(n)) : model.entities.has(name) ? [name] : [];
-  const asked = new Set(feature ? owned((n) => model.relations.has(n)) : model.relations.has(name) ? [name] : []);
+  const seeds = feature ? [] : [...new Set([...(model.entities.has(name) ? [name] : []), ...extra])];
+  const own = feature ? dimensionOf(feature) : undefined;
+  const asked = new Set(feature ? (own !== undefined && model.relations.has(own) ? [own] : []) : model.relations.has(name) ? [name] : []);
 
   const doomed = entityClosure(model, seeds);
   // Every relation that names anything on the way out, plus the relations
@@ -3959,7 +4246,9 @@ function cascade(model: Model, name: string): string[] {
   // docs/plans/review-relations.md): `par("l1", "l2", "l3", "l4")` with `l1`
   // on its way out is `par("l2", "l3", "l4")` afterwards, under its name —
   // whichever member it was, so the first one picked is no more load-bearing
-  // than the last. Down to two; with one left it goes like any other.
+  // than the last. Down to two; with one left it goes like any other. Its
+  // twin on a linked profile loses the partner member in the same deletion
+  // (`linkedClosure` dooms both), by the same rule, and so is its twin still.
   const shrinking = new Map<string, string[]>();
   const relations: string[] = [];
   for (const r of model.relations.values()) {
@@ -3968,16 +4257,34 @@ function cascade(model: Model, name: string): string[] {
     if (leaving) shrinking.set(r.name, leaving);
     else relations.push(r.name);
   }
-  // Every record naming anything on the way out — the inward rule — plus the
-  // feature asked for.
-  const going = new Set([...doomed, ...relations]);
+  // **A twin is its partner's to keep** (twins.ts). Where the relation it is
+  // the twin of stays — shrunk here, or untouched — the twin is neither
+  // shrunk nor deleted on its own account: it is forgotten, and the pass that
+  // follows the partner's `leave` makes it again from what the partner then
+  // says. So no `leave` is journalled for a twin, as no entry is for its
+  // making, and a replay — which makes the twin again after the partner's
+  // `leave`, before this deletion's entities go — reads the same. One a
+  // person made that was adopted as a twin is their relation, and is treated
+  // as any other.
+  const stale: string[] = [];
+  for (const r of model.relations.values()) {
+    if (!r.twin || r.twin.adopted || asked.has(r.name)) continue;
+    if (!shrinking.has(r.name) && !relations.includes(r.name)) continue;
+    if (relations.includes(r.twin.of) || !model.relations.has(r.twin.of)) continue; // the pair goes as one
+    shrinking.delete(r.name);
+    if (relations.includes(r.name)) relations.splice(relations.indexOf(r.name), 1);
+    stale.push(r.name);
+  }
+  // Every record naming an **entity** on the way out — the inward rule — plus
+  // the record asked for. Not a relation: one a record names going leaves the
+  // record, unbuilt and saying why (`Model.deleteRelation`).
   const features = [...model.features.values(), ...model.blends.values()]
-    .filter((f) => f.name === name || f.names.some((n) => going.has(n)))
+    .filter((f) => f.name === name || f.names.some((n) => doomed.has(n)))
     .map((f) => f.name);
   // Surfaces naming anything on the way out — a curve swept, a feature a face
   // was taken from, a surface trimmed by or knitted — and the records changing
-  // those, transitively; each with its own dimension.
-  const gone = new Set([...going, ...features]);
+  // those, transitively.
+  const gone = new Set([...doomed, ...features]);
   for (let grew = true; grew;) {
     grew = false;
     for (const sf of model.surfaces.values()) {
@@ -3985,17 +4292,26 @@ function cascade(model: Model, name: string): string[] {
       if (sf.name === name || sf.names.some((n) => gone.has(n)) || (sf.into !== undefined && gone.has(sf.into))) {
         gone.add(sf.name);
         features.push(sf.name);
-        for (const d of sf.owns) if (model.relations.has(d) && !relations.includes(d)) relations.push(d);
+        // Its own size goes with it — a value nothing else reads — but not an
+        // edge extrude's extrusion, which still holds the copies to their curves.
+        for (const d of sf.owns) {
+          if (model.relations.has(d) && model.relationOf(d).op !== "extrusion" && !relations.includes(d)) relations.push(d);
+        }
         grew = true;
       }
     }
   }
+  // A record that goes because something it stood on went — not asked for —
+  // leaves its dimension, as it always did: the two profiles are still one
+  // translated pair, still linked, with nothing making a body of them.
 
   // A relation naming a going record's face or edge — `fdist("e1.lid", …)`,
   // `measure("length", "e1.lid|e1.m0")` (docs/plans/smart-dimension.md) —
   // goes with the record: the name reads the record (`referentOf` is "e1"),
-  // and a record gone leaves it reading nothing.
+  // and a record gone leaves it reading nothing. First, a point held on one
+  // of its flat faces is re-held on the geometry that remains (`reholdFaces`).
   const records = new Set(features);
+  reholdFaces(model, records);
   for (const r of model.relations.values()) {
     if (relations.includes(r.name)) continue;
     if (r.args.some((a) => typeof a === "string" && a.split("|").some((part) => records.has(referentOf(part) ?? "")))) relations.push(r.name);
@@ -4010,11 +4326,17 @@ function cascade(model: Model, name: string): string[] {
     removed.push(f);
   }
   for (const r of relations) {
+    // A linked pair goes as one (`Model.deleteRelation`): the twin may be gone already.
+    if (!model.relations.has(r)) continue;
+    const pair = model.linkedRelations(r);
     model.deleteRelation(r);
-    removed.push(r);
+    removed.push(...pair);
   }
   // The members going leave the relations that stay — journalled as a `leave`
-  // each, ahead of the deletions, so a replay leaves them the same way.
+  // each, ahead of the deletions, so a replay leaves them the same way. A
+  // twin of one is forgotten first and made again by the pass that follows
+  // its partner's `leave` (see `stale`).
+  for (const t of stale) if (model.relations.has(t)) model.forgetRelation(t);
   for (const [r, leaving] of shrinking) if (model.relations.has(r)) leaveFor(model, r, leaving);
   // Then entities, dependents before the things they depend on. A pass at a
   // time rather than a hand-written order, so this stays right if an entity
@@ -4057,3 +4379,232 @@ function entityClosure(model: Model, names: string[]): Set<string> {
   for (const e of model.entities.values() as Iterable<Entity>) if (found.has(e.name)) ordered.add(e.name);
   return ordered;
 }
+
+// --- linked profiles: the upkeep an operation needs --------------------------
+
+/**
+ * Before a regeneration deletes what has left a profile's expansion: the
+ * relations naming it are **unpaired first**, so the cascade that takes them
+ * takes them alone. A twin (made for the link) is forgotten — its partner on
+ * the profile that stayed is twinned afresh, onto the piece made in its
+ * place, by the pass that follows the operation. A relation a person put on
+ * the piece going, whose twin is on what stays, is forgotten too and its twin
+ * left an ordinary relation: the statement survives on the profile that
+ * still has something to say it of, and is twinned back across.
+ */
+function releaseTwins(model: Model, leaving: ReadonlySet<string>): void {
+  if (!leaving.size) return;
+  const names = (r: { args: unknown[] }) => r.args.some((a) => referentsOf(a).some((n) => leaving.has(n)));
+  for (const r of [...model.relations.values()]) {
+    if (!model.relations.has(r.name) || !names(r)) continue;
+    if (r.twin) {
+      if (r.twin.adopted) model.setTwin(r.name, null);
+      else model.forgetRelation(r.name);
+    } else if ([...model.relations.values()].some((d) => d.twin?.of === r.name && !names(d))) {
+      model.forgetRelation(r.name);
+    }
+  }
+}
+
+/** Three of `points` that span a plane as they stand — the three making the largest triangle — or null. */
+function spanning(model: Model, points: readonly string[]): [string, string, string] | null {
+  let best: [string, string, string] | null = null, area = 1e-9;
+  for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) for (let k = j + 1; k < points.length; k++) {
+    const [a, b, c] = [points[i], points[j], points[k]].map((p) => lift3(model.coords(p)));
+    const n = cross3(sub3(b, a), sub3(c, a));
+    const size = Math.hypot(...n);
+    if (size > area) { area = size; best = [points[i], points[j], points[k]]; }
+  }
+  return best;
+}
+
+/**
+ * **A point held on a flat face of a record that is going is re-held on the
+ * geometry that remains** (docs/plans/linked-profiles.md, item 4: a relation
+ * that named a feature's face goes with the feature only where the face
+ * itself is gone). `onplane(p, "e1.lid")` reads the record; the lid's points
+ * stay when the extrude is deleted, and the lid's plane is theirs — so the
+ * relation becomes `coplanar(p, a, b, c)` over three of them (a wall: its
+ * line's two ends and one's partner), **under its own name**, both ways as it
+ * was. Journalled as `rehold`, ahead of the deletion. A round wall has no
+ * three points that are its surface, and a face dimension (`fdist`) has no
+ * relation between entities that says the same: those go with the record.
+ */
+function reholdFaces(model: Model, records: ReadonlySet<string>): void {
+  if (!records.size) return;
+  for (const r of [...model.relations.values()]) {
+    if (r.op !== "onPlane" || typeof r.args[1] !== "string") continue;
+    const face = parseFaceName(r.args[1]);
+    if (!face || !records.has(face.feature)) continue;
+    const s = faceSource(model, r.args[1]);
+    let points: string[] = [];
+    if (s?.kind === "cap") points = capPoints(model, s.feature, s.which);
+    else if (s?.kind === "wall" && s.shape === "plane" && s.whole) {
+      const refs = model.line(s.entity).refs;
+      const link = linksOf(model).find((l) => l.record === face.feature);
+      const across = link?.fwd.get(refs[0]) ?? link?.fwd.get(refs[1]);
+      points = across === undefined ? [] : [...refs, across];
+    }
+    const three = spanning(model, points.filter((p) => model.entities.get(p)?.kind === "point" && p !== r.args[0]));
+    if (three) rehold(model, r.name, three);
+  }
+}
+
+/**
+ * Re-holds a point's `onplane` as `coplanar` over three points —
+ * `rehold("r7", ["p5", "p6", "p7"])` — in place, under its name. What a
+ * deletion journals ahead of itself for a point held on a face of the record
+ * going (`reholdFaces`), with the three resolved; never typed.
+ */
+export function rehold(model: Model, relation: string, points: unknown): string {
+  const r = model.relationOf(relation);
+  const ok = Array.isArray(points) && points.length === 3 && points.every((p) => typeof p === "string" && model.entities.get(p)?.kind === "point");
+  if (r.op !== "onPlane" || !ok) throw new Error("rehold moves a point's onplane onto three points — what a deletion journals for a face going");
+  const [a, b, c] = points as string[];
+  const p = r.args[0] as string;
+  return model.asOperation("rehold", [relation, [a, b, c]], () => {
+    model.rebuildRelation(relation, "coplanar", [p, a, b, c], () => void coplanar(model, p, a, b, c));
+    return relation;
+  });
+}
+
+/** A profile member's two ends, as a chain is walked by — null for one closed on itself. */
+function chainEnds(model: Model, m: ProfileMember): [string, string] | null {
+  if (typeof m !== "string") return [m.from, m.to];
+  const e = model.entities.get(m);
+  if (!e) return null;
+  if (e.kind === "line") return [e.refs[0], e.refs[1]];
+  if (e.kind === "arc") return [e.start, e.end];
+  if (e.kind === "spline" && !e.closed) return [e.points[0], e.points[e.points.length - 1]];
+  const ends = entityKind(e.kind)?.ends?.(e);
+  return ends ? [ends[0], ends[1]] : null;
+}
+
+/**
+ * **An open extrude takes back an edge drawn again, and closes**
+ * (docs/plans/linked-profiles.md): *"Closing the loop again (drawing the
+ * missing line on either profile, which twins at once) makes it a solid
+ * again."* For each open extrude:
+ *
+ * - a line (not construction) between two points of one of its profiles that
+ *   is no part of it yet **joins it**, with its partner on the other profile —
+ *   the line already there between the partner points, or one made now. So a
+ *   line drawn on the lid is drawn on the base in the same step, and the
+ *   other way;
+ * - then, if what the profile has walks closed again by its joins — every
+ *   member in a loop — the feature is rebuilt on it (`rebuildFeature`: the
+ *   walls and twins that stand kept, by name) and is a solid once more.
+ *
+ * Decided by names and joins, never positions, and run where the twins are
+ * (the model's follower): after a relation or an outermost operation, and
+ * after an entity is made — so a replay closes it at the same step, under the
+ * same names, with no entry of its own. A profile that forks (two edges
+ * leaving one corner) is not closed until one of them goes. Lines only: an
+ * arc drawn back needs its centre's partner, which a regeneration makes
+ * (`regen`), not this.
+ */
+export function relinkOpen(model: Model): boolean {
+  let changed = false;
+  for (const f of [...model.features.values()]) {
+    if (f.kind !== "extrude" || !f.open || !model.relations.has(f.depth)) continue;
+    try {
+      if (model.withoutRecording(() => relinkOne(model, f.name))) changed = true;
+    } catch {
+      // not closed yet: it stays open, and says so
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** One open extrude: its new edges taken in, and closed if it walks closed. Whether anything changed. */
+function relinkOne(model: Model, name: string): boolean {
+  let f = model.featureOf(name, "extrude");
+  const link = linksOf(model).find((l) => l.record === name);
+  if (!link) return false;
+  const isPoint = (n: string) => model.entities.get(n)?.kind === "point";
+  // Its own already, or on its way out (`shed`): neither is an edge drawn again.
+  const mine = new Set([...f.loops.flat().map(memberName), ...f.twins.flat(), ...f.walls, ...(f.shed ?? [])]);
+  const added: [string, string][] = [];
+  // A profile's points by their joined class: the line tool joins a new line's
+  // ends to the corners it snapped to by `coin`, so its ends are *joined to*
+  // two profile points rather than being them.
+  const joins = joinClasses(model);
+  const at = (way: ReadonlyMap<string, string>) => {
+    const out = new Map<number | string, string>();
+    for (const p of way.keys()) if (isPoint(p) && !out.has(classKey(joins, p))) out.set(classKey(joins, p), p);
+    return out;
+  };
+  const [onBase, onLid] = [at(link.fwd), at(link.back)];
+  for (const e of [...model.entities.values()]) {
+    if (e.kind !== "line" || mine.has(e.name) || model.isConstruction(e.name)) continue;
+    const [a, b] = e.refs.map((p) => classKey(joins, p));
+    if (a === b) continue;
+    const [side, way] = onBase.has(a) && onBase.has(b) ? [onBase, link.fwd] : onLid.has(a) && onLid.has(b) ? [onLid, link.back] : [null, null];
+    if (!side || !way) continue;
+    const partner = way.get(e.name) ?? model.addLine(way.get(side.get(a)!)!, way.get(side.get(b)!)!).name;
+    if (mine.has(partner)) continue;
+    added.push(way === link.fwd ? [e.name, partner] : [partner, e.name]);
+    mine.add(e.name);
+    mine.add(partner);
+  }
+  if (added.length) {
+    const { name: _, ...draft } = f;
+    const loops = f.loops.map((l) => [...l]);
+    const twins = f.twins.map((t) => [...t]);
+    for (const [base, twin] of added) { loops[0].push(base); twins[0].push(twin); }
+    f = model.rewriteFeature(name, {
+      ...draft, loops, twins, names: [...new Set([...f.names, ...added.flat()])], owns: [...new Set([...f.owns, ...added.map(([, t]) => t)])],
+    }) as typeof f;
+  }
+
+  // Walked by its joins: closed only when every member is in a loop.
+  const classOf = joinClasses(model);
+  const cls = (p: string) => classKey(classOf, p);
+  const unused = new Set(f.loops.flat());
+  if (!unused.size) return added.length > 0;
+  const loops: ProfileMember[][] = [];
+  while (unused.size) {
+    const first = unused.values().next().value as ProfileMember;
+    unused.delete(first);
+    const ends = chainEnds(model, first);
+    if (!ends) { loops.push([first]); continue; }
+    const loop = [first];
+    const home = cls(ends[0]);
+    let at = cls(ends[1]);
+    while (at !== home) {
+      const next = [...unused].filter((m) => chainEnds(model, m)?.some((p) => cls(p) === at));
+      if (next.length !== 1) return added.length > 0;
+      unused.delete(next[0]);
+      loop.push(next[0]);
+      const [x, y] = chainEnds(model, next[0])!;
+      at = cls(x) === at ? cls(y) : cls(x);
+    }
+    loops.push(loop);
+  }
+  // The outline first: the loop keeping the most of what the outline was.
+  const was = new Set(f.loops[0].map(memberName));
+  const kept = (l: ProfileMember[]) => l.filter((m) => was.has(memberName(m))).length;
+  loops.sort((a, b) => kept(b) - kept(a));
+  const plan = planSweep(model, { frame: f.frame, loops });
+  const member = loops[0].some((m) => memberName(m) === f.member) ? f.member : memberName(loops[0][0]);
+  if (member !== f.member) {
+    const { name: _, ...draft } = f;
+    f = model.rewriteFeature(name, { ...draft, member }) as typeof f;
+  }
+  rebuildFeature(model, f, plan);
+  // Its region's first face is the outline as it is again, where it named what went.
+  const region = f.region === undefined ? undefined : model.regions.get(f.region);
+  if (region) {
+    const face = [...new Set(loops[0].map(memberName))];
+    const first = region.steps[0];
+    if (!model.entities.has(first.member) || first.face.some((m) => !model.entities.has(memberName(m)))) {
+      first.member = face.includes(first.member) ? first.member : face[0];
+      first.face = face;
+    }
+  }
+  return true;
+}
+
+// Closing first — it makes a line's partner — then the twins, which read it.
+followWith(relinkOpen);

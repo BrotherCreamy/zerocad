@@ -163,15 +163,19 @@ test("deleting a member takes it out of its groups, an emptied group stays, and 
   assert.deepEqual([...reopened.groups.values()], [...m.groups.values()], "and a replay agrees");
 });
 
-test("deleting a relation leaves its groups too; deleting a feature leaves what it made in no group", async () => {
+// A deleted feature used to take what it made, and so empty the group. It
+// takes only its depth now (docs/plans/linked-profiles.md): the lid and the
+// walls are plain geometry, and still grouped.
+test("deleting a relation leaves its groups too; deleting a feature leaves what it made, still in its group", async () => {
   const { m } = await solid();
   const f = m.featureOf("e1");
   group(m, "e1");
   del(m, "e1");
-  assert.deepEqual(members(m, "g1"), [], "everything in it went with the solid, and the grouping stays");
+  const made = f.owns.filter((n) => m.entities.has(n));
+  assert.ok(made.length > 0 && made.length === f.owns.length - 1, "everything it made but its depth is still there");
+  assert.deepEqual(members(m, "g1"), made, "and still grouped: only the depth, a relation deleted, left the group");
   assert.ok(ops(m).includes("removeFrom"));
   assert.equal(m.hidden.size, 0);
-  assert.ok(!f.owns.some((n) => m.has(n)));
 });
 
 // --- hide and show --------------------------------------------------------------

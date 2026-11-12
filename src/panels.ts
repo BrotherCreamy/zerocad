@@ -4309,7 +4309,7 @@ export class OptionsPanel {
     // Neither types a line of its own: ✓ is Enter and ✗ is Escape, which the
     // feature's lines are typed by, so the tip names the key, not a command.
     const ok = button("ok", "✓", () => ({
-      // "…; the tool stays armed" until bug 74: a confirm puts the tool
+      // "…; the tool stays armed" until bug 77: a confirm puts the tool
       // down (feature.ts's `done`, since the opaque-solids merge), and the
       // tip went on saying otherwise — found by pressing ✓ in the browser.
       name: "Confirm", key: "Enter", summary: "Builds what the preview shows, and puts the tool down",

@@ -351,21 +351,25 @@ test("a sketch-frame point the profile comes to run through takes the version-10
   assert.equal(new Set(f.owns).size, f.owns.length);
 });
 
-test('del("e1") takes exactly what it made — the twins its frame stands on once — and leaves the sketch and the typed frame', async () => {
+// It took what it made until linked profiles (docs/plans/linked-profiles.md);
+// now the record goes with the relation that is the extrude, and nothing else.
+test('del("e1") takes the record, its extrusion and its perpendicular — and leaves the sketch, the lid and the walls', async () => {
   await loadKernel();
   const { m } = ownersPlate();
   const entities = [...m.entities.keys()];
   const relations = [...m.relations.keys()];
   await typed(m, `extrude("l1", 10)`);
   const f = m.featureOf("e1", "extrude");
+  const made = f.owns.filter((n) => m.entities.has(n));
+  const twins = [...m.relations.values()].filter((r) => r.twin).map((r) => r.name);
   const removed = del(m, "e1");
-  assert.equal(removed.length, new Set(removed).size);
-  assert.deepEqual(new Set(removed), new Set(["e1", ...f.owns, "e1_perp"]), "the record and what it owns, each once, and its perpendicular (profiles-held.md)");
+  assert.deepEqual(removed, ["e1", f.depth, "e1_perp"]);
   // A frameless sketch runs along the origin's +z, and no frame is made for it
-  // (docs/plans/frameless-curves.md): the sketch is all that is left.
+  // (docs/plans/frameless-curves.md).
   assert.equal(f.frame, "origin");
-  assert.deepEqual([...m.entities.keys()], entities, "the sketch, and nothing the call made");
-  assert.deepEqual([...m.relations.keys()], relations);
+  assert.deepEqual([...m.entities.keys()], [...entities, ...made], "the sketch, then what the call made — all of it");
+  assert.deepEqual([...m.relations.keys()].filter((n) => !twins.includes(n)), relations);
+  for (const n of twins) assert.ok(m.relations.has(n) && !m.relationOf(n).twin, `${n}: the lid's own relation now`);
   assert.equal(m.solve().solved, true);
 });
 

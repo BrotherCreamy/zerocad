@@ -24,10 +24,66 @@ etc).
   read; the second time, the steps alone. `ui({ tips: false })` and the logo
   menu's View turn it off. **The palette on a phone shows two relations
   where it showed one** (a section with nothing in it gives way to a row),
-  and its empty state says what to pick. Bug 74: the ✓'s tooltip said the
+  and its empty state says what to pick. Bug 77: the ✓'s tooltip said the
   tool stays armed. Landscape is a limitation (the tip lies over the
   drawing's right). Unit: `test/toolhowto.test.ts`; e2e: `toolhowto.e2e.ts`
   (iPhone 13 and mouse).
+- **An extrude's two profiles are peers, and a feature relates, it does not
+  own** (docs/plans/linked-profiles.md, built; review item 4). The owner:
+  *"i mean kind of like mirror relations"*, *"i don't like the idea of
+  anything being 'consumed'"*, *"If you change one the other follows
+  automatically."* The `extrusion` relation is the link (`twins.ts`,
+  `linksOf`); every relation within one profile has a **twin** on the other
+  — a registry entry named for its partner, `r3_e1`, which holds no rows
+  while the link stands and wakes with its own when the link is deleted.
+  Shapes and directions twin, positions (`fix`, `onplane`) and anything
+  reaching outside the profile do not; each relation's module entry says
+  which (`RelationDecl.twin`). `set` and `del` act on the pair; a relation
+  typed later on either profile is twinned at once by a follower `Model`
+  runs after every top-level relation, operation and placed entity
+  (`defineFollower`). **Deleting**: the extrude (a cut, an edge extrude, a
+  revolve) leaves all its geometry and every relation, each its own; an edge
+  of either profile takes its partner and leaves the extrude **open** — walls
+  drawn, no cap, no body, the row marked *open* — until the edge is drawn
+  back on either profile; a feature-made relation goes like any other, the
+  depth leaving the record *unbuilt*. **Trim** on a lid's edge lands on the
+  base's, and one that opens the loop opens the extrude rather than being
+  refused; `extend` seats both ends. Format 21 (a deletion's meaning; old
+  files' deletions marked on the way in). Not twinned, and said so: a profile
+  that is a piece of longer lines, two corners joined by `coin` sharing one
+  lid point, a revolve's end faces. Unit: `test/linkedprofiles.test.ts`;
+  e2e: `linkedprofiles.e2e.ts` (mouse and iPhone 13).
+- **A direction relation turns a line and never scales it, and a conflict
+  names the relation that made it** (docs/plans/review-solver.md, built;
+  review items 1 and 3 of TODO.md's register). `par`, `perp`, `ang`, `col`,
+  `on`, `sym`, `tan` at a shared end, `ang3`, `corner` and `perp(chord, e1)`
+  — and so every relation among many, whose rows are the pair's — read
+  their lines at **unit length** (`unit`, vec.ts) and are **the angle to
+  turn through** (`turnToParallel`, `turnToSquare`, `angleBetween`), times
+  how long the longer line was when the solve began (`Model.valueBefore`),
+  so no row can be met by a shorter line and none is flat at 90°: `par`
+  between two free 60-long lines left them 8.8 and 1.2 long, and leaves
+  them 60.133 and 60.828. A block says which lines it reads for direction
+  only (`addResidual`'s `turns`), and a solve that changed the length of
+  one solves on with those lengths pulled back and released
+  (`Model.keptSizes`) — the rows alone left `perp` at 169. A drag's frame is
+  not steered (3.1% where it was 47%). A sketch is no longer stiffer than
+  a feature's rows by accident of scale, so `set` of a revolve's angle
+  seats its end face first (`seatTurned`), as a depth's lid is (bug 75:
+  the profile slid 6; on the base 0.2). **A solve that fails is put back**
+  as a collapse is, and the part is left out of the drag frames that follow.
+  **`Model.conflicting`** returns `conflicts`: a `culprit` — the one
+  relation of the failed part that has not held in a solve (`settled`),
+  known without a search — and the least `set` it cannot hold with, or the
+  set with none singled out for a file opened in conflict; `inheritHeld`
+  carries it across undo and redo; a relation among many is one culprit,
+  and one a line just joined has not held. Said as `r7 par l1 l2 — against r1` in
+  the status, the culprit's glyph filled red and its set's outlined in a
+  quieter ink, and a `conflict` heading first in the constraints palette.
+  Unit: `test/directionrows.test.ts`, `test/culprit.test.ts`; e2e:
+  `reviewsolver.e2e.ts` (mouse and iPhone 13). Measurements, and what is
+  slower (a par-heavy solve 1.5× to 2.3×; a solve that brings every length
+  back at once 2× to 6×), in the spec's *As built*.
 - **Many at once is one relation among equals, and a wall is named by the
   line it is swept from** (docs/plans/review-relations.md, built; review
   items 5 and 6 of TODO.md's register, against the owner's *"correct
@@ -424,7 +480,10 @@ etc).
     a collapse or a failed solve, bounded at 200 trials and 500 ms. A drag
     frame that would fold something stops where the last one was. Kernel
     additions, geometry-free: `solve({ only })`, `snapshot`/`restore`,
-    `varsOf`, `connected`, `reach`.
+    `varsOf`, `connected`, `reach`. Since review-solver.md (the first item
+    above): a failed solve is put back too, most direction conflicts fail
+    rather than fold, the conflict names its culprit, and a suspect the
+    release did not settle or that sank under half its size is a collapse.
   - **A prism stays a prism** (docs/plans/profiles-held.md): an extrude's
     `extrusion` holds every twin at its base plus **one chord**, the depth
     long, reading no direction; `e1_perp` — `perp(chord, e1)`, an ordinary,
@@ -440,11 +499,14 @@ etc).
     `test/e2e/profilesheld.e2e.ts` (mouse and iPhone 13).
   - **In the app**, after each solve and never per drag frame: free
     entities in a blue ink, held ones in the sketch's; `#diagnosis` beside
-    the verdict says `5 free`, `d1 · d2 cannot all hold` (red, names
-    clickable to select, then Delete) or `· redundant r5` (muted grey,
-    since profiles-held: it agrees, so it is no warning); a conflicting
-    relation's glyph wears the red, a redundant one the ordinary ink. 2.1 ms on the
-    biggest fixture.
+    the verdict says `5 free`, `r7 par l1 l2 — against r1` (the relation
+    that made a conflict on a red pill, what it is against in a quieter
+    ink) or `d1 · d2 cannot all hold` where none is singled out (names
+    clickable to select, then Delete), or `· 4 agreeing` (muted grey: it
+    agrees, so it is no warning); a conflict's culprit's glyph is filled
+    red, what it is against outlined in the quieter ink, a relation of a set
+    with none singled out outlined red, an agreeing one the ordinary ink.
+    2.1 ms on the biggest fixture.
   - **Relations**: `col`, `intersection`, `pierce` (3D), `spacing`, `dia`
     (a dimension), `measure` (driven: no blocks, drawn in parentheses, live),
     `dist` point–line and line–line, `eq` circles and line–arc, `mid(p,
