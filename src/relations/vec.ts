@@ -112,12 +112,33 @@ const ALONG = 1e-24;
  * the turn is toward the nearer of the two ways of being parallel.
  */
 export function turnFactor(w: Dual[], c: Dual): Dual {
-  let t = w[0].mul(w[0]);
-  for (let k = 1; k < w.length; k++) t = t.add(w[k].mul(w[k]));
+  let t = 0;
+  for (const x of w) t += x.val * x.val;
   const way = c.val < 0 ? -1 : 1;
-  if (t.val < 1e-8) return t.mul(way / 6).add(way);
-  const s = t.sqrt();
-  return s.atan2(c.mul(way)).div(s).mul(way);
+  // f(t, c) and its two partials as plain numbers, then one pass over the
+  // gradients (`blend`): ∂t = Σ 2·wₖ·∂wₖ. The operators would build a dozen
+  // intermediate gradients to say the same, on every direction row of every
+  // evaluation.
+  if (t < 1e-8) return blend(way * (1 + t / 6), w.map((x): [number, Dual] => [(way / 3) * x.val, x]));
+  const s = Math.sqrt(t), a = way * c.val, q = s * s + a * a;
+  const theta = Math.atan2(s, a);
+  // θ = atan2(s, a): ∂θ/∂s = a/q, ∂θ/∂a = −s/q; f = way·θ/s; a = way·c.
+  const fs = way * (a / q / s - theta / (s * s));
+  return blend((way * theta) / s, [...w.map((x): [number, Dual] => [(fs / s) * x.val, x]), [-1 / q, c]]);
+}
+
+/**
+ * A Dual of value `val` whose gradient is the sum of each term's gradient
+ * times its coefficient: the chain rule for a function of several Duals whose
+ * value and partials were worked out as plain numbers, in one pass.
+ */
+function blend(val: number, terms: readonly [number, Dual][]): Dual {
+  const g = new Map<number, number>();
+  for (const [k, d] of terms) {
+    if (k === 0) continue;
+    for (const [slot, x] of d.grad) g.set(slot, (g.get(slot) ?? 0) + k * x);
+  }
+  return new Dual(val, g);
 }
 
 /**
@@ -150,12 +171,13 @@ export function turnToParallel(u: Dual[], v: Dual[]): Dual[] {
 export function angleBetween(u: Dual[], v: Dual[]): Dual {
   const w = wedge(u, v);
   const c = dot(u, v);
-  let t = Dual.constant(0);
-  if (w.length) {
-    t = w[0].mul(w[0]);
-    for (let k = 1; k < w.length; k++) t = t.add(w[k].mul(w[k]));
+  let t = 0;
+  for (const x of w) t += x.val * x.val;
+  if (t > ALONG) {
+    // θ = atan2(s, c), s = √t: ∂θ/∂wₖ = (c/q)·wₖ/s, ∂θ/∂c = −s/q — one pass (`blend`).
+    const s = Math.sqrt(t), q = t + c.val * c.val;
+    return blend(Math.atan2(s, c.val), [...w.map((x): [number, Dual] => [((c.val / q) * x.val) / s, x]), [-s / q, c]]);
   }
-  if (t.val > ALONG) return t.sqrt().atan2(c);
   if (c.val === 0) return Dual.constant(0);
   // A unit direction square to u: the axis u leans on least, less its part along u.
   const uv = u.map((x) => x.val);

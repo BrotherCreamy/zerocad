@@ -1467,7 +1467,13 @@ async function main() {
     // edge is drawn when that is (quiet.ts) — or when it is itself selected.
     // Only the drawing leaves it out: the engine still picks it, as it still
     // picks the corner.
-    const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
+    //
+    // **A relation in a conflict is always drawn**, quiet anchor or not: the
+    // status names it, and the drawing has to show which one that is. On a
+    // solid's edges — quiet until hovered — a conflict's glyphs were not drawn
+    // at all, so CONFLICT stood over a picture with nothing red in it (found
+    // by reviewsolver.e2e.ts reading the inks over a lit face; bug 74).
+    const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || conflicted.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
     if (!marks.length) return;
     const k = uiOf(view);
     g.save();
@@ -1637,7 +1643,7 @@ async function main() {
         if (k.culprit === null) log(`CONFLICT — these cannot all hold${folds}: ${k.set.map(words).join(" · ")}`, "err");
         else if (!k.found) log(`CONFLICT — ${words(k.culprit)} made it; what it cannot hold with was not found in time`, "err");
         else if (!k.set.length) log(`CONFLICT — ${words(k.culprit)} cannot hold${folds}`, "err");
-        else log(`CONFLICT — ${words(k.culprit)} made it: it cannot hold${folds} against ${k.set.map(words).join(" · ")}`, "err");
+        else log(`CONFLICT — ${words(k.culprit)} made it: it cannot hold against ${k.set.map(words).join(" · ")}${folds}`, "err");
       }
     }
     conflictSaid = c.conflicts.length ? said : "";
