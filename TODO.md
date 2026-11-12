@@ -33,6 +33,12 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **CLAUDE.md's kernel fallback is `build:kernel:noopt`, not `build:kernel:dev`**
+  (the manager, 2026-11-12, after the solver-cost package found every timing
+  of the day taken on wasm-pack's debug build, ten times slower in the
+  solver). The dev build still works and the line says what it costs; the
+  rule that `wasm-opt` is never disabled in `Cargo.toml` stands.
+
 - **A kept size is pulled by a probe and a finish, and a drift is what can
   be seen** (docs/plans/solver-cost.md, built 2026-11-12 on
   `claude/solver-cost`; the spec's two premises were measured first and

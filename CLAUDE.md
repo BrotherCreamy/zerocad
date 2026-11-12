@@ -22,9 +22,12 @@ npm run test:all    # all of the above
 npm run dev         # vite on :5173
 ```
 
-If `build:kernel` fails downloading binaryen, `npm run build:kernel:dev` skips
-`wasm-opt` and produces a working (larger) kernel. Do **not** disable
-`wasm-opt` in `Cargo.toml` to work around a local network problem.
+If `build:kernel` fails downloading binaryen, `npm run build:kernel:noopt`
+builds the release kernel without the `wasm-opt` pass (larger, same speed).
+`build:kernel:dev` also works but is a **debug build, ten times slower in
+the solver** — never time anything on it (every measurement of 2026-11-12
+before the solver-cost package was, and read ten times too slow). Do **not**
+disable `wasm-opt` in `Cargo.toml` to work around a local network problem.
 
 ## Things that fail silently if you get them wrong
 
