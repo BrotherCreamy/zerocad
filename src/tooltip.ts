@@ -20,6 +20,28 @@
 //   finger, above it where there is room, and stays a moment after the lift
 //   (`LINGER_MS`) so it can be read without the hand over it.
 //
+// **And a tool says how it is used** (docs/plans/tool-howto.md; the owner: *"I
+// don't even know how to add a parallel relation. Maybe a little tooltip should
+// pop up when I hover over (desktop) or select (phone) a tool."*). A tip may
+// carry the steps (`Tip.how`), shown under what the control does. And on a
+// phone, where a tap armed a tool in silence and the tooltip was a hold nobody
+// discovers, **choosing a tool shows its tip** (`Tooltips.announce`): the
+// name, what it does and how, in an element of its own beside the hover's —
+//
+// - it **takes no touch**: a tap on it goes to whatever is under it;
+// - it lies **over the panes that only say things** (the log, the organiser)
+//   before any of the drawing, never over what the host says to keep (the
+//   tray, the tool's own options, the logo's corner), and over the drawing's
+//   middle last of all (`chosenPlacement`);
+// - it **goes at the next press anywhere**, at Escape, or when the time it
+//   takes to read is up (`readingMs`);
+// - **the second time** a tool is chosen it is the steps alone, for less long.
+//
+// It is not the tooltip: it describes no control under the pointer, nothing
+// closes it and nothing is described by it — a status the page says once
+// (`role="status"`) — so the menus' Escape and Android's back, which close
+// what is open, never see it.
+//
 // The native `title` goes from a control that gets one, so two never show at
 // once; the control keeps its `aria-label` (its name), and while the tooltip is
 // up it is the control's `aria-describedby`, the WAI-ARIA tooltip pattern.
@@ -42,6 +64,13 @@ export interface Tip {
   key?: string | null;
   /** Why it would do nothing now (a disabled button) — said where the command would be. */
   off?: string | null;
+  /**
+   * How it is used: the steps, a line each, in the words of someone doing
+   * them — a tool's `static how`, as the hand now on the screen reads it.
+   */
+  how?: readonly string[] | null;
+  /** One more line under the steps, muted: where else to look — what else a group's button holds. */
+  also?: string | null;
 }
 
 /** How long a still mouse waits over a control before its tooltip shows. */
@@ -71,7 +100,153 @@ export const MARGIN = 4;
  * and what a test compares.
  */
 export function tipText(t: Tip): string {
-  return [t.key ? `${t.name} (${t.key})` : t.name, t.summary, t.off ?? t.command].filter((s) => s).join(" — ");
+  return [t.key ? `${t.name} (${t.key})` : t.name, t.summary, ...(t.how ?? []), t.also, t.off ?? t.command].filter((s) => s).join(" — ");
+}
+
+// ---- the tip a chosen tool shows (docs/plans/tool-howto.md) -------------------
+
+/**
+ * What the tip says **as its tool is chosen**: the first time in a session
+ * its name, what it does, how, and where its siblings are — not the command
+ * (the tap has just typed it; it is the log's last line) nor the key; from the
+ * second time **the steps alone**, the name being the button now lit. Null
+ * when there is then nothing to say: a tool that declares no how, again.
+ */
+export function chosenTip(t: Tip, again: boolean): Tip | null {
+  const how = t.how?.length ? [...t.how] : null;
+  if (again) return how ? { name: "", how } : null;
+  return { name: t.name, summary: t.summary ?? null, how, also: t.also ?? null };
+}
+
+/**
+ * How long a chosen tool's tip stays, with nothing touched: the time it takes
+ * to read. A second before the eye is on it and `READ_MS_PER_CHAR` a
+ * character — 25 characters a second, about 300 words a minute, a quick silent
+ * reader's pace, because a tip that outstays its reading is in the way — never
+ * under `READ_MIN_MS` nor over `READ_MAX_MS`; the steps alone, the second
+ * time, never over `READ_AGAIN_MAX_MS`. Any press ends it sooner.
+ */
+export const READ_BASE_MS = 1000;
+export const READ_MS_PER_CHAR = 40;
+export const READ_MIN_MS = 3000;
+export const READ_MAX_MS = 10000;
+export const READ_AGAIN_MAX_MS = 5000;
+
+export function readingMs(t: Tip, again = false): number {
+  const chars = [t.name, t.summary, ...(t.how ?? []), t.also].reduce<number>((n, s) => n + (s ? s.length : 0), 0);
+  return Math.min(again ? READ_AGAIN_MAX_MS : READ_MAX_MS, Math.max(READ_MIN_MS, READ_BASE_MS + READ_MS_PER_CHAR * chars));
+}
+
+/**
+ * **Whether a chosen tool shows its tip at all** — the viewer's, per device,
+ * like the interface size: `ui({ tips: false })` and the app menu's row turn
+ * it off, for someone who knows the tools. On unless turned off; only "off"
+ * is stored. Every touch of storage wrapped, so a private window costs the
+ * setting and nothing else. The tooltip a hover or a held finger shows is not
+ * this, and has no switch: it is asked for.
+ */
+export const TIPS_KEY = "neocad.tips.v1";
+export interface TipStorage { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
+
+export function recallTips(storage: TipStorage | null): boolean {
+  try {
+    return storage?.getItem(TIPS_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+/** Remembers the setting; answers whether storage took it. */
+export function rememberTips(storage: TipStorage | null, on: boolean): boolean {
+  if (!storage) return false;
+  try {
+    if (on) storage.removeItem(TIPS_KEY);
+    else storage.setItem(TIPS_KEY, "off");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** What a square pixel of the tip costs by what it lies over, bare drawing being 1: the middle this much more, a control this much. */
+export const COST_MIDDLE = 3;
+export const COST_CONTROL = 0.5;
+
+/** What a chosen tool's tip is laid out round: every box in the bounds' coordinates. */
+export interface ChosenAsk {
+  /** The control chosen — where the tip stays near, all else equal. */
+  anchor: Box;
+  /** Where the finger was, if a finger chose it: the tip keeps `FINGER_CLEAR` off it. */
+  finger?: At | null;
+  /** Never covered: the tray, the chosen tool's own options, the logo's corner. */
+  keep?: readonly Box[];
+  /** Covered for nothing: panes that only say things — the log, the organiser. */
+  free?: readonly Box[];
+  /** Covered at half the drawing's price: controls that work through it but cannot be seen — the action strip, the command line. */
+  controls?: readonly Box[];
+}
+
+const boxOverlap = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+/** The drawing's middle: the middle third of the bounds, each way. */
+export function middleOf(bounds: Box): Box {
+  return { x: bounds.x + bounds.w / 3, y: bounds.y + bounds.h / 3, w: bounds.w / 3, h: bounds.h / 3 };
+}
+
+/**
+ * Where a chosen tool's tip of `size` goes, inside `bounds`.
+ *
+ * It takes no touch, so what is under it still works — but cannot be seen,
+ * and a tap aimed at nothing in particular on a drawing does something with a
+ * tool in the hand. So the place is the one that **hides least of what
+ * matters**: every square pixel over bare drawing costs 1, over the drawing's
+ * middle (`middleOf`) `COST_MIDDLE` more, over a control `COST_CONTROL`, over
+ * a pane that only says things nothing — and never over `keep`, nor within a
+ * fingertip of the finger. Of places that cost the same, the nearest the
+ * control chosen.
+ *
+ * The places tried are the ones that can be best: against each edge of the
+ * bounds, and against and level with each edge of every box named. `clear`
+ * is false where none of them is clear of `keep` — a window too small — and
+ * the tip is then held inside the bounds, at their start.
+ */
+export function chosenPlacement(size: Size, bounds: Box, ask: ChosenAsk): At & { cost: number; clear: boolean } {
+  const [left, top] = [bounds.x + MARGIN, bounds.y + MARGIN];
+  const [right, bottom] = [bounds.x + bounds.w - MARGIN, bounds.y + bounds.h - MARGIN];
+  // What is kept is kept off by the tooltip's own gap, not merely not touched.
+  const keep = (ask.keep ?? []).map((k) => ({ x: k.x - GAP, y: k.y - GAP, w: k.w + 2 * GAP, h: k.h + 2 * GAP }));
+  const f = ask.finger ?? null;
+  if (f) keep.push({ x: f.x - FINGER_CLEAR, y: f.y - FINGER_CLEAR, w: 2 * FINGER_CLEAR, h: 2 * FINGER_CLEAR });
+  const free = ask.free ?? [];
+  const controls = ask.controls ?? [];
+  const middle = middleOf(bounds);
+  const xs = new Set<number>([left, right - size.w]);
+  const ys = new Set<number>([top, bottom - size.h]);
+  const fingertip: Box[] = f ? [keep[keep.length - 1]] : [];
+  for (const b of [...(ask.keep ?? []), ...fingertip, ...free, ...controls, ask.anchor]) {
+    for (const x of [b.x, b.x + b.w - size.w, b.x + b.w + GAP, b.x - GAP - size.w]) xs.add(x);
+    for (const y of [b.y, b.y + b.h - size.h, b.y + b.h + GAP, b.y - GAP - size.h]) ys.add(y);
+  }
+  const [ax, ay] = [ask.anchor.x + ask.anchor.w / 2, ask.anchor.y + ask.anchor.h / 2];
+  let best: (At & { cost: number; dist: number }) | null = null;
+  for (const x of xs) {
+    if (x < left - 0.5 || x + size.w > right + 0.5) continue;
+    for (const y of ys) {
+      if (y < top - 0.5 || y + size.h > bottom + 0.5) continue;
+      const r: Box = { x, y, ...size };
+      if (keep.some((k) => boxOverlap(r, k) > 0.25)) continue;
+      // Bare drawing is what no pane is over: the panes do not overlap one
+      // another (the layout's own rule), so their overlaps simply add.
+      const overControls = controls.reduce((a, b) => a + boxOverlap(r, b), 0);
+      const paned = free.reduce((a, b) => a + boxOverlap(r, b), 0) + overControls;
+      const cost = Math.max(0, size.w * size.h - paned) + COST_MIDDLE * boxOverlap(r, middle) + COST_CONTROL * overControls;
+      const dist = Math.hypot(x + size.w / 2 - ax, y + size.h / 2 - ay);
+      if (!best || cost < best.cost - 0.5 || (Math.abs(cost - best.cost) <= 0.5 && dist < best.dist)) best = { x, y, cost, dist };
+    }
+  }
+  if (best) return { x: best.x, y: best.y, cost: best.cost, clear: true };
+  return { x: Math.min(left, Math.max(bounds.x, right - size.w)), y: Math.min(top, Math.max(bounds.y, bottom - size.h)), cost: Infinity, clear: false };
 }
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -226,10 +401,21 @@ export class Tooltips {
   private held: { id: number; x: number; y: number; control: HTMLElement; timer: ReturnType<typeof setTimeout>; showed: boolean } | null = null;
   /** The control whose next click is the lift of a hold that showed its tip — swallowed, not a press. */
   private swallow: HTMLElement | null = null;
+  /** The element a chosen tool's tip is shown in (`announce`) — its own, not the tooltip's; null where the host has none. */
+  private note: HTMLElement | null;
+  private noteTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(el: HTMLElement, options: { bounds: () => Box }) {
+  constructor(el: HTMLElement, options: { bounds: () => Box; chosen?: HTMLElement | null }) {
     this.el = el;
     this.bounds = options.bounds;
+    this.note = options.chosen ?? null;
+    if (this.note) {
+      this.note.hidden = true;
+      // Said once, to whoever is listening, and not a description of any
+      // control: a status, where the tooltip is a tooltip.
+      this.note.setAttribute("role", "status");
+      this.note.setAttribute("aria-live", "polite");
+    }
     el.hidden = true;
     el.setAttribute("role", "tooltip");
     if (!el.id) el.id = "tooltip";
@@ -243,9 +429,9 @@ export class Tooltips {
     window.addEventListener("pointerup", (e) => this.up(e), true);
     window.addEventListener("pointercancel", (e) => this.up(e), true);
     window.addEventListener("click", (e) => this.click(e), true);
-    window.addEventListener("keydown", (e) => { if (e.key === "Escape") this.hide(); }, true);
-    window.addEventListener("blur", () => this.hide());
-    window.addEventListener("wheel", () => this.hide(), { capture: true, passive: true });
+    window.addEventListener("keydown", (e) => { if (e.key === "Escape") { this.hide(); this.dismiss(); } }, true);
+    window.addEventListener("blur", () => { this.hide(); this.dismiss(); });
+    window.addEventListener("wheel", () => { this.hide(); this.dismiss(); }, { capture: true, passive: true });
     // A keyboard's focus shows the tip as a hover does (a press never focuses
     // these controls: each keeps the command line's focus on mousedown).
     document.addEventListener("focusin", (e) => {
@@ -296,6 +482,9 @@ export class Tooltips {
     // next control waits its hover, as after a press in a native toolbar.
     clearTimeout(this.timer);
     this.hide();
+    // A chosen tool's tip too: the first touch on the drawing is the hand
+    // getting on with it, and a press on anything else is the hand elsewhere.
+    this.dismiss();
     this.gone = -Infinity;
     this.swallow = null;
     if (this.held) this.drop();
@@ -358,8 +547,10 @@ export class Tooltips {
       return;
     }
     clearTimeout(this.linger);
+    // One tip at a time: a control's own takes a chosen tool's place.
+    this.dismiss();
     if (this.shown && this.shown !== c) this.shown.removeAttribute("aria-describedby");
-    this.fill(tip);
+    this.fill(this.el, tip);
     this.el.hidden = false;
     this.shown = c;
     c.setAttribute("aria-describedby", this.el.id);
@@ -394,26 +585,77 @@ export class Tooltips {
     this.el.hidden = true;
   }
 
-  /** The name (and key) on one line, then what it does, then the command it types or why it would do nothing. */
-  private fill(t: Tip): void {
-    this.el.textContent = "";
-    const head = document.createElement("div");
-    head.className = "tname";
-    head.textContent = t.name;
-    if (t.key) {
-      const key = document.createElement("span");
-      key.className = "tkey";
-      key.textContent = t.key;
-      head.appendChild(key);
-    }
-    this.el.appendChild(head);
+  /**
+   * **Shows a chosen tool's tip** (docs/plans/tool-howto.md): what `tip` says
+   * as its tool is chosen (`chosenTip` — the steps alone when `again`), in its
+   * own element, placed by `chosenPlacement` round what the host names, and
+   * gone at the next press, at Escape, or when it has been up as long as it
+   * takes to read (`readingMs`). Takes no touch: the stylesheet gives the
+   * element no pointer events, and nothing here listens on it.
+   *
+   * Answers whether anything was shown — false where the host has no element
+   * for it, or there is nothing to say.
+   */
+  announce(tip: Tip, ask: ChosenAsk & { again?: boolean; room?: number | null }): boolean {
+    const el = this.note;
+    const said = chosenTip(tip, ask.again ?? false);
+    this.dismiss();
+    if (!el || !said) return false;
+    // A control's own tooltip, if one is up, goes: one tip at a time.
+    this.hide();
+    this.fill(el, said);
+    el.hidden = false;
+    // As wide as the room the host says there is beside what it keeps — a
+    // phone's tray leaves less than the tip's own width — and wrapped to it.
+    el.style.maxWidth = "";
+    const room = ask.room ?? null;
+    if (room !== null && room >= MIN_TIP_W && room < el.offsetWidth) el.style.maxWidth = `${Math.floor(room)}px`;
+    const p = chosenPlacement({ w: el.offsetWidth, h: el.offsetHeight }, this.bounds(), ask);
+    el.style.left = `${Math.round(p.x)}px`;
+    el.style.top = `${Math.round(p.y)}px`;
+    el.dataset.again = String(ask.again ?? false);
+    this.noteTimer = setTimeout(() => this.dismiss(), readingMs(said, ask.again ?? false));
+    return true;
+  }
+
+  /** Whether a chosen tool's tip is up. */
+  get announced(): boolean {
+    return !!this.note && !this.note.hidden;
+  }
+
+  /** Puts a chosen tool's tip away, if one is up. */
+  dismiss(): void {
+    clearTimeout(this.noteTimer);
+    if (this.note && !this.note.hidden) this.note.hidden = true;
+  }
+
+  /**
+   * The name (and key) on one line, then what it does, then how — a line a
+   * step — and what else is here, then the command it types or why it would
+   * do nothing. A tip with no name (a chosen tool's, the second time) has no
+   * head.
+   */
+  private fill(el: HTMLElement, t: Tip): void {
+    el.textContent = "";
     const line = (cls: string, text: string) => {
       const d = document.createElement("div");
       d.className = cls;
       d.textContent = text;
-      this.el.appendChild(d);
+      el.appendChild(d);
+      return d;
     };
+    if (t.name) {
+      const head = line("tname", t.name);
+      if (t.key) {
+        const key = document.createElement("span");
+        key.className = "tkey";
+        key.textContent = t.key;
+        head.appendChild(key);
+      }
+    }
     if (t.summary) line("tsum", t.summary);
+    for (const step of t.how ?? []) line("thow", step);
+    if (t.also) line("talso", t.also);
     if (t.off) line("toff", t.off);
     else if (t.command) line("tcmd", t.command);
   }

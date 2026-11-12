@@ -28,14 +28,14 @@ import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
 import { LOCKED, constrainedBy, defineGlyphAnchor, type Glyph } from "./glyphs.ts";
-import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolSummary, toolbarButtons, type ToolbarButton } from "./tools/tool.ts";
+import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolHow, toolSummary, toolbarButtons, type Hand, type ToolbarButton } from "./tools/tool.ts";
 import { activeWorkbench, fileMenuItems, getWorkbench, listWorkbenches, onWorkbench, setActiveWorkbench, DEFAULT_WORKBENCH } from "./modules.ts";
 import { WorkbenchFiles, indexedDbWorkbenches } from "./workbenchhost.ts";
 import {
-  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerBox, cornerRoom, defaultLayout, logoBox, panelsLine, scaledMetrics,
-  TOUCH_TARGET, touchMetrics, type Insets, type Layout, type Metrics, type Size,
+  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerBox, cornerRoom, defaultLayout, groupAlso, logoBox, panelsLine, scaledMetrics,
+  TOUCH_TARGET, toolTip, touchMetrics, type Insets, type Layout, type Metrics, type Size,
 } from "./panels.ts";
-import { Tooltips } from "./tooltip.ts";
+import { Tooltips, recallTips, rememberTips, roomBeside, type Box } from "./tooltip.ts";
 import {
   clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, textSource, type Device,
 } from "./uiscale.ts";
@@ -46,7 +46,7 @@ import { Organiser, organiserSections, rowMenu, surfaceMenu } from "./organiser.
 import { ConstraintsPalette, paletteFor } from "./constraints.ts";
 import { surfaceNameOf } from "./surfaces.ts";
 import { logoSvg } from "./logo.ts";
-import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
+import { GroupMemory, OptionMemory, declaredOptions, resolveOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
 import { depth, uiOf, viewAxes, worldToScreen } from "./view.ts";
 import { arcSamples, arcSegments, frameReach } from "./arcgeom.ts";
@@ -261,8 +261,20 @@ function tooltipBounds() {
   const [w, h] = [document.documentElement.clientWidth, document.documentElement.clientHeight];
   return { x: i.left, y: i.top, w: Math.max(0, w - i.left - i.right), h: Math.max(0, h - i.top - i.bottom) };
 }
-const tooltips = new Tooltips(document.getElementById("tooltip")!, { bounds: tooltipBounds });
+const tooltips = new Tooltips(document.getElementById("tooltip")!, { bounds: tooltipBounds, chosen: document.getElementById("chosentip") });
 const tooltip = tooltips.attach;
+
+/**
+ * **A tool chosen by finger shows its tip** (docs/plans/tool-howto.md; the
+ * owner: *"I don't even know how to add a parallel relation. Maybe a little
+ * tooltip should pop up when I hover over (desktop) or select (phone) a
+ * tool."*) — unless this viewer turned that off (`ui({ tips: false })`, the
+ * app menu's row). The setting is theirs, on this device, like the interface
+ * size: stored, never journalled.
+ */
+let tipsOn = recallTips(browserStorage());
+/** The tools whose tip has shown as they were chosen, this session: from the second time it is the steps alone. */
+const tipsShown = new Set<string>();
 
 /**
  * The keys that do what a button does, for its tooltip: the Hand is Space
@@ -288,7 +300,7 @@ const installer = new Installer(window as unknown as InstallWindow, { ios });
 tooltip(logoEl, () => ({ name: "ZeroCAD", summary: "Opens the menu: files, interface size, panes and view" }));
 
 /** What `ui()` says when it is given something it does not take. */
-const UI_USAGE = 'ui() takes { scale: 0.8 } (0.6 to 1.6, or "default"), { hide: "log" } or { show: "log" } (a pane or a list of them); ui() says what is in force';
+const UI_USAGE = 'ui() takes { scale: 0.8 } (0.6 to 1.6, or "default"), { hide: "log" } or { show: "log" } (a pane or a list of them), { tips: false } (a chosen tool no longer says how it is used); ui() says what is in force';
 
 /**
  * The options panel's size, once there is an options panel to ask — it is
@@ -319,7 +331,23 @@ const groupMemory = new GroupMemory(browserStorage());
  * swallows is still counted.
  */
 let lastPointer = "mouse";
-window.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; }, true);
+/**
+ * **The hand a tip's words are for** (docs/plans/tool-howto.md): a finger taps
+ * and holds where a mouse clicks and right-clicks, and a tool's how is said
+ * in the words of whichever is on the screen. A phone's is a finger from the
+ * start; after that, the last press's — and a mouse that moves is a mouse
+ * again without pressing, since a hover is how a mouse asks for a tip.
+ */
+let tipHand: Hand = coarse ? "finger" : "mouse";
+/** Where a finger last came down or lifted, in the window: what a chosen tool's tip keeps clear of. */
+let lastTouch: { x: number; y: number } | null = null;
+window.addEventListener("pointerdown", (e) => {
+  lastPointer = e.pointerType;
+  tipHand = e.pointerType === "touch" ? "finger" : "mouse";
+  if (e.pointerType === "touch") lastTouch = { x: e.clientX, y: e.clientY };
+}, true);
+window.addEventListener("pointerup", (e) => { if (e.pointerType === "touch") lastTouch = { x: e.clientX, y: e.clientY }; }, true);
+window.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") tipHand = "mouse"; }, true);
 
 /**
  * How solids are shown — opaque, see-through or not at all (viewmode.ts). The
@@ -1174,6 +1202,12 @@ async function main() {
     const rebuilt = toolbar.sync();
     if (optionsPanel.sync() || rebuilt) panels.apply();
     actionStrip?.sync();
+    // A chosen tool's tip is about the tool in the hand: put down — it drew
+    // its one shape, or something else was armed — the tip goes with it.
+    if (chosenTool !== null && (engine.lit !== chosenTool || !tooltips.announced)) {
+      if (engine.lit !== chosenTool) tooltips.dismiss();
+      chosenTool = null;
+    }
   }
 
   /**
@@ -1886,6 +1920,27 @@ async function main() {
    * A glyph is a built-in's own, by name, and every other tool's the generic
    * one (see tools/icons.ts for why by name).
    */
+  /**
+   * What neither a flyout nor a chosen tool's tip ever covers, in the
+   * window's coordinates: the logo, the corner's box, and whatever the corner
+   * says now — the status, the chip.
+   */
+  function toolbarKeep(): Box[] {
+    const i = insets();
+    const rect = (el: Element) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
+    const corner = cornerBox(metrics);
+    const texts = Array.from(document.querySelectorAll<HTMLElement>("#corner > *"))
+      .filter((el) => !el.hidden && el.textContent && getComputedStyle(el).display !== "none").map(rect)
+      .filter((r) => r.w > 0 && r.h > 0);
+    return [rect(logoEl), { ...corner, x: corner.x + i.left, y: corner.y + i.top }, ...texts];
+  }
+
+  /** A tool being chosen from the tray by finger, between the press that chose it and its `arm` having run. */
+  interface Choosing { tool: string; button: HTMLElement; siblings: readonly string[] }
+  let choosing: Choosing | null = null;
+  /** The tool whose chosen tip is up: put down, its tip goes with it (`syncToolbar`). */
+  let chosenTool: string | null = null;
+
   const toolbar = new Toolbar(toolbarEl, {
     // Select and the Hand first (docs/plans/select-hand.md): a button each,
     // typing `arm("select")` and `arm("hand")` like every other, and the lit
@@ -1903,28 +1958,89 @@ async function main() {
       bounds: () => tooltipBounds(),
       // Never over the logo or the status's corner, whatever the corner says
       // now; and clear of every other pane where there is room.
-      keep: () => {
-        const i = insets();
-        const rect = (el: Element) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
-        const corner = cornerBox(metrics);
-        const texts = Array.from(document.querySelectorAll<HTMLElement>("#corner > *"))
-          .filter((el) => !el.hidden && el.textContent && getComputedStyle(el).display !== "none").map(rect)
-          .filter((r) => r.w > 0 && r.h > 0);
-        return [rect(logoEl), { ...corner, x: corner.x + i.left, y: corner.y + i.top }, ...texts];
-      },
+      keep: toolbarKeep,
       avoid: () => Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]"))
         .filter((el) => !el.hidden && el.dataset.panel !== "toolbar")
         .map((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }),
     },
     icon: toolIcon,
     active: () => engine.lit,
-    run: (command) => void submit(command),
-    // Each tool's own words (`static summary`), handed in: the toolbar knows
-    // nothing of the tools.
+    // A button types `arm("name")`; chosen by finger, the tool then says how
+    // it is used — once the line has run, so the tip is of the tool as armed
+    // and laid out round the panes it brought up.
+    run: (command) => {
+      const chosen = choosing;
+      choosing = null;
+      void submit(command).then(() => { if (chosen) showChosenTip(chosen); });
+    },
+    // Each tool's own words (`static summary`, `static how`), handed in: the
+    // toolbar knows nothing of the tools.
     summary: toolSummary,
+    how: (tool) => toolHow(tool, tipHand, howOptions(tool)),
+    chosen: (tool, button, siblings) => { choosing = lastPointer === "touch" ? { tool, button, siblings } : null; },
     key: (tool) => TOOL_KEYS[tool] ?? null,
     tooltip,
   });
+
+  /**
+   * The options `tool` is armed with — or would be by `arm(tool)` now: its
+   * defaults under the last values this viewer used (options.ts). What a how
+   * that depends on them is asked with: a circle locked to three points says
+   * to tap three points, on its hover as well as once it is armed.
+   */
+  function howOptions(tool: string): Record<string, unknown> {
+    const armed = engine.armed;
+    if (armed?.name === tool) return armed.options;
+    try {
+      const ctor = getToolCtor(tool);
+      return ctor ? resolveOptions(tool, declaredOptions(ctor, tool), {}, optionMemory.recall(tool)) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * **The tip a tool shows as a finger chooses it** (docs/plans/tool-howto.md):
+   * its name, what it does and how — from the second time this session the
+   * steps alone — with what else its button holds, laid out by the tooltip
+   * (`chosenPlacement`) round what is on the screen now: never over the tray,
+   * the tool's own options pane or the constraints palette it summoned, nor
+   * the logo's corner; over the log and the organiser, which only say things,
+   * for nothing; over the action strip and the command line at half the
+   * drawing's price. It takes no touch and goes at the next press.
+   */
+  function showChosenTip(c: Choosing): void {
+    // Not armed after all — refused, or something else took its place.
+    if (!tipsOn || engine.lit !== c.tool || !c.button.isConnected) return;
+    // The panes as the armed tool leaves them: its options, the palette.
+    syncToolbar();
+    const box = (el: Element): Box => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
+    const keep: Box[] = toolbarKeep();
+    const free: Box[] = [];
+    const controls: Box[] = [];
+    let tray: Box | null = null;
+    let along: string | undefined;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]"))) {
+      if (el.hidden) continue;
+      const id = el.dataset.panel;
+      if (id === "toolbar") { tray = box(el); along = el.dataset.orient; keep.push(tray); }
+      else if (id === "options" || id === "constraints") keep.push(box(el));
+      else if (id === "log" || id === "organiser") free.push(box(el));
+      else controls.push(box(el));
+    }
+    const again = tipsShown.has(c.tool);
+    const tip = { ...toolTip(c.tool, toolSummary(c.tool), null, toolHow(c.tool, "finger", howOptions(c.tool))), also: groupAlso(c.siblings, c.tool) };
+    // Beside a column there is only the room the tray leaves — less the
+    // fingertip, where it has just lifted off the tray itself (off a flyout's
+    // item it is out in the drawing, and the tip goes above or below it).
+    const onTray = !!tray && !!lastTouch && lastTouch.x >= tray.x && lastTouch.x <= tray.x + tray.w
+      && lastTouch.y >= tray.y && lastTouch.y <= tray.y + tray.h;
+    const shown = tooltips.announce(tip, {
+      again, anchor: box(c.button), finger: lastTouch, keep, free, controls,
+      room: tray && along === "column" ? roomBeside(tray, tooltipBounds(), onTray ? lastTouch : null) : null,
+    });
+    if (shown) { tipsShown.add(c.tool); chosenTool = c.tool; }
+  }
 
   /**
    * The options panel, through the same seam: a field edited types
@@ -2718,9 +2834,16 @@ async function main() {
     if (options === undefined) return describeUi();
     if (!options || typeof options !== "object" || Array.isArray(options)) throw new Error(UI_USAGE);
     const o = options as Record<string, unknown>;
-    const unknown = Object.keys(o).filter((key) => !["scale", "show", "hide"].includes(key));
-    if (unknown.length) throw new Error(`ui() takes scale, show and hide — ${unknown.map((u) => JSON.stringify(u)).join(", ")} is not one. ${UI_USAGE}`);
+    const unknown = Object.keys(o).filter((key) => !["scale", "show", "hide", "tips"].includes(key));
+    if (unknown.length) throw new Error(`ui() takes scale, show and hide, and tips — ${unknown.map((u) => JSON.stringify(u)).join(", ")} is not one. ${UI_USAGE}`);
     const said: string[] = [];
+    // Whether a tool chosen by finger shows its tip (docs/plans/tool-howto.md).
+    if ("tips" in o) {
+      if (typeof o.tips !== "boolean") throw new Error(`ui({ tips }) takes true or false — ${JSON.stringify(o.tips) ?? String(o.tips)} is neither`);
+      tipsOn = o.tips;
+      if (!rememberTips(browserStorage(), tipsOn)) said.push("not remembered: this browser keeps nothing");
+      if (!tipsOn) tooltips.dismiss();
+    }
     if ("scale" in o) {
       if (o.scale === "default" || o.scale === null) setScale(null);
       else {
@@ -2753,7 +2876,8 @@ async function main() {
     // row and button answers a press over, so the size's effect can be read off.
     const hits = coarse ? `; a finger's target ${metrics.hit} px` : "";
     return `interface ${formatScale(uiScale)} (${why})${hits}` +
-      `; panes ${panes.map((p) => p.id).join(", ")}` + (hidden.length ? `; hidden ${hidden.join(", ")}` : "; all shown");
+      `; panes ${panes.map((p) => p.id).join(", ")}` + (hidden.length ? `; hidden ${hidden.join(", ")}` : "; all shown") +
+      `; tips ${tipsOn ? "on" : "off"} (a tool chosen by finger says how it is used)`;
   }
 
   /**
@@ -2790,6 +2914,7 @@ async function main() {
     viewMode: () => viewMode,
     viewModes: VIEW_MODES,
     switches: () => panels.getSwitches(),
+    tips: () => tipsOn,
     stamp: document.getElementById("buildstamp"),
     repository: "https://github.com/BrotherCreamy/zerocad",
     solidsLicence: solidsLicence(),

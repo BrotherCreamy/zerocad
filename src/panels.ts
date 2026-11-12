@@ -3469,8 +3469,30 @@ export function displayName(name: string): string {
  * the command line does — what it does (its `static summary`, or nothing for a
  * tool that declares none), and its key where it has one.
  */
-export function toolTip(tool: string, summary: string | null = null, key: string | null = null): Tip {
-  return { name: displayName(tool), summary, command: armCommand(tool), key };
+export function toolTip(tool: string, summary: string | null = null, key: string | null = null, how: readonly string[] | null = null): Tip {
+  // How it is used, under what it does (docs/plans/tool-howto.md) — only where
+  // the tool says: a tool that declares none has the tip it always had.
+  return { name: displayName(tool), summary, command: armCommand(tool), key, ...(how?.length ? { how } : {}) };
+}
+
+/** The longest a group's line names its other tools at: past it, a phone's tip would spend three lines on a list. */
+export const ALSO_NAMES_MAX = 44;
+
+/**
+ * What a group's button says of the tools behind it, as one of them is chosen
+ * by finger: `Hold this button for Constrain.` — the one line that says the
+ * button holds more than its face, where a tap arms the face and only a hold
+ * (or a slide) opens the rest. It is how Constrain is found at all: it shares
+ * Dimension's button (docs/plans/tool-howto.md). The others by name while the
+ * line stays short (`ALSO_NAMES_MAX`); past that, how many — the modify
+ * button's eight would be three lines of a phone's tip. Null for a button
+ * with one tool.
+ */
+export function groupAlso(tools: readonly string[], chosen: string): string | null {
+  const rest = tools.filter((t) => t !== chosen).map(displayName);
+  if (!rest.length) return null;
+  const named = `Hold this button for ${rest.join(", ")}.`;
+  return named.length <= ALSO_NAMES_MAX ? named : `Hold this button for ${rest.length} more tools.`;
 }
 
 // ---- the flyout: a group's other tools, beside its button --------------------
@@ -3669,6 +3691,19 @@ export interface ToolbarHost {
   summary?(tool: string): string | null;
   /** The key that does what the button does, where one does: `hold Space` for the Hand. */
   key?(tool: string): string | null;
+  /**
+   * How the tool is used — its `static how` as the hand on the screen reads
+   * it (`toolHow`) — or null for one that declares none. Asked when a tip
+   * shows, so it is of the tool as it would be armed now.
+   */
+  how?(tool: string): readonly string[] | null;
+  /**
+   * `tool` is being chosen from `button` — a press on it, or on an item of
+   * its flyout, whose other tools are `siblings` — told just before the `run`
+   * that arms it. For a host that says something as a tool is chosen (a
+   * phone's tip, docs/plans/tool-howto.md); the toolbar does nothing with it.
+   */
+  chosen?(tool: string, button: HTMLElement, siblings: readonly string[]): void;
   /** Gives a button its tooltip (tooltip.ts); without it, a button's tip is its `title`. */
   tooltip?: AttachTip;
 }
@@ -3839,7 +3874,7 @@ export class Toolbar {
       // with a summary says it the next time, with no rebuild.
       giveTip(b, () => {
         const tool = b.dataset.tool!;
-        return toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null);
+        return toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null, this.host.how?.(tool) ?? null);
       }, this.host.tooltip, {
         // Beside the tray when it is a column, so the tip never covers the
         // buttons the pointer is about to run down.
@@ -3861,9 +3896,21 @@ export class Toolbar {
         return;
       }
       this.close();
-      this.host.run(armCommand(b.dataset.tool!));
+      this.choose(b.dataset.tool!, b);
     });
     return b;
+  }
+
+  /**
+   * Arms `tool` from `button` — its own press, or its flyout's — telling the
+   * host first which button it was chosen from and what else that button
+   * holds, then typing `arm("tool")` as every way of arming does.
+   */
+  private choose(tool: string, button: HTMLElement): void {
+    const group = button.dataset.group;
+    const siblings = (group ? this.groups.get(group)?.tools : null) ?? [tool];
+    this.host.chosen?.(tool, button, siblings);
+    this.host.run(armCommand(tool));
   }
 
   /** A group button's ways into its flyout: the hover and the hold, the slide, the long-press. */
@@ -3922,7 +3969,7 @@ export class Toolbar {
       const item = p.moved ? this.itemAt(e.clientX, e.clientY) : null;
       if (item) {
         this.close();
-        this.host.run(armCommand(item.dataset.tool!));
+        this.choose(item.dataset.tool!, b);
       } else if (p.moved) {
         // Slid off onto nothing: put away, nothing armed.
         this.close();
@@ -3981,7 +4028,7 @@ export class Toolbar {
         item.classList.add("current");
         item.setAttribute("aria-current", "true");
       }
-      giveTip(item, () => toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null), this.host.tooltip, {
+      giveTip(item, () => toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null, this.host.how?.(tool) ?? null), this.host.tooltip, {
         along: () => (fly.dataset.orient as Orientation | undefined) ?? null,
         line: () => fly,
         // Never over the tray it opened from: its buttons are the next thing a finger reaches for.
@@ -3991,7 +4038,7 @@ export class Toolbar {
       item.addEventListener("contextmenu", (e) => e.preventDefault());
       item.addEventListener("click", () => {
         this.close();
-        this.host.run(armCommand(tool));
+        this.choose(tool, b);
       });
       fly.appendChild(item);
     }
@@ -4262,7 +4309,10 @@ export class OptionsPanel {
     // Neither types a line of its own: ✓ is Enter and ✗ is Escape, which the
     // feature's lines are typed by, so the tip names the key, not a command.
     const ok = button("ok", "✓", () => ({
-      name: "Confirm", key: "Enter", summary: "Builds what the preview shows; the tool stays armed",
+      // "…; the tool stays armed" until bug 74: a confirm puts the tool
+      // down (feature.ts's `done`, since the opaque-solids merge), and the
+      // tip went on saying otherwise — found by pressing ✓ in the browser.
+      name: "Confirm", key: "Enter", summary: "Builds what the preview shows, and puts the tool down",
       off: this.ok?.disabled ? "pick what to build first" : null,
     }), () => this.host.confirm?.());
     this.ok = ok;
