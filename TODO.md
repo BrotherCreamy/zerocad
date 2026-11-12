@@ -3182,7 +3182,11 @@ are flagged as such.
           bringing forty free lengths back at once. Likely fix: do not
           re-pull a size that drifted less than can be seen (`KEPT` is
           1e-9). The par-to-axes drag frame at 5× is the second. Still
-          wants the phone.
+          wants the phone. **Specified** as
+          [`solver-cost.md`](docs/plans/solver-cost.md) (2026-11-12): a
+          drift is what can be seen, the pull is one ring out and not the
+          component, the axis row's non-zeros counted before anything is
+          done about them.
     - [ ] **A conflict on a solid says two things in the log.** The status
           names the culprit (`r7 par l5 l6 — against r6`) and the log line
           under it reads "collapsing l6, l2, l4, l8", the collapse path's
