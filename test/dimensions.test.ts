@@ -457,7 +457,7 @@ test("a version-3 file's deleteRelation is pointed at the name that relation has
   // finish. That is the same rule the hor/ver translation follows.
   assert.deepEqual(m.journal.at(-1), { op: "deleteRelation", args: ["d2"] });
   const saved = save(m);
-  assert.match(saved, /"version": 19/); // the current version, whatever later boundaries it crossed
+  assert.match(saved, /"version": 20/); // the current version, whatever later boundaries it crossed
   assert.equal(save(open(saved)), saved, "and the file is stable from here on");
 });
 

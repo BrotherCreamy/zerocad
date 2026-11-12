@@ -329,13 +329,15 @@ test("the Onshape sequence: a circle sketched on a wall and extruded a positive 
   m.solve();
   assert.ok(near(zOf(m, ref), neg(t.uy), 1e-9), "still facing out after the plate grew");
 
-  // Deleting the plate takes the boss's record (it stands on the wall's
-  // points) and the relations holding the circle there — never the circle.
+  // Deleting the plate used to take the boss's record and clear the work
+  // plane: the wall's points went with the plate. They stay now — a feature
+  // relates, it does not own (docs/plans/linked-profiles.md) — so the boss
+  // still stands on them, and so does the plane.
   del(m, "e1");
-  assert.ok(m.entities.has(boss), "the circle stays: it stands on no frame");
-  assert.ok(!m.features.has(e), "the boss's record names the wall's points, so it went");
-  assert.equal(m.workPlane, null, "and the work plane, which named them, is cleared — journalled");
-  assert.deepEqual(m.journal.filter((j) => j.op === "setWorkPlane").map((j) => j.args), [[ref], [null]]);
+  assert.ok(m.entities.has(boss), "the circle stays");
+  assert.ok(m.features.has(e), "and the boss: the wall's points are plain geometry now, still there to stand on");
+  assert.equal(m.workPlane, ref, "and the work plane, which names them");
+  assert.deepEqual(m.journal.filter((j) => j.op === "setWorkPlane").map((j) => j.args), [[ref]]);
 });
 
 test("a circle's lid and base, each from its own outside: their own planes, the circles' normals — a curve drawn there is turned to face the viewer", async () => {

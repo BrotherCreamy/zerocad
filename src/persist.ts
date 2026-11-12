@@ -300,7 +300,35 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 19;
+export const VERSION = 20;
+// 20 (docs/plans/linked-profiles.md): **an extrude's two profiles are linked,
+// and a feature owns nothing**. No entry changed shape, and none is added for
+// a twin: the relations within a profile each gain a twin on the other
+// profile when the entry that made them — or the extrude — is replayed, under
+// a name derived from its partner's (`r3_e1`), which claims no counter. What
+// changed is what the deletion entries *mean*. `deleteRelation("r3")` takes a
+// linked pair as one. A deleted extrude's expansion is `deleteFeature`, then
+// `deleteRelation` of its extrusion and its perpendicular, and **no
+// `deleteEntity`**: the lid and the walls stay. An entity deleted from a
+// profile is preceded by `unsweep` (a new op: the extrude stops sweeping it,
+// and stays, open) and its partner's `deleteEntity` follows its own; a point
+// held on a face of a record going is preceded by `rehold` (a new op). A
+// version-19 build replaying a 20 file would refuse `unsweep` by name, which
+// alone would not bump it; but it would also replay `deleteRelation("r3_e1")`
+// or `set("d2_e1.value", …)` against a model with no such name, and read a
+// deleted extrude's journal as one that left its lid behind by accident —
+// the misreading a version is for.
+//
+// Going the other way **a version-19 file opens to the model it was, and is
+// linked from then on**: every extrude that still stands replays into linked
+// profiles (its relations twinned, names kept — `test/linkedprofiles.test.ts`
+// opens a fixture the build before wrote). Its *deletions* mean what they
+// meant: a `deleteFeature` from before 20 was followed by the lid's own
+// deletions, or left the lid standing with no relations of its own, so
+// `translate` writes `"unlinked"` into it — the twins this build made across
+// that extrude go with the record, and its extrusion, where the file left it
+// standing, links nothing again (`Model.deleteFeature`). The mark stays in
+// the entry when the file is saved again, so it keeps meaning that.
 // 19 (docs/plans/profiles-held.md): **an offset's copy is held in its chain's
 // plane, both ways**. In 3D, where no sketch plane holds the chain, `offset`'s
 // resolved part carries `flat` — three of the chain's points, or none — and
@@ -543,6 +571,11 @@ function relationRenamer(model: Model, version: number) {
  * y-ref" — rather than be guessed at.
  */
 function translate(model: Model, entry: JournalEntry, version: number): JournalEntry {
+  // A record deleted before linked profiles (see `VERSION`, 20): its lid had
+  // no relations of its own, and the entries after it are written for that.
+  if (entry.op === "deleteFeature" && version < 20 && entry.args.length === 1) {
+    return { op: "deleteFeature", args: [entry.args[0], "unlinked"] };
+  }
   if (entry.op === "fillet" && version < 9 && entry.args.length <= 4) {
     const [l1, l2, r, plane] = entry.args;
     const legs = [l1, l2].filter((n): n is string => typeof n === "string");

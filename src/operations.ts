@@ -4173,16 +4173,18 @@ function cascade(model: Model, name: string, extra: readonly string[] = []): str
       if (sf.name === name || sf.names.some((n) => gone.has(n)) || (sf.into !== undefined && gone.has(sf.into))) {
         gone.add(sf.name);
         features.push(sf.name);
+        // Its own size goes with it — a value nothing else reads — but not an
+        // edge extrude's extrusion, which still holds the copies to their curves.
+        for (const d of sf.owns) {
+          if (model.relations.has(d) && model.relationOf(d).op !== "extrusion" && !relations.includes(d)) relations.push(d);
+        }
         grew = true;
       }
     }
   }
-  // Each record going takes the relation that is it: left standing, an
-  // extrusion with no record would hold two profiles nothing calls a pair.
-  for (const f of features) {
-    const d = dimensionOf((model.features.get(f) ?? model.blends.get(f) ?? model.surfaces.get(f))!);
-    if (d !== undefined && model.relations.has(d) && !relations.includes(d)) relations.push(d);
-  }
+  // A record that goes because something it stood on went — not asked for —
+  // leaves its dimension, as it always did: the two profiles are still one
+  // translated pair, still linked, with nothing making a body of them.
 
   // A relation naming a going record's face or edge — `fdist("e1.lid", …)`,
   // `measure("length", "e1.lid|e1.m0")` (docs/plans/smart-dimension.md) —

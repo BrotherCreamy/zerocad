@@ -37,6 +37,18 @@ import { insideProfile, memberPoints } from "./solids/profile.ts";
 import type { V2 } from "./solids/kernel.ts";
 import { cross3, dot3, sub3, unit3 } from "./vec3.ts";
 
+/**
+ * Why a feature makes no body, or null when it does: **open** — an edge of
+ * its profile deleted, from both linked profiles — or **unbuilt**, the
+ * relation it is built from deleted (docs/plans/linked-profiles.md). What the
+ * organiser's row says after the kind, and what the chain leaves it out for.
+ */
+export function featureBuilds(f: FeatureEntry): string | null {
+  if (f.unbuilt !== undefined) return f.unbuilt;
+  if (f.kind === "extrude" && f.open) return "it is open — an edge of its profile is gone; draw the edge again, on either profile, and it closes";
+  return null;
+}
+
 /** A feature's mode as evaluation reads it: a record with none is from before modes, and a body of its own. */
 export function modeOf(f: FeatureEntry): FeatureMode {
   return f.mode ?? "new";
@@ -84,6 +96,11 @@ export function chainsOf(model: Model, opts: { hidden?: boolean } = {}): Chains 
     while (blends.length && number(blends[0].name) < upTo) {
       const b = blends.shift()!;
       const target = bodyOf.get(b.into);
+      // Its dimension deleted (docs/plans/linked-profiles.md): the body is drawn without it, and it says why.
+      if (b.unbuilt !== undefined) {
+        out.left.push({ feature: b.name, why: b.unbuilt });
+        continue;
+      }
       if (!target) {
         out.left.push({ feature: b.name, why: `it ${b.kind === "fillet" ? "fillets" : "chamfers"} edges of ${b.into}, which is no longer there` });
         continue;
@@ -94,6 +111,16 @@ export function chainsOf(model: Model, opts: { hidden?: boolean } = {}): Chains 
   };
   for (const f of model.features.values()) {
     takeBlends(number(f.name));
+    // **No body of an open or an unbuilt feature** (docs/plans/linked-profiles.md):
+    // an extrude with an edge of its profile gone bounds no volume — its
+    // surviving walls are drawn as open surfaces (faces.ts) — and one whose
+    // depth or angle was deleted has nothing to be built from. Each is left
+    // out and says why; what was added to or cut from it says its body is gone.
+    const why = featureBuilds(f);
+    if (why !== null) {
+      out.left.push({ feature: f.name, why });
+      continue;
+    }
     const mode = modeOf(f);
     const target = mode === "new" ? undefined : f.into === undefined ? undefined : bodyOf.get(f.into);
     if (mode === "new" || !target) {

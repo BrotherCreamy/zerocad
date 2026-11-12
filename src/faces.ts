@@ -429,6 +429,8 @@ function memberFace(f: FeatureEntry, i: number, j: number): string {
 
 /** An extrude's faces: the profile's cap, the lid's, and a wall per member piece. */
 function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, scale: number): Face[] {
+  // Its depth deleted, it builds nothing — and says so in the organiser (`unbuilt`).
+  if (f.unbuilt !== undefined) return [];
   const axes = featurePlane(model, f); // the solid's own plane, square to its chord (profiles-held.md)
   if (!axes) return [];
   const z = axes.n;
@@ -443,6 +445,31 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
   const base = f.extent === "symmetric"
     ? paths.base.map((loop, i) => loop.map((path, j) => path.map((p, k) => p.map((c, x) => 2 * c - lid[i][j][k][x]))))
     : paths.base;
+  // **An open extrude** (docs/plans/linked-profiles.md): an edge of its
+  // profile is gone from both profiles, so there is no region to cap. What is
+  // left is swept as an edge extrude sweeps it — a wall per surviving member,
+  // base to twin — and drawn as an **open surface**: no base, no lid, and each
+  // wall from both sides, since a sheet has no inside to turn its back on.
+  if (f.open) {
+    const sheets: Face[] = [];
+    base.forEach((loop, i) => loop.forEach((b, j) => {
+      const t = lid[i][j];
+      const cornered = hasVertices(model, f.loops[i][j]);
+      const last = b.length - 1;
+      for (let k = 0; k + 1 < b.length; k++) {
+        const quad = [b[k], b[k + 1], t[k + 1], t[k]];
+        const n = unit3(cross3(sub3(b[k + 1], b[k]), z));
+        if (!n) continue;
+        const edges = [[b[k], b[k + 1]], [t[k], t[k + 1]]];
+        if (cornered && k === 0) edges.push([b[0], t[0]]);
+        if (cornered && k + 1 === last) edges.push([b[last], t[last]]);
+        for (const side of [1, -1]) {
+          sheets.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => side * c), centroid: mean(quad), edges, name: memberFace(f, i, j) });
+        }
+      }
+    }));
+    return sheets;
+  }
   const flips = base.map(orient);
   const baseOutlines = base.map((p, i) => joined(p, flips[i]));
   const lidOutlines = lid.map((p, i) => joined(p, flips[i]));

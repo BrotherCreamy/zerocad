@@ -432,9 +432,13 @@ test("the tool: two faces then a click — and a lid with its base opens the dep
   const tool = new DimensionTool(ctx);
   tool.onDown(at0); tool.onDown(at0); tool.onDown(at0);
   await tool.settled;
-  const last = [...m.relations.values()].at(-1)!;
+  // The dimension is the walls' lines'; its twin on the lid's lines is made
+  // with it (docs/plans/linked-profiles.md) and is the last in the registry.
+  const last = [...m.relations.values()].filter((r) => !r.twin).at(-1)!;
   assert.deepEqual([last.op, ...last.args], ["dist", lines[0], lines[2], 30]);
   const f = m.featureOf(e, "extrude");
+  const twin = [...m.relations.values()].at(-1)!;
+  assert.deepEqual([twin.op, ...twin.args, twin.twin?.of], ["dist", f.twins[0][0], f.twins[0][2], 30, last.name]);
   const two = scripted(m, [face(`${e}.lid`), face(`${e}.base`), null]);
   const t2 = new DimensionTool(two.ctx);
   const n = m.relations.size;

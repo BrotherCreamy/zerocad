@@ -13,9 +13,11 @@
 // the registry with a name of its own (`r3_e1`: r3's twin across e1 — derived,
 // so it claims no counter and an old file's later names stay theirs, the
 // `e1_perp` trick), marked as half of a pair (`RelationEntry.twin`). The model
-// treats the pair as one thing — one value, one deletion, one statement to the
-// diagnosis and the conflict search (model.ts). This file says only **which
-// relations have twins and what a twin says**, and keeps that true.
+// treats the pair as one thing — one value, one deletion, and one statement to
+// the solver: a linked twin holds no rows, since its partner's rows and the
+// extrusion already say it, and is given its own when the link ends (model.ts).
+// This file says only **which relations have twins and what a twin says**,
+// and keeps that true.
 //
 // **Kept true by one idempotent pass** (`syncTwins`), run by the model after
 // every relation made at the top level and every outermost operation — the
@@ -79,11 +81,14 @@ export interface Link {
 }
 
 /**
- * Every link in the model, in the order the extrusions were made: an
- * `extrusion` whose record still stands — an extrude (`features`) or an edge
- * extrude (`surfaces`). With no record there is no link: a file from before
- * linked profiles could leave an extrusion standing after its record went,
- * holding a lid that had no relations of its own, and it must go on meaning
+ * Every link in the model, in the order the extrusions were made: each
+ * `extrusion` relation — an extrude's or an edge extrude's — that has not
+ * been **unlinked**. `record` is what its twins are named for: the extrude or
+ * edge extrude that makes a body of it, or, where that record has gone and
+ * left the two profiles held together, the extrusion itself. Unlinked is what
+ * a file from before linked profiles leaves an extrusion whose record went
+ * (`Model.deleteFeature`): its lid had no relations of its own then, the
+ * entries after it delete that lid piece by piece, and it must go on meaning
  * that.
  *
  * **What it pairs**: the extrusion's own pairs (points, and the curves whose
@@ -98,11 +103,10 @@ export interface Link {
 export function linksOf(model: Model): Link[] {
   const out: Link[] = [];
   for (const r of model.relations.values()) {
-    if (r.op !== "extrusion") continue;
-    let record: string | null = null;
+    if (r.op !== "extrusion" || r.unlinked) continue;
+    let record = r.name;
     for (const f of model.features.values()) if (f.kind === "extrude" && f.depth === r.name) record = f.name;
     for (const s of model.surfaces.values()) if (s.kind === "extrude" && s.size === r.name) record = s.name;
-    if (record === null) continue;
     const frame = r.args[0] as string;
     const datum = new Set<string>();
     try {
@@ -228,7 +232,7 @@ function twinName(model: Model, r: string, record: string): string {
  * it across.
  */
 export function syncTwins(model: Model): void {
-  if (![...model.relations.values()].some((r) => r.op === "extrusion" || r.twin)) return;
+  if (![...model.relations.values()].some((r) => r.op === "extrusion" || r.twin || r.asleep)) return;
   const links = linksOf(model);
   for (const r of [...model.relations.values()]) {
     if (!r.twin || !model.relations.has(r.name)) continue;
@@ -238,6 +242,17 @@ export function syncTwins(model: Model): void {
     if (want && same(want, r.args)) continue;
     if (r.twin.adopted) model.setTwin(r.name, null);
     else model.forgetRelation(r.name);
+  }
+  // A twin whose link has ended is an ordinary relation that owes its rows
+  // (`RelationEntry.twin`): given them here, by its own function.
+  for (const r of [...model.relations.values()]) {
+    const t = twinnable.get(r.op);
+    if (!r.asleep || r.twin || !t) continue;
+    try {
+      model.wake(r.name, () => void t.fn(model, ...r.args));
+    } catch {
+      // it stays asleep: a relation its own function refuses now holds nothing
+    }
   }
   if (!links.length) return;
   const across = (name: string, via: string) => [...model.relations.values()].some((x) => x.twin?.of === name && x.twin.via === via);

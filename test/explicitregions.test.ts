@@ -276,11 +276,19 @@ test("deleting a corner of a square hole fills it, walls and all", async () => {
   assert.equal(m.solve().solved, true);
 });
 
-test("deleting an outline member still takes the record, as it always did", async () => {
+// It took the record, "as it always did", until linked profiles
+// (docs/plans/linked-profiles.md): the outline's line goes from both profiles
+// and the extrude stays, open, on its region — to be closed again.
+test("deleting an outline member leaves the record open, its hole and its region kept", async () => {
   const { m, name } = await plate([circle("h", 10, 15, 4), holed("h")]);
   del(m, await name("l2"));
-  assert.equal(m.features.size, 0);
-  assert.equal(m.regions.size, 0, "and its region, whose first face it was");
+  assert.equal(m.features.size, 1);
+  const f = m.featureOf("e1") as ExtrudeFeature;
+  assert.equal(f.open, true, "open: an edge of its outline is gone");
+  assert.equal(f.loops[0].length, 3, "the three edges left");
+  assert.equal(f.loops.length, 2, "and the hole, untouched");
+  assert.equal(m.regions.size, 1, "the region it stands on stays with it");
+  assert.equal(m.solve().solved, true);
 });
 
 // --- a file from before ------------------------------------------------------------

@@ -113,8 +113,13 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // go with it), so the name is what says it is hidden.
     const eye = eyeOf(model, f.owns, model.hidden.has(f.name));
     const mode = modeOf(f);
+    // **The row is the body-making record, and says when it makes none**
+    // (docs/plans/linked-profiles.md): *open* — an edge of its profile gone,
+    // its surviving walls drawn as surfaces — or *unbuilt*, its depth or
+    // angle deleted. Said in a word after the kind; `ls()` gives the reason.
+    const state = f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : "";
     return {
-      name: f.name, detail: mode === "new" ? f.kind : `${f.kind} · ${mode}`, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
+      name: f.name, detail: (mode === "new" ? f.kind : `${f.kind} · ${mode}`) + state, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
       open: null, openCommand: null,
     };
@@ -126,7 +131,7 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     const eye = eyeOf(model, b.owns, model.hidden.has(b.name));
     const row: OrganiserRow = {
       // The kind alone: a phone's pane cut "chamfer · 1 edge" (seen); its menu's header says the edges.
-      name: b.name, detail: b.kind, count: b.owns.length, eye,
+      name: b.name, detail: b.unbuilt !== undefined ? `${b.kind} · unbuilt` : b.kind, count: b.owns.length, eye,
       eyeCommand: eyeCommand(b.name, eye), tapCommand: `select(${quoted(b.name)})`,
       selected: lit(b.owns.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
     };

@@ -651,15 +651,32 @@ export interface RelationEntry {
    * of an extrude profile is an identically linked profile/sketch entities. If
    * you change one the other follows automatically."* So the pair is one thing
    * while the link stands: `set` on either sets both, deleting either deletes
-   * both (`deleteRelation`), and the pair is counted once by the diagnosis and
-   * named once by the conflict search — a twin's rows say, on the other
-   * profile, exactly what its partner's say on this one, and the extrusion
-   * already carries one to the other. When `via` is deleted the field goes
-   * and both are ordinary relations, as deleting a `sym` leaves both halves.
-   * `adopted` marks a relation a person made that was found saying what a
-   * twin would say and linked, rather than one made for the link.
+   * both (`deleteRelation`).
+   *
+   * **A linked twin holds no rows of its own** (`blocks` is empty): what it
+   * says of the other profile is exactly what `of` says of this one carried
+   * across by the extrusion, which holds the two profiles as one translated
+   * pair — so its rows would repeat rows already there. With none, the pair
+   * is one statement to the solver, the diagnosis and the conflict search by
+   * construction (never counted redundant for being a pair, named once), and
+   * a solve takes the path it took before there were twins: measured, the
+   * rows present turned a frame-turn the suite solves into a collapse. When
+   * `via` is deleted the field goes and the relation is **asleep** — it is an
+   * ordinary relation that owes its rows — until the follower gives it them
+   * (`defineFollower`), in the same call: both profiles then hold their own,
+   * as deleting a `sym` leaves both halves. `adopted` marks a relation a
+   * person made that was found saying what a twin would say and linked,
+   * rather than one made for the link.
    */
   twin?: { of: string; via: string; adopted?: true };
+  /** Unlinked and not yet given its rows back. See `twin`. */
+  asleep?: true;
+  /**
+   * On an `extrusion` only: it links nothing (twins.ts) — an extrusion a file
+   * from before linked profiles left standing when its record went
+   * (`Model.deleteFeature`), holding a lid that had no relations of its own.
+   */
+  unlinked?: true;
 }
 
 /**
@@ -1582,11 +1599,18 @@ export class Model {
       this.building = outer;
     }
     for (const h of entry.blocks) this.problem.removeBlock(h);
-    // Still the twin it was: a rebuild changes what a relation says, not which pair it is half of.
-    const twin = entry.twin ? { twin: entry.twin } : {};
+    // Still the twin it was: a rebuild changes what a relation says, not which
+    // pair it is half of — and a linked twin holds no rows (`RelationEntry.twin`),
+    // so the body has only checked the new arguments, and what it added goes.
+    if (entry.twin) {
+      for (const h of building.blocks) this.problem.removeBlock(h);
+      this.relations.set(name, { name, op, args, blocks: [], twin: entry.twin });
+      return;
+    }
+    const kept = entry.unlinked ? { unlinked: true as const } : {};
     this.relations.set(name, building.vars.length
-      ? { name, op, args, blocks: building.blocks, vars: building.vars, ...twin }
-      : { name, op, args, blocks: building.blocks, ...twin });
+      ? { name, op, args, blocks: building.blocks, vars: building.vars, ...kept }
+      : { name, op, args, blocks: building.blocks, ...kept });
   }
 
   /**
@@ -1612,13 +1636,34 @@ export class Model {
   }
 
   /**
-   * Links `name` as the twin of `of` across `via` — or, with `of` null, ends
-   * its link. Structure only: what a twin says is twins.ts's.
+   * Links `name` as the twin of `twin.of` across `twin.via` — its rows go,
+   * since a linked twin holds none (`RelationEntry.twin`) — or, with null,
+   * ends its link and leaves it asleep, for the follower to give its rows
+   * back. Structure only: what a twin says is twins.ts's.
    */
   setTwin(name: string, twin: RelationEntry["twin"] | null): void {
     const r = this.relationOf(name);
-    if (twin === null) delete r.twin;
-    else r.twin = twin;
+    if (twin === null) {
+      if (r.twin) this.unlink(r);
+      return;
+    }
+    for (const h of r.blocks) this.problem.removeBlock(h);
+    r.blocks = [];
+    delete r.asleep;
+    r.twin = twin;
+  }
+
+  /** A twin made an ordinary relation again: asleep until its rows are back (`RelationEntry.twin`). */
+  private unlink(r: RelationEntry): void {
+    delete r.twin;
+    r.asleep = true;
+  }
+
+  /** A relation woken: `body` is its own function over its own arguments, and its rows are its own again. */
+  wake(name: string, body: () => void): void {
+    const r = this.relationOf(name);
+    if (!r.asleep || r.twin) return;
+    this.rebuildRelation(name, r.op, r.args, body);
   }
 
   /**
@@ -1630,18 +1675,11 @@ export class Model {
    */
   forgetRelation(name: string): void {
     const r = this.relationOf(name);
-    for (const x of this.relations.values()) if (x.twin?.of === name) delete x.twin;
+    for (const x of this.relations.values()) if (x.twin?.of === name) this.unlink(x);
     this.leaveGroupsQuietly(name);
     for (const h of r.blocks) this.problem.removeBlock(h);
     this.relations.delete(name);
     this.hidden.delete(name);
-  }
-
-  /** The blocks of every linked twin — rows the diagnosis and the conflict search leave out (`RelationEntry.twin`). */
-  twinBlocks(): Set<BlockHandle> {
-    const out = new Set<BlockHandle>();
-    for (const r of this.relations.values()) if (r.twin) for (const b of r.blocks) out.add(b);
-    return out;
   }
 
   /**
@@ -2658,7 +2696,12 @@ export class Model {
       f.owns = f.owns.filter((n) => n !== name);
       if (f.size === name) sized(f, "size");
     }
-    for (const x of this.relations.values()) if (x.twin?.via === name) delete x.twin;
+    let unlinked = false;
+    for (const x of this.relations.values()) {
+      if (x.twin?.via !== name) continue;
+      this.unlink(x);
+      unlinked = true;
+    }
     for (const n of this.linkedRelations(name)) {
       const r = this.relationOf(n);
       this.leaveGroups(n);
@@ -2666,6 +2709,8 @@ export class Model {
       this.relations.delete(n);
     }
     this.record("deleteRelation", [name]);
+    // The twins the link held are ordinary relations now, and owed their rows.
+    if (unlinked) this.follow("relation");
   }
 
   /**
@@ -2680,8 +2725,8 @@ export class Model {
    * left its lid with no relations of its own and its `extrusion` standing,
    * and the entries after it delete the lid piece by piece; so the twins this
    * build made across that extrusion go with the record — a relation a person
-   * made that was adopted as one is only unlinked — and with no record the
-   * extrusion links nothing again (twins.ts asks for one).
+   * made that was adopted as one is only unlinked — and the extrusion is
+   * marked as linking nothing from then on (`RelationEntry.unlinked`).
    */
   deleteFeature(name: string, how?: unknown): void {
     // A fillet's or chamfer's record goes by the same primitive: one name
@@ -2693,14 +2738,19 @@ export class Model {
     else this.featureOf(name);
     this.features.delete(name);
     this.hidden.delete(name);
+    let woke = false;
     if (how === "unlinked" && via !== undefined) {
+      const link = this.relations.get(via);
+      if (link) link.unlinked = true;
       for (const r of [...this.relations.values()]) {
         if (r.twin?.via !== via || !this.relations.has(r.name)) continue;
-        if (r.twin.adopted) delete r.twin;
+        woke = true;
+        if (r.twin.adopted) this.unlink(r);
         else this.forgetRelation(r.name);
       }
     }
     this.record("deleteFeature", how === "unlinked" ? [name, how] : [name]);
+    if (woke) this.follow("relation");
   }
 
   // ---- regions ------------------------------------------------------------
@@ -3388,10 +3438,7 @@ export class Model {
     // A relation's own variables (a point's parameter along a spline) are
     // freedoms like any entity's: its rows hold them, or they are free.
     for (const r of this.relations.values()) if (r.vars) live.push(...r.vars);
-    // A linked twin's rows are left out (`RelationEntry.twin`): they say on one
-    // profile what their partner says on the other, and the extrusion carries
-    // one to the other — so the pair is one statement, never a redundancy.
-    const a = this.problem.analyse({ vars: live, gauge, agreeing: true, skip: this.twinBlocks() });
+    const a = this.problem.analyse({ vars: live, gauge, agreeing: true });
     const freeVars = new Set(a.free);
     const pointFree = (name: string) => this.entities.get(name)?.kind === "point"
       && (this.entities.get(name) as PointEntity).varIndices.some((i) => freeVars.has(i));
@@ -3500,17 +3547,10 @@ export class Model {
   conflicting(report: SolveReport): { relations: string[]; unowned: string[] } {
     const owner = this.blockOwners();
     const unowned = [...new Set(report.blocks.filter((b) => !owner.has(b)).map((b) => this.problem.labelOf(b) ?? `block ${b}`))];
-    // A twin is named by the relation it is the twin of: the pair once.
-    const source = (name: string): string => {
-      let n = name;
-      for (let r = this.relations.get(n); r?.twin && this.relations.has(r.twin.of); r = this.relations.get(n)) n = r.twin.of;
-      return n;
-    };
     const accused = (blocks: Iterable<BlockHandle>) => {
       const out: string[] = [];
       for (const b of blocks) {
-        const owned = owner.get(b);
-        const name = owned === undefined ? undefined : source(owned);
+        const name = owner.get(b);
         if (name !== undefined && !out.includes(name)) out.push(name);
       }
       return out;
@@ -3524,13 +3564,8 @@ export class Model {
     const relations: string[] = [];
     const seeds = [...report.blocks.map((b) => this.problem.varsOf(b)), ...collapsed.map((n) => this.varsOfEntity(n))];
     try {
-      // A linked twin takes no part in the search (`RelationEntry.twin`): its
-      // rows are its partner's said on the other profile, so the pair is named
-      // once, by the partner, and a trial without them asks the same question.
-      const twins = this.twinBlocks();
-      for (const whole of this.failedParts(seeds)) {
-        const part = twins.size ? { ...whole, blocks: whole.blocks.filter((b) => !twins.has(b)) } : whole;
-        const inPart = [...this.relations.values()].filter((r) => !r.twin && r.blocks.some((b) => part.blockSet.has(b)));
+      for (const part of this.failedParts(seeds)) {
+        const inPart = [...this.relations.values()].filter((r) => r.blocks.some((b) => part.blockSet.has(b)));
         // Nearest what failed first, then newest.
         const reach = this.problem.reach(seeds.filter((s) => s.some((v) => part.varSet.has(v))).flat());
         // A relation naming what folded is nearest of all: on a closed outline
