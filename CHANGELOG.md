@@ -9,6 +9,13 @@ decisions.
 
 ## 2026-11-12 — the solver's two measured costs: a kept size is pulled by a probe and a finish, and the drag frame's cost was never the kernel's
 
+*Merged into the working branch (`f085963`); one conflict, this file,
+spliced newest-first. The gate on the merge: typecheck 0; unit 2151/2151
+(load 8–15); the solver's browser files — reviewsolver, conflicts,
+linkedprofiles — 23/23. The worker's full browser suite on nearly this tree
+was 843/845 with two picture skips and no failures. CLAUDE.md's kernel
+fallback was corrected in the commit after (`f3f9c92`).*
+
 *The gate, on the tree merged with the no-sketch merge (`3e67a6f`):
 typecheck 0; unit 2151/2151 (load 3–14, the box shared); the Rust crate
 11/11; the full browser suite 843 pass, 2 picture skips, 0 fail in 32
