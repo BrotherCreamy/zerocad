@@ -87,20 +87,23 @@ test("deleting a relation removes its blocks and nothing else", async () => {
 test("deleting a point takes exactly what could not survive without it", async () => {
   await loadKernel();
   const m = rectangle();
-  // Adds p5, p6, a1 — and four relations that land in *both* namespaces: the
-  // arc's radius is a dimension (`d1`), while its endpoint conditions and the
-  // two tangencies are constraints (`r6`, `r7`, `r8`).
+  // Adds the two tangent points p5, p6, the centre p7, the shorter lines l5,
+  // l6 and the arc a1 — the corner p2 and l1, l2 stay, construction — and six
+  // relations that land in *both* namespaces: the arc's radius is a dimension
+  // (`d1`), while the tangent points' holds on the lines, the arc's endpoint
+  // conditions and the two tangencies are constraints (`r6`–`r10`).
   fillet(m, "l1", "l2", 8);
   assert.equal(m.solve().solved, true);
 
-  // p1 is an endpoint of l1 and l4, so both edges go; and with them every
-  // relation naming p1, l1 or l4 — including the fillet's own tangency on l1.
-  assert.deepEqual(del(m, "p1"), ["r1", "r4", "r5", "r7", "l1", "l4", "p1"]);
+  // p1 is an endpoint of l1, l4 and the shorter line l5, so all three go; and
+  // with them every relation naming p1, l1, l4 or l5 — the fillet's own hold
+  // and tangency on l1 among them.
+  assert.deepEqual(del(m, "p1"), ["r1", "r4", "r5", "r6", "r9", "l1", "l4", "l5", "p1"]);
   assert.deepEqual([...m.entities.keys()],
-    ["f_o", "f_x", "f", "p2", "p3", "p4", "l2", "l3", "p5", "p6", "a1"]);
+    ["f_o", "f_x", "f", "p2", "p3", "p4", "l2", "l3", "p5", "p6", "p7", "l6", "a1"]);
   // The dimension survives in its own namespace and in its own place: the
   // cascade neither treats `d1` differently nor loses track of where it sat.
-  assert.deepEqual([...m.relations.keys()], ["r2", "r3", "d1", "r6", "r8"]);
+  assert.deepEqual([...m.relations.keys()], ["r2", "r3", "r7", "d1", "r8", "r10"]);
 
   // What is left is still a model, not wreckage: no relation refers to
   // anything that has gone, so it still solves.
@@ -114,13 +117,14 @@ test("deleting a curve takes its relations and leaves the points alone", async (
   m.solve();
 
   // The arc's radius, its endpoint conditions and both tangencies name a1.
-  // The points do not: they were the drawing's points before the arc existed.
+  // The points do not: they were the drawing's points before the arc existed
+  // — nor do the tangent points' holds on their lines, which name the lines.
   // `d1` is the radius — a dimension is taken by the cascade exactly as a
   // constraint is, and comes back in registry order among them.
-  assert.deepEqual(del(m, "a1"), ["d1", "r6", "r7", "r8", "a1"]);
+  assert.deepEqual(del(m, "a1"), ["d1", "r8", "r9", "r10", "a1"]);
   assert.deepEqual([...m.entities.keys()],
-    ["f_o", "f_x", "f", "p1", "p2", "p3", "p4", "l1", "l2", "l3", "l4", "p5", "p6"]);
-  assert.deepEqual([...m.relations.keys()], ["r1", "r2", "r3", "r4", "r5"]);
+    ["f_o", "f_x", "f", "p1", "p2", "p3", "p4", "l1", "l2", "l3", "l4", "p5", "p6", "p7", "l5", "l6"]);
+  assert.deepEqual([...m.relations.keys()], ["r1", "r2", "r3", "r4", "r5", "r6", "r7"]);
   assert.equal(m.solve().solved, true);
 });
 
@@ -243,20 +247,20 @@ test("deleting a relation the fillet created replays correctly", async () => {
   fillet(m, "l1", "l2", 8);
   m.solve();
 
-  // r6 exists only because `fillet` expanded into it; nothing journalled it,
+  // r8 exists only because `fillet` expanded into it; nothing journalled it,
   // and the journal never will. Its deletion, on the other hand, is explicit —
   // so replay has to recreate it under the same name and then remove it. That
-  // it is `r6` rather than `r7` is the fillet's radius having gone off into the
+  // it is `r8` rather than `r9` is the fillet's radius having gone off into the
   // `d` namespace ahead of it, which is precisely what the version bump is for.
-  assert.equal(m.relationOf("r6").op, "arcEndpoints");
+  assert.equal(m.relationOf("r8").op, "arcEndpoints");
   assert.ok(!m.journal.some((e) => e.op === "arcEndpoints"), "sanity: implicit on the way in");
-  del(m, "r6");
-  assert.ok(m.journal.some((e) => e.op === "deleteRelation" && e.args[0] === "r6"), "explicit on the way out");
+  del(m, "r8");
+  assert.ok(m.journal.some((e) => e.op === "deleteRelation" && e.args[0] === "r8"), "explicit on the way out");
 
   const reopened = open(save(m));
   assert.deepEqual(shape(reopened), shape(m));
-  assert.ok(!reopened.relations.has("r6"));
-  assert.deepEqual([...reopened.relations.keys()], ["r1", "r2", "r3", "r4", "r5", "d1", "r7", "r8"]);
+  assert.ok(!reopened.relations.has("r8"));
+  assert.deepEqual([...reopened.relations.keys()], ["r1", "r2", "r3", "r4", "r5", "r6", "r7", "d1", "r9", "r10"]);
   assert.equal(reopened.solve().solved, true);
 });
 

@@ -210,7 +210,7 @@ test("Delete on a constraint glyph removes that relation", async () => {
 test("with no default frame, Fix is in the origin's coordinates — and choosing it makes no frame", async () => {
   const [sx, sy] = await screenOf("p1");
   await rightClick(sx, sy);
-  assert.deepEqual(await items(), ["Insert name", "Delete", "Fix", "Undo", "Redo"], "a point has no natural dimension");
+  assert.deepEqual(await items(), ["Insert name", "Delete", "Fix", "Construction", "Undo", "Redo"], "a point has no natural dimension, and can be construction");
   // Three frame coordinates: the app is 3D, and so is the fixture frame.
   assert.match((await commands()).Fix, /^fix\("p1", \[-?[\d.]+, -?[\d.]+, -?[\d.]+\]\)$/,
     "with a frame set, Fix is a command like any other");

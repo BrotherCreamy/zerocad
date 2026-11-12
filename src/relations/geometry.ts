@@ -613,34 +613,46 @@ export function tangent(model: Model, a: string, b: string, side?: string | null
     const c = model.circular(circleName);
     const center = model.point(c.center);
     const dim = model.dim;
-    // Which of the line's ends is one of the arc's, read at every evaluation
-    // (the line can be re-pointed under it): 0 or 1, or -1 for none.
-    const shared = (): number => {
-      if (kind(circleName) !== "arc") return -1;
+    // **Where the line touches the arc**, read at every evaluation (the line
+    // can be re-pointed under it): an end of the arc that is one of the
+    // line's ends — or one held on the line by an `on` relation, which is how
+    // a fillet that keeps its corner lays its tangent point on the line it set
+    // aside (docs/plans/fillets-one-thing.md). Null for a line that shares no
+    // point with the arc.
+    const touch = (): string | null => {
+      if (kind(circleName) !== "arc") return null;
       const arc = model.arc(circleName), refs = model.line(lineName).refs;
-      return refs.findIndex((r) => r === arc.start || r === arc.end);
+      const own = [arc.start, arc.end].find((e) => refs.includes(e));
+      if (own !== undefined) return own;
+      for (const r of model.relations.values()) {
+        if (r.op === "pointOnLine" && r.args[1] === lineName && (r.args[0] === arc.start || r.args[0] === arc.end)) return r.args[0] as string;
+      }
+      return null;
     };
-    model.addResidual(joinVars(lineVars(model, lineName), center.varIndices, [c.radiusVar]), (l) => {
+    const vars = () => [...lineVars(model, lineName)(), ...center.varIndices, c.radiusVar, ...model.point(touch() ?? c.center).varIndices];
+    model.addResidual(vars, (l) => {
       const [p, q, ctr] = chunk(l, dim, 3);
       const u = vecSub(q, p);
-      // **At a shared end, the join**: the radius to that end square to the
-      // line, (end − centre) · (q − p) = 0 — a smooth join, Onshape's tangent
-      // arc. The distance form below is a *double* root there (the line
-      // touches the circle where the arc's own end already holds it to the
-      // rim), so its gradient vanishes at its own root: the solve crept to
+      // **At a touching point, the join**: the radius to that point square to
+      // the line, (end − centre) · (q − p) = 0 — a smooth join, Onshape's
+      // tangent arc. The distance form below is a *double* root there (the
+      // line touches the circle where the arc's own end already holds it to
+      // the rim), so its gradient vanishes at its own root: the solve crept to
       // within √tolerance of the join and the rank analysis read the joint
-      // as free. This one crosses zero cleanly. Either way the arc is
-      // tangent to the line; which side it leaves on is kept by the seed.
-      // As `perp`: the turn that would square the two unit directions, times
-      // the longer of the line and the radius as the solve began. The raw
-      // product is r·|u|·cos, which a smaller arc or a shorter line lowers
-      // (docs/plans/review-solver.md).
-      const at = shared();
-      if (at >= 0) {
+      // as free — and, for an end held on the line rather than the line's
+      // own, read the `on` as redundant (measured: `r9` redundant on a
+      // sketch-mode profile's fillet). This one crosses zero cleanly. Either
+      // way the arc is tangent to the line; which side it leaves on is kept
+      // by the seed. As `perp`: the turn that would square the two unit
+      // directions, times the longer of the line and the radius as the solve
+      // began. The raw product is r·|u|·cos, which a smaller arc or a shorter
+      // line lowers (docs/plans/review-solver.md).
+      const at = touch();
+      if (at !== null) {
         const floor = model.lengthFloor();
         const ends = lineVars(model, lineName)();
-        const k = rowLength(lengthBefore(model, ends), lengthBefore(model, [...center.varIndices, ...ends.slice(at * dim, (at + 1) * dim)]));
-        const radius = vecSub(at === 0 ? p : q, ctr);
+        const k = rowLength(lengthBefore(model, ends), lengthBefore(model, [...center.varIndices, ...model.point(at).varIndices]));
+        const radius = vecSub(l.slice(3 * dim + 1, 4 * dim + 1), ctr);
         return [fadeUnder(turnToSquare(unit(radius, floor), unit(u, floor)).mul(k), floor, radius, u)];
       }
       return [wedgeNorm(vecSub(ctr, p), u).div(norm(u)).sub(l[3 * dim])];

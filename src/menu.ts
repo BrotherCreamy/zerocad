@@ -22,7 +22,7 @@
 // adds a constraint the drawing already satisfies, and moves nothing.
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
-import { ORIGIN, SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
+import { ORIGIN, SETTABLE_PROPERTY, isCurveKind, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { sketchOnFaceCommand } from "./sketchface.ts";
@@ -174,16 +174,19 @@ function constrainItems(model: Model, selection: readonly string[]): MenuItem[] 
 }
 
 /**
- * **Construction** and **Not construction** over the lines, arcs and circles
- * among `names` — whichever would change something, both for a mix. Typed
- * over the curves only, so the log line names what it flags and not the
- * corners a box caught with them (which `construction` would pass over).
+ * **Construction** and **Not construction** over `names` — whichever would
+ * change something, both for a mix. **One row on every kind**
+ * (docs/plans/fillets-one-thing.md; the owner: *"anything can be
+ * construction. Lines, points, planes, bodies."*): a curve, a point, a plane
+ * you made, a body by any feature of it. Where the names hold curves it is
+ * typed over the curves only, so the log line names what it flags and not
+ * the corners a box caught with them; with no curve among them, over the
+ * points, planes and bodies named.
  */
-function constructionItems(model: Model, names: readonly string[]): MenuItem[] {
-  const curves = names.filter((n) => {
-    const k = model.entities.get(n)?.kind;
-    return k === "line" || k === "arc" || k === "circle" || k === "ellipse" || k === "spline" || k === "earc" || k === "bspline";
-  });
+export function constructionItems(model: Model, names: readonly string[]): MenuItem[] {
+  const takes = names.filter((n) => model.takesConstruction(n));
+  const only = takes.filter((n) => isCurveKind(model.entities.get(n)?.kind));
+  const curves = only.length ? only : takes;
   if (!curves.length) return [];
   const args = curves.map(quoted).join(", ");
   const items: MenuItem[] = [];

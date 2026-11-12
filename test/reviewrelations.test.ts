@@ -431,10 +431,13 @@ test("faceRef writes a wall by the line now in its place; faceKernelNames finds 
   const s = faceSource(m, `${e}:${ls[3]}`);
   assert.ok(s?.kind === "wall" && s.entity === ls[3] && s.index === 3 && s.shape === "plane" && s.whole);
   assert.equal(faceSource(m, `${e}:nosuch`), null);
-  // After a fillet of the first corner an arc stands in place 1, and every wall after it has moved up.
-  fillet(m, ls[0], ls[1], 5);
-  assert.deepEqual(faceKernelNames(m, `${e}:${ls[3]}`), [`${e}.m4`], "the same wall, another place");
-  assert.equal(faceRef(m, `${e}.m3`), `${e}:${ls[2]}`, "and the place is another wall's now");
+  // After a fillet of the first corner the profile is walked from the first
+  // edge the record kept — l3, l4, then the shorter lines either side of the
+  // arc — so every wall has another place.
+  const arc = fillet(m, ls[0], ls[1], 5);
+  assert.deepEqual(faceKernelNames(m, `${e}:${ls[3]}`), [`${e}.m1`], "the same wall, another place");
+  assert.equal(faceRef(m, `${e}.m3`), `${e}:${arc}`, "and the place is another wall's now");
+  assert.deepEqual(faceKernelNames(m, `${e}:${ls[0]}`), [], "the line set aside sweeps no wall");
 });
 
 test("every relation that takes a face journals a wall by its line, however it was given", () => {

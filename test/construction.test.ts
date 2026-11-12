@@ -90,41 +90,51 @@ test("construction sets the flag on the entity, construction(…, false) clears 
   assert.deepEqual(construction(m, "l1", "l2", true), ["l1", "l2"], "an explicit true is the same as none");
 });
 
-test("points, frames and relations among the names are passed over; a call naming no curve is refused", async () => {
+test("points and frames take the flag too (anything can be construction); a name that is nothing is refused", async () => {
   const m = await sketch();
-  assert.deepEqual(construction(m, "p1", "l1", "p2"), ["l1"]);
-  assert.deepEqual(last(m), { op: "construction", args: ["l1"] }, "the journal names only what it flagged");
-  assert.throws(() => construction(m, "p1"), /"p1" has no line, arc or circle in it — only they bound regions/);
-  assert.throws(() => construction(m, "f"), /only they bound regions/, "a frame bounds nothing");
+  assert.deepEqual(construction(m, "p1", "l1", "p2"), ["p1", "l1", "p2"]);
+  assert.deepEqual(last(m), { op: "construction", args: ["p1", "l1", "p2"] }, "the journal names what it flagged");
+  assert.ok(m.isConstruction("p1") && m.isConstruction("p2"), "a construction point: reference, cutting no edge");
+  assert.deepEqual(construction(m, "f"), ["f"], "a frame: a reference plane");
+  assert.equal(m.isConstruction("f"), true);
   assert.throws(() => construction(m), /construction needs a name/);
   assert.throws(() => construction(m, "nope"), /"nope" is not an entity/);
   assert.throws(() => construction(m, 3), /construction takes names, then true or false/);
-  assert.throws(() => m.setConstruction("p1", true), /"p1" is not a line, arc, circle, ellipse, spline, elliptical arc or spline of control points/, "the primitive refuses too");
+  assert.throws(() => construction(m, "origin"), /the origin is every model's own datum/);
+  assert.throws(() => m.setConstruction("nope", true), /only they can be construction/, "the primitive refuses what has no flag");
 });
 
 test("a group expands to its members at the call, and later membership changes never alter a flag", async () => {
   const m = await sketch();
   group(m, "l1", "l2", "p1");
-  assert.deepEqual(construction(m, "g1"), ["l1", "l2"]);
-  assert.deepEqual(last(m), { op: "construction", args: ["l1", "l2"] }, "journalled resolved, not as g1");
+  assert.deepEqual(construction(m, "g1"), ["l1", "l2", "p1"]);
+  assert.deepEqual(last(m), { op: "construction", args: ["l1", "l2", "p1"] }, "journalled resolved, not as g1");
   addTo(m, "g1", "l3");
   assert.equal(m.isConstruction("l3"), false, "a member added later is not construction");
   removeFrom(m, "g1", "l1");
   assert.equal(m.isConstruction("l1"), true, "a member taken out stays construction");
-  assert.deepEqual(construction(m, "g1", false), ["l2"], "g1 is l2 and l3 now, and only l2 was flagged");
+  assert.deepEqual(construction(m, "g1", false), ["l2", "p1"], "g1 is l2, p1 and l3 now, and only l2 and p1 were flagged");
   assert.equal(m.isConstruction("l1"), true);
   assert.ok(!m.groups.has("construction"), "and nothing about it is a group's");
 });
 
-test("a feature expands to the curves it made, at the call", async () => {
+test("a feature names its body: the body is construction — reference, left out of an export — and its sketch is not", async () => {
   const { m, lines } = await solidSketch();
   const e = extrude(m, lines[0], 20);
   const f = m.featureOf(e, "extrude");
-  const flagged = construction(m, e);
-  const made = [...f.twins.flat(), ...f.walls];
-  assert.deepEqual([...flagged].sort(), [...made].sort(), "its twins and walls — never its profile, which it does not own");
-  assert.ok(lines.every((l) => !m.isConstruction(l)));
-  assert.equal(last(m)!.args.includes(e), false, "journalled as the curves, not the feature's name");
+  assert.deepEqual(construction(m, e), [e]);
+  assert.ok(m.isConstruction(e), "the flag is on the body's first feature");
+  assert.deepEqual(last(m), { op: "construction", args: [e] }, "journalled as the body");
+  assert.ok(lines.every((l) => !m.isConstruction(l)), "never its profile");
+  assert.ok([...f.twins.flat(), ...f.walls].every((n) => !m.isConstruction(n)), "nor what it made: the lines are not what is reference, the body is");
+  const { stepExport } = await import("../src/step.ts");
+  assert.throws(() => stepExport(m), new RegExp(`${e}: construction`), "a construction body is not exported");
+  const { organiserSections } = await import("../src/organiser.ts");
+  const row = organiserSections(m).find((s) => s.id === "features")!.rows.find((r) => r.name === e)!;
+  assert.match(row.detail, /construction/);
+  assert.deepEqual(construction(m, e, false), [e]);
+  assert.equal(m.isConstruction(e), false);
+  assert.ok(stepExport(m).bodies.length === 1, "and exported again");
 });
 
 test("deleting an entity takes its flag with it; a fillet of two construction legs is construction", async () => {
@@ -225,19 +235,27 @@ test("a construction outline is no loop at all; in 3D on a tilted plane as in 2D
 
 // --- features ----------------------------------------------------------------------
 
-test("a feature's outline member is refused by name, before anything changes", async () => {
+test("a feature's outline member flagged leaves the extrude open — the line is still there, reference — and clearing the flag closes it", async () => {
   const { m, lines, c } = await solidSketch();
   // A loop inside is a hole once an operation says so (regions-as-operations.md).
   const e = extrude(m, lines[0], 20);
   hole(m, e, c);
   assert.equal(m.featureOf(e).loops.length, 2, "the ring is a hole");
-  const n = m.journal.length;
-  assert.throws(() => construction(m, lines[1]), new RegExp(`"${lines[1]}" is part of ${e}'s outline — a solid's outline cannot stop being a boundary`));
-  group(m, lines[2], c);
-  assert.throws(() => construction(m, "g1"), /is part of e1's outline/, "a group with an outline member in it, hole and all");
-  assert.equal(m.journal.length, n + 1, "only the group went in");
-  assert.ok([...lines, c].every((x) => !m.isConstruction(x)), "and nothing was flagged");
+  const f = m.featureOf(e, "extrude");
+  const twin = f.twins[0][1];
+  assert.deepEqual(construction(m, lines[1]), [lines[1], twin], "the line and its partner on the lid, as one edit to both profiles");
+  assert.equal(m.featureOf(e, "extrude").open, true, "the extrude stands, open");
+  assert.ok(!m.featureOf(e).loops[0].includes(lines[1]), "and no longer sweeps the line");
   assert.equal(m.featureOf(e).loops.length, 2, "the hole is still there");
+  assert.deepEqual(construction(m, lines[1], false), [lines[1], twin]);
+  assert.equal(m.featureOf(e, "extrude").open, undefined, "closed again: the edge was never gone");
+  assert.ok(m.featureOf(e).loops[0].includes(lines[1]));
+  assert.equal(m.solve().solved, true);
+  // A group with an outline member and the hole's circle: the extrude opens, the hole is filled.
+  group(m, lines[2], c);
+  construction(m, "g1");
+  assert.equal(m.featureOf(e, "extrude").open, true);
+  assert.equal(m.featureOf(e).loops.length, 1, "the hole's loop is gone, so it is filled");
 });
 
 // The decision (docs/plans/explicit-regions.md): a flagged circle bounds
@@ -338,8 +356,8 @@ test("the menu: Construction or Not construction on a curve, and over a selectio
   const flagged = menuFor(m, { name: "c1", kind: "circle", distance: 0 });
   assert.equal(command(flagged, "Not construction"), 'construction("c1", false)');
   assert.ok(!labels(flagged).includes("Construction"));
-  assert.ok(!labels(menuFor(m, { name: "p1", kind: "point", distance: 0 })).some((l) => /onstruction/.test(l)),
-    "a point has no flag to offer");
+  assert.equal(command(menuFor(m, { name: "p1", kind: "point", distance: 0 }), "Construction"), 'construction("p1")',
+    "a point has the row too: anything can be construction");
 
   const sel = ["l1", "p1", "c1"];
   const on = menuFor(m, { name: "l1", kind: "line", distance: 0 }, null, null, null, sel);
@@ -349,7 +367,7 @@ test("the menu: Construction or Not construction on a curve, and over a selectio
   assert.equal(labels(single).filter((l) => l === "Construction").length, 1, "the one selected: offered once");
 });
 
-test("the command surface: the log says what was passed over, ls() marks it, help() explains it", async () => {
+test("the command surface: nothing is passed over, ls() marks what is flagged, help() explains it", async () => {
   const m = await sketch();
   const said: string[] = [];
   const repl = new Repl(neocadScope({ model: m, log: (line) => { said.push(line); } }));
@@ -358,14 +376,15 @@ test("the command surface: the log says what was passed over, ls() marks it, hel
     assert.equal(r.ok, true, `${src}: ${r.error?.message}`);
     return r.value;
   };
-  assert.deepEqual(await run('construction("l1", "p1")'), ["l1"]);
-  assert.match(said.at(-1)!, /^p1 passed over — only lines, arcs and circles bound regions/);
+  assert.deepEqual(await run('construction("l1", "p1")'), ["l1", "p1"]);
+  assert.ok(!said.some((l) => /passed over/.test(l)), "nothing is passed over: a point takes the flag");
   const ls = (await run("ls()")) as string[];
   assert.ok(ls.some((l) => l.startsWith("l1") && l.endsWith("(construction)")), ls.join("\n"));
+  assert.ok(ls.some((l) => l.startsWith("p1") && l.endsWith("(construction)")), "a point is marked too");
   assert.ok(!ls.some((l) => l.startsWith("l2") && l.includes("construction")));
   assert.deepEqual(await run('construction("l1", false)'), ["l1"]);
   assert.match((await run("help()")) as string, /construction\(\.\.\.names, false\)/);
-  const bad = await repl.eval('construction("p1")');
+  const bad = await repl.eval('construction("nope")');
   assert.equal(bad.ok, false);
 });
 

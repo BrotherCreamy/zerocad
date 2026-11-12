@@ -7,6 +7,101 @@ decisions.
 
 ---
 
+## 2026-11-12 — a fillet is one thing: the corner is kept as construction on both profiles, the solid's edge fillet is the sketch's, and anything can be construction
+
+The owner: *"adding them to the originating chain/loop of a region of a body
+shouldn't break the body. The change should propagate through the entire
+hierarchy (yes: hierarchies do exist, but they are not timeline based). Also,
+adding a 2d fillet to the originating chain of a region of a body should
+produce an identical outcome to 3d filleting that edge. Also, the previous
+geometry should not be deleted - as in the two lines and corner point on the
+two linked sketches which form the extrude - it should be made into
+construction geometry. Note: anything can be construction. Lines, points,
+planes, bodies. Anything is fair game."* (docs/plans/fillets-one-thing.md,
+with review item 7; format 22).
+
+| | |
+|---|---|
+| ![Desktop, hidden-line view of the 50 × 30 × 10 block from above its front-right: the fillet tool's R6 at the front-right corner, the arc between two short lines on base and lid, the old corner p2 and its two edges still drawn thin in the construction teal on both profiles, the chord between the corners too; SOLVED · 2 free · 4 agreeing, as before the cut](docs/images/490-the-fillet-tool-on-a-base-corner-the-body-rounded-the-corner-kept-as-construction.png) | ![The same block in a second app, the solid's edge rounded by name — fillet("e1", ["e1.m0\|e1.m1"], 6) in the log, answered a1 — and the picture the same to the pixel: the same arc, the same construction corner on both profiles](docs/images/491-the-solids-edge-fillet-typed-the-same-model-entity-for-entity.png) |
+| ![The bevel tool tapped on the lid's back-left corner: the log reads chamfer("l7", "l8", 5) — the base's two lines, though the lid's corner was picked — the corner cut on both profiles with a 5 label, the old corner kept](docs/images/492-the-bevel-tool-on-the-lids-corner-the-body-chamfered-both-profiles.png) | ![construction("p6") answered [p6, p2]: the lid's front-right corner and its partner on the base drawn as rings, the block whole](docs/images/493-a-construction-point-a-ring-on-both-profiles.png) |
+| ![construction("e1"): every face of the block in the construction ink's dark teal, the Features row reading extrude · construction](docs/images/494-a-construction-body-drawn-as-reference.png) | ![The sketch tool on a kernel chamfer's face: the log's refusal in full — that face is e2's, a chamfer the solid kernel cut along an edge, nothing in the model lies on it … a chamfer between two walls is the sketch's own — and then the lid beside it taken, the view square to it, on e1's top](docs/images/495-a-kernel-chamfers-face-refused-as-a-sketch-plane-the-lid-taken.png) |
+| ![Shaded: a boss 6 high on the block's lid, and fillet("l1", "l2", 6) of the base's corner: the rounded corner runs the full 16 up through both bodies, R6 on it, the Bodies row e1 +e2 2](docs/images/496-a-boss-on-the-lid-and-the-base-corner-rounded-through-both.png) | ![iPhone 13, shaded: the fillet tool tapped on the lid's front corner, the body rounded there, R6 by the arc](docs/images/500-iphone-the-fillet-tool-on-the-lids-corner-the-body-rounded.png) |
+| ![iPhone 13: the bevel tool tapped on the lid's back-left corner, the block chamfered there top to bottom, the 5 label above it](docs/images/501-iphone-the-bevel-tool-on-the-lids-corner.png) | ![iPhone 13: construction("p6") answered [p6, p2] in the log, the block shaded as before](docs/images/502-iphone-a-construction-point.png) |
+| ![iPhone 13: construction("e1") — the block's three faces in the dark teal](docs/images/503-iphone-a-construction-body.png) | |
+
+- **A sketch `fillet` or `chamfer` keeps the two lines and their corner**,
+  exactly as drawn, with every relation on them, and flags them construction
+  (`cornerCut`, `shortenLegs`, operations.ts). New: a tangent point on each
+  line, held `on` it; a shorter line from each far end to it; the arc (or
+  the chamfer's line), `tan` to the two construction lines. A dimension to
+  the corner still measures the sharp corner — the fillet that re-pointed
+  moved the corner onto a tangent point, and a 40 wide block rounded at 5
+  became 45 wide (its solid 10969 for 9946). A second cut at a line's far
+  end shortens the shorter line in place; four rounded corners are four
+  construction lines, four real ones, four arcs. `extrude("l1")`,
+  `revolve` and `region` named by a line set aside take the line made in
+  its place (`standsFor`). A chain (`offset`, `trim`, `extend`,
+  `chainThrough` in sketchedit.ts) runs past a construction curve unless
+  asked from it, so an offset of the rounded outline is five copies, the
+  shorter lines' and the arc's, not the sharp corner's too. A pick
+  (`hitTest`, picking.ts) within half a pixel of both prefers the real
+  curve: the trim tool's click on the shorter line took the construction
+  line over it, and the offset tool's chain from it was one line —
+  browser-only bug 78 (docs/ARCHITECTURE.md), found by the sketch-edit e2e
+  with the unit suite green. Seventy-eight.
+- **A record standing on the corner sets its half aside and is rebuilt on
+  the rounded loop** (`regenerateRounded`, `ExtrudeFeature.aside`): the
+  twin lines, the twin corner and the chord between the corners stay,
+  construction, and the corner's pair stays in the `extrusion`, so the two
+  construction lines are still partners. Then the same cut as the other
+  profile has it is the next job: a boss on the lid is cut at that corner
+  too. Not timeline-based: the records and the links are read, never the
+  order they were made in. A kernel fillet that named a wall by its place
+  is re-pointed to the place the wall has now (`remapBlends`).
+- **The solid's edge fillet between two walls is that call**
+  (`profileCorner`, blends.ts): `fillet("e1", ["e1.m0|e1.m1"], 6)` typed is
+  `fillet("l1", "l2", 6)` — the same entities, relations, record, journal
+  entry and body, compared entity for entity and face for face
+  (`test/filletsonething.test.ts`). A fillet asked of the lid's lines is
+  made on the base (`baseCorner`). A rim edge, an edge between features, a
+  round wall's edge: the kernel's blend, as before; a mixed list makes the
+  record first.
+- **The `tan` relation reads a touching point held `on` the line**, not only
+  a shared end (the join form). Measured first with the distance form: `r9`
+  redundant on a sketch-mode profile's fillet, the `on` and the distance a
+  double root at the tangent point.
+- **Anything can be construction** (`Model.setConstruction` on a curve, a
+  point, a frame, a feature — its body): a point cuts no edge it is held on
+  (a T made by one is no vertex, loops.ts); a frame is never the plane a
+  feature is laid out by unless named; a body is drawn in the construction
+  ink's teal (`referenceRGB`), left out of `exportStep` (said), never the
+  body a new feature joins or cuts unless named (`defaultMode`), its row
+  saying *construction*. A linked profile's entity is flagged with its
+  partner; an outline edge flagged leaves its extrude **open** until it is
+  cleared (it was refused). One row on every menu, a body's too. A
+  construction point is drawn as a ring, a construction frame in the
+  construction ink.
+- **Review item 7**: the sketch tool refuses a kernel chamfer's own face,
+  saying why and what works (`chamferOfFace`); the frame once made there is
+  not made. A chamfer of a profile corner is a wall now, sketched on like
+  any wall.
+- **Format 22.** `fillet` and `chamfer` mean something else, so a file from
+  before is marked on the way in: `"repointed"` on each (cut as that build
+  cut it, its later names kept), `{ alone: true }` on each `construction`
+  (what it named, no partner); the marks stay on save.
+  `test/fixtures/fillets-v21.neocad.json`, saved by the build before this
+  one, opens to the model it was.
+- Unit: `test/filletsonething.test.ts` (17); the suites that asserted the
+  re-pointing fillet now assert the kept corner. E2E, mouse and iPhone 13:
+  `filletsonething.e2e.ts`. Decisions in TODO.md's register; what was tried
+  and dropped in CONVERSATION_LOG.md.
+
+Measured on the merge with tool-howto: typecheck 0; unit 2112 of 2112;
+kernel 11 of 11; browser 833 tests, 828 passed, 2 picture skips, 3 failed —
+the known Android font-scale measurement (fails on this container's browser
+regardless of the code, 3 of 3 alone) and the two overlaylock see-through
+tests, which pass alone (3 of 3) and fail only under four workers' load.
+
 ## 2026-11-12 — through all is a relation: the far vertex on the cut's lid, and up to face is the same relation the other way
 
 *Merged into the working branch (`bcccf00`) on top of the tool-tips

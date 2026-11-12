@@ -1310,6 +1310,30 @@ point between them; a region stays on the profile the extrude was made
 from; and a profile that is a *piece* of longer lines (a region a crossing
 split) has no partner edge for edge, so its relations do not twin.
 
+**Hierarchies exist, but they are not timeline based** (the owner, and
+docs/plans/fillets-one-thing.md). A body depends on its profile and a boss
+on the lid depends on the lid; what carries the dependence is the records
+and the links, read both ways, never an order of creation. So when a corner
+of a profile is cut (`fillet`, `chamfer`) nothing is deleted or re-pointed:
+the two lines and the corner stay, as construction, and the shorter lines
+and the arc are new. Every record standing on either line is brought into
+step (`regenerateRounded`): it sets its half of the old corner aside
+(`aside` — the twin lines, the twin corner, the chord between the corners,
+kept construction and no longer swept), rebuilds on the loop as it stands,
+and the same cut *as its other profile has it* is the next job, so a solid
+on the lid is cut at that corner too, and so on up. The solid's own edge
+fillet between two walls is this call (`profileCorner`): one entry, one
+model, one body, whichever route was taken. A fillet asked of the lid's two
+lines is made on the base, since the record is rebuilt from it — and that is
+the one place the two profiles are not symmetric, filed in the register.
+
+**Anything can be construction.** One flag (`Model.setConstruction`) on a
+curve, a point, a frame or a feature (its body), meaning one thing on every
+kind — reference: related to and dimensioned like anything else, left out
+of what is built from it. A curve bounds no region; a point cuts no edge it
+is held on; a frame lays out no feature unless named; a body is drawn in the
+construction ink, is not exported and is joined or cut only when named.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,
@@ -2627,7 +2651,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-seven bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-eight bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -3044,6 +3068,13 @@ of running the app:
    says about itself is behaviour, and only using the app checks it. It
    says what happens, and `toolhowto.e2e.ts` reads the sentence and then
    presses the button.
+78. The trim tool's click on a line a fillet had shortened trimmed the
+   construction line lying along it (docs/plans/fillets-one-thing.md): the
+   two were exactly as near the pixel, and the first in entity order won —
+   the one set aside. On the iPhone the offset tool's chain from the same
+   pick was one line, since a chain runs past construction curves. The unit
+   tests call `trim` and `offset` by name and passed. A pick's tie within
+   half a pixel goes to the real curve now (`hitTest`).
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

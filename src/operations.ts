@@ -12,10 +12,10 @@ import { addSpline } from "./relations/spline.ts";
 import {
   Model, ORIGIN, SETTABLE_PROPERTY, endName, endRelation, entityKind, extrudeOfDepth, extrudeOfEnd, isClosedEntity, isCurveKind, memberName,
   parseValueRef, referentOf, referentsOf, valueArgIndex,
-  EXTENTS, FEATURE_MODES, parseFaceName, type BlendFeature, type Entity, type Expansion, type Extent, type ExtrudeFeature, type FeatureEntry,
+  EXTENTS, FEATURE_MODES, parseFaceName, type BlendFeature, type Entity, type Expansion, type Extent, type ExtrudeFeature, type FeatureDraft, type FeatureEntry,
   type FeatureMode, type Portion, type ProfileMember, type RegionEntry, type RegionOp, type RegionStep, type SurfaceEntry,
 } from "./model.ts";
-import { defaultMode, resolveMode } from "./modes.ts";
+import { bodyNameOf, defaultMode, resolveMode } from "./modes.ts";
 import { faceAhead, farSide, lidOff } from "./farside.ts";
 import { throughPast } from "./solids.ts";
 import { coplanar, dist, onPlane } from "./relations/basic.ts";
@@ -105,10 +105,36 @@ function corner(model: Model, l1Name: string, l2Name: string) {
  * the arc starts where it did. In 2D the answer is the old one, and a 2D
  * model refuses the argument, like `addArc`.
  *
+ * **The corner is kept** (docs/plans/fillets-one-thing.md; everything above
+ * about re-pointing describes `"repointed"`, below). The owner: *"the previous
+ * geometry should not be deleted - as in the two lines and corner point on the
+ * two linked sketches which form the extrude - it should be made into
+ * construction geometry."* So the two lines and their corner point stay
+ * exactly as they were, with every relation on them, and become
+ * **construction**; what is new is a tangent point on each (`on` its line),
+ * a shorter line from each leg's far end to its tangent point, and the arc
+ * between, tangent to the two lines that were set aside (`cutCorner`). A
+ * dimension to the corner still measures the sharp corner — the fillet that
+ * re-pointed moved the corner point to a tangent point, so a 40 wide block
+ * rounded at 5 became 45 wide (measured: its solid 10969.05 for 9946.35).
+ *
+ * **On a profile a solid stands on, the same on both profiles in the same
+ * call** (`regenerateRounded`): the lid's two lines and corner are set aside
+ * as construction with the base's, the chord between the two corners with
+ * them, and the body is swept from the new loop. Asked of the lid's lines it
+ * is made on the base and comes out the same, name for name; and a fillet of
+ * the solid's edge between the two walls (`filletEdges`) is this call.
+ *
+ * **`how`, `"repointed"`, is a file's from before format 22** (persist.ts
+ * writes it into every older entry): the fillet as it was — the corner point
+ * reused as leg one's tangent point, leg two re-pointed, nothing set aside —
+ * because the names every later entry of that file holds were handed out by
+ * that expansion. Never typed.
+ *
  * Returns the new arc's name.
  */
 export function fillet(model: Model, l1Name: string, l2Name: string, r: number, side?: number[] | null,
-                       regenerated?: unknown): string {
+                       regenerated?: unknown, how?: unknown): string {
   if (model.dim !== 2 && model.dim !== 3) throw new Error("fillet rounds a corner in a 2D or 3D model");
   if (!(r > 0)) throw new Error("fillet needs a positive radius");
   if (model.dim === 2 && side != null) {
@@ -126,15 +152,212 @@ export function fillet(model: Model, l1Name: string, l2Name: string, r: number, 
   // features standing on a leg, with what each profile became — and only where
   // there was such a feature, so a fillet that touched none journals exactly
   // what it always did.
-  const args: unknown[] = side == null ? [l1Name, l2Name, r] : [l1Name, l2Name, r, side];
   let after: Regenerated[] | null = null;
-  return model.asOperation("fillet", () => (after === null ? args : [l1Name, l2Name, r, side ?? null, after]), () => {
-    const arc = filletBody(model, l1Name, l2Name, r, side ?? null);
-    // A profile with a rounded corner is a restructured profile: every feature
-    // standing on either leg follows it, inside this same call.
-    after = regenerateAfter(model, [l1Name, l2Name], given);
+  if (how != null) {
+    if (how !== REPOINTED) throw new Error(`fillet's last argument is a file's from before format 22 — "${REPOINTED}" — and nothing else`);
+    return model.asOperation("fillet", () => [l1Name, l2Name, r, side ?? null, after, REPOINTED], () => {
+      const arc = filletBody(model, l1Name, l2Name, r, side ?? null);
+      // A profile with a rounded corner is a restructured profile: every feature
+      // standing on either leg follows it, inside this same call.
+      after = regenerateAfter(model, [l1Name, l2Name], given);
+      return arc;
+    });
+  }
+  // Asked of a lid's two lines, it is made on the profile the record is rebuilt from.
+  const [a, b] = baseCorner(model, l1Name, l2Name);
+  const cut = cornerCut(model, a, b, "fillet");
+  const { theta, backoff } = cornerFits(model, cut, r);
+  const args: unknown[] = side == null ? [a, b, r] : [a, b, r, side];
+  return model.asOperation("fillet", () => (after === null ? args : [a, b, r, side ?? null, after]), () => {
+    const { p, u, v } = cut;
+    const turn = model.dim === 2 ? [0, 0, 1] : side ?? filletSide(model, u, v);
+    const bisector = unit(u.map((ui, i) => ui + v[i]));
+    const t1 = p.map((pi, i) => pi + u[i] * backoff);
+    const t2 = p.map((pi, i) => pi + v[i] * backoff);
+    const ctr = p.map((pi, i) => pi + (bisector[i] * r) / Math.sin(theta / 2));
+    const [T1, T2] = [model.addPoint(t1).name, model.addPoint(t2).name];
+    const C = model.addPoint(ctr).name;
+    const job = shortenLegs(model, cut, T1, T2);
+    // The short way round, as ever (see `filletBody`).
+    const short = cross3(sub3(lift3(t1), lift3(ctr)), sub3(lift3(t2), lift3(ctr)));
+    const [start, end] = sweepsAs(ctr, t1, t2, short, turn) ? [T1, T2] : [T2, T1];
+    const arc = model.addArc(C, start, end, r, model.dim === 3 ? turn : null).name;
+    // A rounded construction corner is construction too, as it was.
+    if (cut.legs.every((l) => l.was)) model.setConstruction(arc, true);
+    radius(model, arc, r);
+    arcEndpoints(model, arc);
+    // Tangent to the lines set aside, which are what say where the corner is.
+    tangent(model, cut.legs[0].on, arc);
+    tangent(model, cut.legs[1].on, arc);
+    after = regenerateRounded(model, job, given);
     return arc;
   });
+}
+
+/** What marks a `fillet` or `chamfer` entry of a file from before format 22: it re-pointed its legs, and set nothing aside. */
+export const REPOINTED = "repointed";
+
+/**
+ * One leg of a corner being cut (`cornerCut`).
+ *
+ * **A leg is a piece when an earlier cut already stands on its line**: a real
+ * line from this corner whose other end is held `on` a construction line that
+ * also ends here — the shorter line a fillet at the far corner made. A piece
+ * is shortened again in place (re-pointed to the new tangent point) and the
+ * new end is held on the construction line it stands on, so a rectangle
+ * rounded at four corners is four construction lines, four real ones and four
+ * arcs — not a construction line stacked on a construction line for every
+ * second corner. What was *drawn* is never re-pointed.
+ */
+export interface CornerLeg {
+  /** The real line that ends at the corner: set aside for a shorter one, or (a piece) shortened in place. */
+  line: string;
+  /** Its other end. */
+  far: string;
+  /** The line the new end is held on, and the cut is tangent or measured to: `line` itself, or the line a piece stands on. */
+  on: string;
+  piece: boolean;
+  /** Whether `line` was construction already. */
+  was: boolean;
+}
+
+/** A corner about to be cut: its point, its legs, and where it is — the legs' unit directions from the corner. */
+export interface CornerCut {
+  corner: string;
+  legs: [CornerLeg, CornerLeg];
+  /** For `cornerFits`: the far ends. */
+  a: string;
+  b: string;
+  p: number[];
+  u: number[];
+  v: number[];
+}
+
+/**
+ * The corner two lines share, read for a cut that keeps it. Each name may be
+ * the line that bounds there now, or the construction line it stands on —
+ * whichever a person can see to pick: `fillet("l1", "l4", 3)` at the far end
+ * of an `l1` already rounded at its near end means the piece of `l1` there.
+ * Read off names and relations only, so a replay reads the same.
+ */
+export function cornerCut(model: Model, aName: string, bName: string, op: string): CornerCut {
+  const { shared } = corner(model, aName, bName);
+  const farOf = (n: string) => { const r = model.line(n).refs; return r[0] === shared ? r[1] : r[0]; };
+  const heldOn = (pt: string, line: string) =>
+    [...model.relations.values()].some((r) => r.op === "pointOnLine" && r.args[0] === pt && r.args[1] === line);
+  const here = [...model.entities.values()].filter((e) => e.kind === "line" && e.refs.includes(shared)).map((e) => e.name);
+  const leg = (name: string): CornerLeg => {
+    const was = model.isConstruction(name);
+    if (was) {
+      const pieces = here.filter((n) => n !== name && !model.isConstruction(n) && heldOn(farOf(n), name));
+      if (pieces.length === 1) return { line: pieces[0], far: farOf(pieces[0]), on: name, piece: true, was: false };
+    } else {
+      const parents = here.filter((n) => n !== name && model.isConstruction(n) && heldOn(farOf(name), n));
+      if (parents.length === 1) return { line: name, far: farOf(name), on: parents[0], piece: true, was: false };
+    }
+    return { line: name, far: farOf(name), on: name, piece: false, was };
+  };
+  const legs: [CornerLeg, CornerLeg] = [leg(aName), leg(bName)];
+  if (legs[0].line === legs[1].line) throw new Error(`${op} needs two lines that meet: "${aName}" and "${bName}" are one edge there`);
+  // An edge another edge ends on bounds its regions in parts, and a part of
+  // the line set aside is no part of the shorter line made in its place: said
+  // before anything changes.
+  for (const l of legs) {
+    if (l.piece) continue;
+    const part = (m: ProfileMember) => typeof m !== "string" && m.name === l.line;
+    const f = [...model.features.values()].find((x) => x.loops.some((loop) => loop.some(part)));
+    const rg = [...model.regions.values()].find((x) => x.steps.some((st) => st.face.some(part)));
+    if (f || rg) {
+      throw new Error(`"${l.line}" bounds ${(f ?? rg)!.name} only in part — another edge ends on it — and ${op} does not yet cut the corner `
+        + "of an edge that is cut along its length: it would set the whole line aside, and the parts with it");
+    }
+  }
+  const p = model.coords(shared);
+  const u = unit(model.coords(legs[0].far).map((x, i) => x - p[i]));
+  const v = unit(model.coords(legs[1].far).map((x, i) => x - p[i]));
+  return { corner: shared, legs, a: legs[0].far, b: legs[1].far, p, u, v };
+}
+
+/**
+ * **A line a cut set aside stands for the piece made in its place**
+ * (docs/plans/fillets-one-thing.md): `extrude("l1")` after `fillet("l1",
+ * "l2", 5)` means the loop the shorter line bounds, as it did before the
+ * corner was cut — the construction line is what is still named `l1`, and
+ * what a person sees to point at. The piece is the one real line whose every
+ * end is an end of `name` or held `on` it; anything else is itself.
+ */
+export function standsFor(model: Model, name: string): string {
+  const e = model.entities.get(name);
+  if (e?.kind !== "line" || !model.isConstruction(name)) return name;
+  const held = new Set<string>(e.refs);
+  for (const r of model.relations.values()) if (r.op === "pointOnLine" && r.args[1] === name && typeof r.args[0] === "string") held.add(r.args[0]);
+  const pieces = [...model.entities.values()].filter((x) => x.kind === "line" && x.name !== name && !model.isConstruction(x.name)
+    && x.refs.every((p) => held.has(p))).map((x) => x.name);
+  return pieces.length === 1 ? pieces[0] : name;
+}
+
+/**
+ * The two lines of a corner **on the profile a record is rebuilt from**: a
+ * lid's two edges are their partners on the base (twins.ts), and a lid's lid's
+ * theirs — the owner's *"adding a 2d fillet to the originating chain of a
+ * region of a body should produce an identical outcome to 3d filleting that
+ * edge"*, read from the other profile: whichever of the linked sketches the
+ * corner is picked on, the call made and journalled is the one.
+ */
+export function baseCorner(model: Model, a: string, b: string): [string, string] {
+  for (let guard = 0; guard < 16; guard++) {
+    const link = linksOf(model).find((l) => model.features.has(l.record) && l.back.has(a) && l.back.has(b));
+    if (!link) break;
+    [a, b] = [link.back.get(a)!, link.back.get(b)!];
+  }
+  return [a, b];
+}
+
+/**
+ * What a cut of a corner did to the profile, for the records that stand on
+ * it (`regenerateRounded`).
+ */
+export interface Rounding {
+  /** The two lines the profile ran along at the corner — set aside, or shortened in place. */
+  legs: string[];
+  /** Each line set aside, to the shorter line made in its place. */
+  map: Map<string, string>;
+  /** The corner point, kept. */
+  corner: string;
+}
+
+/**
+ * **The legs of a cut corner, shortened to `T1` and `T2`** — two points just
+ * made, on legs one and two. A leg that was drawn is **set aside**: it stays
+ * as it is, flagged construction, and a new line runs from its far end to the
+ * new point, in its direction. A piece (`CornerLeg`) is re-pointed. Each new
+ * point is held `on` the line its leg stands on. The corner point is flagged
+ * construction once no real curve ends at it. Returns what the records need.
+ */
+export function shortenLegs(model: Model, cut: CornerCut, T1: string, T2: string): Rounding {
+  const map = new Map<string, string>();
+  const ends = [T1, T2];
+  cut.legs.forEach((l, k) => {
+    if (l.piece) {
+      model.retargetLine(l.line, cut.corner, ends[k]);
+      return;
+    }
+    const refs = model.line(l.line).refs;
+    const made = refs[0] === cut.corner ? model.addLine(ends[k], l.far).name : model.addLine(l.far, ends[k]).name;
+    if (l.was) model.setConstruction(made, true);
+    else model.setConstruction(l.line, true);
+    map.set(l.line, made);
+  });
+  cut.legs.forEach((l, k) => void pointOnLine(model, ends[k], l.on));
+  flagIfReference(model, cut.corner);
+  return { legs: cut.legs.map((l) => l.line), map, corner: cut.corner };
+}
+
+/** Flags a point construction when every curve that ends at it is construction — a corner a cut has set aside. */
+function flagIfReference(model: Model, point: string): void {
+  if (model.entities.get(point)?.kind !== "point") return;
+  const needs = model.dependents(point);
+  if (needs.length && needs.every((e) => isCurveKind(e.kind) && model.isConstruction(e.name))) model.setConstruction(point, true);
 }
 
 /**
@@ -158,7 +381,7 @@ function cornerOf(model: Model, l1Name: string, l2Name: string) {
  * The interior angle at a corner and how far back each leg is cut for radius
  * `r` — refusing legs on one line, and a radius the legs are too short for.
  */
-function cornerFits(model: Model, c: ReturnType<typeof cornerOf>, r: number): { theta: number; backoff: number } {
+function cornerFits(model: Model, c: Pick<CornerCut, "a" | "b" | "p" | "u" | "v">, r: number): { theta: number; backoff: number } {
   const { p, u, v } = c;
   const cosTheta = Math.min(1, Math.max(-1, u.reduce((s, ui, i) => s + ui * v[i], 0)));
   const theta = Math.acos(cosTheta);
@@ -362,6 +585,7 @@ export function extrude(model: Model, member: string, ...rest: unknown[]): strin
     ProfileMember[][] | null | undefined, number | null | undefined];
   const d = extrudeDepth(depth);
   const x = expansionOf(expansion, "extrude");
+  if (typeof member === "string") member = standsFor(model, member);
   if (typeof member === "string" && model.regions.has(member)) {
     checkOptions(model, options, "extrude");
     const profile = featureProfile(model, member, frame, loops, EXTRUDE);
@@ -792,7 +1016,8 @@ export function depthBelow(all: Loop[], inner: number, outer: number): number {
 
 /** The frames to try, the default first, then in creation order, the origin last — loops.ts's preference. */
 function framesByPreference(model: Model): string[] {
-  const all = model.frameNames().filter((f) => f !== ORIGIN);
+  // A construction frame is reference: never the plane a feature is laid out by unless it is named.
+  const all = model.frameNames().filter((f) => f !== ORIGIN && !model.isConstruction(f));
   const d = model.defaultFrame;
   return [...(d != null && all.includes(d) ? [d, ...all.filter((f) => f !== d)] : all), ORIGIN];
 }
@@ -816,7 +1041,9 @@ function framesByPreference(model: Model): string[] {
  */
 export function orientingPlane(model: Model, loop: Loop, toward: number[] = loop.plane.normal): string {
   const drawing = model.drawingPlane();
-  if (liesIn(model, loop, drawing)) {
+  // A construction frame is reference (docs/plans/fillets-one-thing.md): never
+  // the plane a feature is laid out by unless it is named.
+  if (!model.isConstruction(drawing) && liesIn(model, loop, drawing)) {
     // A curve's plane cannot be turned over the way three points can be
     // chosen facing the viewer: sketch on a cylinder's base, and the work
     // plane is the base rim, whose normal points up into the solid. A
@@ -826,7 +1053,7 @@ export function orientingPlane(model: Model, loop: Loop, toward: number[] = loop
     if (!away) return drawing;
     return sketchFrameFor(model, loop, toward);
   }
-  if (loop.plane.frame !== null) return loop.plane.frame;
+  if (loop.plane.frame !== null && !model.isConstruction(loop.plane.frame)) return loop.plane.frame;
   for (const f of framesByPreference(model)) {
     const axes = framePlaneAxes(model, f);
     if (axes && parallel(axes.n, loop.plane.normal)) return f;
@@ -1626,6 +1853,7 @@ export function revolve(model: Model, member: string, axis: string, ...rest: unk
     ProfileMember[][] | null | undefined, number | null | undefined, unknown];
   const a = revolveAngle(angle);
   const x = expansionOf(expansion, "revolve");
+  if (typeof member === "string") member = standsFor(model, member);
   if (typeof member === "string" && model.regions.has(member)) {
     axisReader(model, axis);
     checkOptions(model, options, "revolve");
@@ -2132,6 +2360,227 @@ function regenerateFound(model: Model, start: string[], first: SweepPlan | null,
 }
 
 /**
+ * **Every record standing on a corner that was just cut, brought into step —
+ * with what the cut replaced set aside, not taken**
+ * (docs/plans/fillets-one-thing.md). The owner: *"adding them to the
+ * originating chain/loop of a region of a body shouldn't break the body. The
+ * change should propagate through the entire hierarchy (yes: hierarchies do
+ * exist, but they are not timeline based)."*
+ *
+ * For each feature whose profile runs along a leg of the corner, in the order
+ * they were made:
+ *
+ * 1. what the cut replaced is **set aside** on the record (`setAside`): the
+ *    two lines, their twins on the other profile, the corner and its twin, and
+ *    the chord between the corners — kept, construction, no longer swept;
+ * 2. the regions whose faces named a line set aside name the shorter line
+ *    made in its place — a region is found again by its member — and so does
+ *    the record's own member;
+ * 3. the record is rebuilt on its profile as it is now (`rebuildFeature`):
+ *    the new lines and the arc get their twins and walls as any new member
+ *    does, and the twins made across the link follow by themselves (twins.ts);
+ * 4. a fillet or chamfer of the body's edges that named a wall by its place
+ *    names the place that wall is in now (`remapBlends`);
+ * 5. **the hierarchy**: the same cut, seen from the other profile — its twin
+ *    lines, the twins of their replacements, the corner's twin — is the next
+ *    job, so a solid standing on this one's lid is cut at that corner too, and
+ *    so on up. What depends on what is read off the records and the links,
+ *    never off the order things were made in.
+ *
+ * At the call (`given` null) each profile is found, and a feature whose
+ * profile cannot be found any more is left as it was, as `regenerateAfter`
+ * leaves it. At a replay the journal's list is followed, each feature with
+ * the profile it names. Returns what the operation journals, or null when no
+ * record stood on the corner.
+ */
+export function regenerateRounded(model: Model, first: Rounding, given: Regenerated[] | null): Regenerated[] | null {
+  const out: Regenerated[] = [];
+  const jobs: Rounding[] = [first];
+  const seen = new Set<string>();
+  const along = (f: FeatureEntry, job: Rounding) => f.loops.some((l) => l.some((m) => job.legs.includes(memberName(m))));
+  const run = (name: string, job: Rounding, loops: ProfileMember[][] | null, how?: "open"): void => {
+    seen.add(name);
+    const before = model.featureOf(name);
+    setAside(model, before, job);
+    renameInRegions(model, job);
+    const f = model.featureOf(name);
+    let plan: SweepPlan;
+    if (loops !== null) {
+      plan = how === "open" && f.kind === "extrude" ? planOpen(model, f, loops)
+        : planSweep(model, givenProfile(model, f.member, f.frame, loops, f.kind === "extrude" ? EXTRUDE : REVOLVE));
+    } else {
+      try {
+        plan = planRegen(model, f, refoundProfile(model, f));
+      } catch {
+        return; // left as it was: `regen` says why, by name
+      }
+    }
+    const built = rebuildFeature(model, f, plan);
+    if (how === "open" && f.kind === "extrude") {
+      const { name: _, ...draft } = model.featureOf(name, "extrude");
+      model.rewriteFeature(name, { ...draft, open: true });
+      out.push([name, built.loops, "open"]);
+    } else out.push([name, built.loops]);
+    const after = model.featureOf(name);
+    remapBlends(model, before, after, job.map);
+    const next = roundingAcross(model, before, after, job);
+    if (next) jobs.push(next);
+  };
+  if (given !== null) {
+    for (const [name, loops, how, to] of given) {
+      // A through-all end the rounding chose again (`rechooseEnds`): handed on, as a `regen`'s is.
+      if (how === "end") {
+        regenerateGiven(model, [[name, [], "end", to as EndTo]]);
+        continue;
+      }
+      const job = jobs.find((j) => along(model.featureOf(name), j));
+      if (job) run(name, job, loops, how);
+      else regenerateGiven(model, [how === "open" ? [name, loops, how] : [name, loops]]);
+    }
+    return given;
+  }
+  for (let i = 0; i < jobs.length; i++) {
+    for (const f of [...model.features.values()]) {
+      if (seen.has(f.name) || !model.features.has(f.name) || !along(model.featureOf(f.name), jobs[i])) continue;
+      const open = f.kind === "extrude" && f.open === true;
+      run(f.name, jobs[i], open ? f.loops.map((l) => l.map((m) => renamed(m, jobs[i]))) : null, open ? "open" : undefined);
+    }
+  }
+  // The bodies are as they will be: every through-all end's far point, chosen
+  // again (docs/plans/through-all-relation.md) — a corner the end was held on
+  // may be a corner no longer, as after any regeneration (`regenerateFound`).
+  if (out.length) out.push(...rechooseEnds(model));
+  return out.length ? out : null;
+}
+
+/** A profile member as a cut leaves it: a line set aside is the shorter line made in its place. */
+function renamed(m: ProfileMember, job: Rounding): ProfileMember {
+  if (typeof m !== "string") return m;
+  return job.map.get(m) ?? m;
+}
+
+/**
+ * A record's part of a cut corner **set aside** (`ExtrudeFeature.aside`): each
+ * line the cut replaced, and its twin; the corner, and its twin; the chord
+ * between the two corners. The twins are flagged construction here, as the
+ * operation flagged the lines it was asked about — the two profiles are one
+ * thing — and the chord and the corner's twin once the rebuild knows the
+ * corner bounds nothing any more (`rebuildBody`). The record's member follows
+ * the line it named to the one made in its place.
+ */
+function setAside(model: Model, f: FeatureEntry, job: Rounding): void {
+  const flat = f.loops.flat();
+  const twins = f.twins.flat();
+  const gone = [...job.map.keys()].filter((l) => flat.includes(l));
+  const member = job.map.get(f.member) ?? f.member;
+  // The corner leaves the walk whenever the profile ran along a leg of it — set aside or shortened in place.
+  const here = gone.length > 0 || job.legs.some((l) => flat.includes(l));
+  if (!here && member === f.member) return;
+  const aside = new Set(f.aside ?? []);
+  const owns = new Set(f.owns);
+  const add = (n: string | undefined, own: boolean) => {
+    if (n === undefined || !model.entities.has(n)) return;
+    aside.add(n);
+    if (own) owns.add(n);
+  };
+  for (const l of gone) {
+    add(l, false);
+    const t = twins[flat.indexOf(l)];
+    if (t !== undefined && model.entities.has(t)) {
+      add(t, true);
+      model.setConstruction(t, true);
+    }
+  }
+  if (here) {
+    add(job.corner, false);
+    const dim = model.relations.get(f.kind === "extrude" ? f.depth : f.angle);
+    const pairs = (dim?.args.slice(2) ?? []) as string[];
+    const at = pairs.findIndex((n, i) => i % 2 === 0 && n === job.corner);
+    const twin = at < 0 ? undefined : pairs[at + 1];
+    if (twin !== undefined && twin !== job.corner) {
+      add(twin, true);
+      if (f.kind === "extrude") {
+        add(f.walls.find((w) => { const r = model.line(w).refs; return r.includes(job.corner) && r.includes(twin); }), true);
+      }
+    }
+  }
+  const { name, ...draft } = f;
+  model.rewriteFeature(name, { ...draft, member, aside: [...aside], names: [...new Set([...f.names, ...aside])], owns: [...owns] } as FeatureDraft);
+}
+
+/** Every region step that named a line a cut set aside names the shorter line made in its place: a face is found again by its member. */
+function renameInRegions(model: Model, job: Rounding): void {
+  if (!job.map.size) return;
+  for (const r of model.regions.values()) {
+    for (const st of r.steps) {
+      st.member = job.map.get(st.member) ?? st.member;
+      st.face = st.face.map((m) => renamed(m, job));
+    }
+  }
+}
+
+/**
+ * **A fillet or chamfer of a body's edges keeps its edges through a cut of
+ * the profile.** A kernel edge is named by its two faces, and a wall by its
+ * place in the profile (`e1.m3`, src/solids/naming.ts) — and a corner cut in
+ * the sketch puts two members where one was, moving every wall after it up.
+ * Each place a blend names in `before` is rewritten as the place the same
+ * member (or the line made in its place) has in `after`; a wall that is gone
+ * is left as written, and the body says so as it always has.
+ */
+function remapBlends(model: Model, before: FeatureEntry, after: FeatureEntry, map: ReadonlyMap<string, string>): void {
+  const was = before.loops.flat();
+  const now = after.loops.flat();
+  const used = new Set<number>();
+  const place = new Map<number, number>();
+  was.forEach((m, i) => {
+    const want = typeof m === "string" ? map.get(m) ?? m : memberText(m);
+    const j = now.findIndex((x, k) => !used.has(k) && (typeof x === "string" ? x : memberText(x)) === want);
+    if (j < 0) return;
+    used.add(j);
+    place.set(i, j);
+  });
+  if ([...place].every(([i, j]) => i === j)) return;
+  const face = new RegExp(`^${before.name}\\.m(\\d+)$`);
+  for (const b of [...model.blends.values()]) {
+    const edges = b.edges.map((e) => e.split("|").map((part) => {
+      const hit = face.exec(part);
+      const to = hit ? place.get(Number(hit[1])) : undefined;
+      return to === undefined ? part : `${before.name}.m${to}`;
+    }).join("|"));
+    if (edges.some((e, i) => e !== b.edges[i])) {
+      const { name, ...draft } = b;
+      model.rewriteBlend(name, { ...draft, edges });
+    }
+  }
+}
+
+/**
+ * The cut a record just followed, **as the record's other profile has it**:
+ * its twin lines, each replaced one's twin to the twin of its replacement,
+ * the corner's twin. Null for a record with no twins (a whole turn).
+ */
+function roundingAcross(model: Model, before: FeatureEntry, after: FeatureEntry, job: Rounding): Rounding | null {
+  if (!before.twins.length) return null;
+  const twinIn = (f: FeatureEntry, l: string): string | undefined => f.twins.flat()[f.loops.flat().indexOf(l)];
+  const legs: string[] = [];
+  const map = new Map<string, string>();
+  for (const l of job.legs) {
+    const t = twinIn(before, l);
+    if (t === undefined) continue;
+    legs.push(t);
+    const to = job.map.get(l);
+    const tt = to === undefined ? undefined : twinIn(after, to);
+    if (tt !== undefined) map.set(t, tt);
+  }
+  if (!legs.length) return null;
+  const dim = model.relations.get(after.kind === "extrude" ? after.depth : after.angle);
+  const pairs = (dim?.args.slice(2) ?? []) as string[];
+  const at = pairs.findIndex((n, i) => i % 2 === 0 && n === job.corner);
+  return { legs, map, corner: at < 0 ? job.corner : pairs[at + 1] };
+}
+
+/**
  * Where a feature's region is in the drawing as it stands — **its membership
  * read off the record, never off containment.** The owner: *"I don't think
  * coplanarity should be used as an automatic basis for deciding which entities
@@ -2375,6 +2824,9 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const owns: string[] = [];
   const made = (n: string) => { owns.push(n); return n; };
   const touched: string[] = [];
+  // What a cut of a corner set aside, still there: kept through the rebuild.
+  const aside = new Set((f.aside ?? []).filter((n) => model.entities.has(n)));
+  const carried: string[] = [];
 
   // The points this feature materialised that the profile still runs through,
   // with their holds (every relation it owns but its dimension), in the
@@ -2590,15 +3042,28 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
     }
 
     // The pairs in the expansion's order: corners and centres, then the
-    // curves' radii, then the frames.
+    // corners a cut set aside (`ExtrudeFeature.aside`) — still held at their
+    // partners, which is what keeps the two construction lines there a pair —
+    // then the curves' radii, then the frames.
     for (const { base, twin } of byClass.values()) pairs.push(base, twin);
+    const walkedClasses = new Set(byClass.keys());
+    for (let i = 0; i + 1 < was.length; i += 2) {
+      const [b, t] = [was[i], was[i + 1]];
+      if (!(aside.has(b) || aside.has(t)) || kindOf(b) !== "point" || kindOf(t) !== "point") continue;
+      if (walkedClasses.has(classKey(classOf, b)) || carried.includes(b)) continue;
+      carried.push(b, t);
+    }
+    pairs.push(...carried);
     walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
-    pairs.push(...framePairs);
+    // An old lid frame's own point over a corner set aside is that corner's pair already.
+    for (let i = 0; i + 1 < framePairs.length; i += 2) if (!carried.includes(framePairs[i])) pairs.push(framePairs[i], framePairs[i + 1]);
   } else {
     // A whole revolve: its new profile, each entity paired with itself, as `revolveBody` names it.
     pairs.push(...selfPairs(model, plan, real));
   }
 
+  // What is aside stays the record's: the part of it the feature made, owned as it was.
+  for (const n of aside) if (f.owns.includes(n) && !owns.includes(n)) owns.push(n);
   owns.push(dimName);
   const args = [dim.args[0], value, ...pairs];
   const rebuild = REBUILD[dim.op];
@@ -2606,7 +3071,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   if (chordNow) seatTwins(model, dimName, chordNow);
 
   const on = [...builtOn(plan), ...planeNames(model, frame), ...(f.kind === "revolve" ? planeNames(model, f.axis) : [])];
-  const names = [...new Set([...on, ...owns])];
+  const names = [...new Set([...on, ...owns, ...aside])];
   if (f.kind === "extrude") {
     model.rewriteFeature(f.name, {
       kind: "extrude", member: f.member, frame, ...(f.top === undefined ? {} : { top: f.top }), depth: f.depth,
@@ -2635,6 +3100,17 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   // it, it is made again on the new chord — it was the feature's, not deleted
   // by anyone. One the user had deleted stays deleted.
   if (f.kind === "extrude" && hadPerp && !model.relations.has(perpName(f.name))) squareChord(model, f.name, dimName);
+  // A corner set aside bounds nothing on either profile: its twin is
+  // reference as it is, and so is the chord that was the wall between them.
+  for (let i = 0; i + 1 < carried.length; i += 2) {
+    const [b, t] = [carried[i], carried[i + 1]];
+    for (const n of aside) {
+      const e = model.entities.get(n);
+      if (e?.kind === "line" && e.refs.includes(b) && e.refs.includes(t)) model.setConstruction(n, true);
+    }
+    flagIfReference(model, b);
+    flagIfReference(model, t);
+  }
   return { loops: resolvedLoops(plan), touched };
 }
 
@@ -2643,10 +3119,13 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
  * still a cut of the same body. And its region: a regenerated feature still
  * stands on the region it was made from.
  */
-function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into" | "region"> & { extent?: Extent; upto?: string } {
+function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into" | "region" | "aside" | "construction"> & { extent?: Extent; upto?: string } {
+  const aside = (f.aside ?? []);
   return {
     ...(f.mode === undefined ? {} : { mode: f.mode }), ...(f.into === undefined ? {} : { into: f.into }),
     ...(f.region === undefined ? {} : { region: f.region }),
+    // What a cut set aside, and a construction body's flag: the record's, whatever it is rebuilt on.
+    ...(aside.length ? { aside } : {}), ...(f.construction ? { construction: true as const } : {}),
     ...(f.kind === "extrude" && f.extent !== undefined ? { extent: f.extent } : {}),
     ...(f.kind === "extrude" && f.upto !== undefined ? { upto: f.upto } : {}),
   };
@@ -3590,6 +4069,7 @@ export function regionStepNaming(model: Model, op: Exclude<RegionOp, "region">, 
  * relation.
  */
 export function region(model: Model, member: string, frame?: string | null, face?: unknown): string {
+  if (typeof member === "string") member = standsFor(model, member);
   checkCurve(model, member, "region");
   if (frame != null) model.planeKind(frame);
   let plane: string, names: string[];
@@ -4147,46 +4627,61 @@ function holesGoing(model: Model, names: ReadonlySet<string>, flagging: boolean)
 
 // --- construction geometry --------------------------------------------------
 
-/** Whether `name` is something that can carry the construction flag: a line, an arc, a circle, or a declared curve (an ellipse, a spline). */
-function takesConstruction(model: Model, name: string): boolean {
-  return isCurveKind(model.entities.get(name)?.kind);
-}
-
 /**
- * `construction(...names)` flags lines, arcs and circles as **construction
- * geometry** — still constrained, solved, picked and snapped to, but forming no
- * regions (loops.ts) — and `construction(...names, false)` clears it. One word
- * with a value rather than a pair of words (`real(…)`), because the flag is a
- * value: it is what a drawing tool's `construction` option sets, and
- * `{ construction: false }` and `construction("c1", false)` should read alike.
+ * `construction(...names)` flags things as **construction** — reference:
+ * still constrained, solved, picked, snapped to and dimensioned, and left out
+ * of what is built from them — and `construction(...names, false)` clears it.
+ * The owner: *"anything can be construction. Lines, points, planes, bodies.
+ * Anything is fair game."* (docs/plans/fillets-one-thing.md; what the flag
+ * means on each kind is `Model.isConstruction`.) One word with a value rather
+ * than a pair of words (`real(…)`), because the flag is a value: it is what a
+ * drawing tool's `construction` option sets, and `{ construction: false }`
+ * and `construction("c1", false)` should read alike.
  *
- * **Groups and features expand at the call, and the journal says what they
- * expanded to.** The owner, on why it is per entity: *"if it is a group based
- * inherited thing, then geometry could be both construction geometry and not
+ * **What a name stands for.** A curve, a point or a frame is itself. **A
+ * feature is its body**: `construction("e1")` — or any feature, fillet or
+ * chamfer of that body — flags the body, on its first feature. (It used to
+ * flag each line the feature had made, which is what a group is for.) **A
+ * group expands at the call, and the journal says what it expanded to.** The
+ * owner, on why the flag is per entity: *"if it is a group based inherited
+ * thing, then geometry could be both construction geometry and not
  * construction geometry simultaneously"*. So `construction("g1")` flags each
- * of g1's members now, and nothing g1 does later — gaining a line, losing one —
- * changes any entity's flag; the entry is `construction("l1", "l2", …)`, the
- * curves whose flag changed, so a replay cannot read the group any other way.
- * Points, frames and relations among the names (a box-selected batch, a
- * group's corners) are passed over — they bound nothing, so they have no flag
- * — and only a call that names no line, arc or circle at all is refused.
+ * of g1's members now, and nothing g1 does later changes any entity's flag.
+ * Relations among the names (a box-selected batch) are passed over, and only
+ * a call that names nothing that can carry the flag is refused.
  *
- * **A feature's outline member is refused**, by name: the solid stands on that
- * boundary, and an outline flagged construction under it would be a feature
- * whose profile no longer exists — a deletion, as the outline's going is to
- * `regen`. **A hole's member fills the hole**: flagged, it bounds nothing, so
- * the hole's loop has gone, and a hole whose loop goes is filled however it
- * went (`holesGoing`, as `del` of the circle does). The fill is journalled as
- * the `unhole` it is, before this call's own entry, inside the same call and so
- * the same undo step. **Clearing adds no hole**: a circle made real inside an
- * outline is not part of the region until `hole("e1", "c1")` says so — the
- * owner's *"I don't think coplanarity should be used as an automatic basis for
- * deciding which entities to include in a region."*
+ * **A linked profile's entity is flagged with its partner** (twins.ts): the
+ * two profiles of an extrude are one thing edited from either end, so a line
+ * made reference on the base is reference on the lid. The entry lists both —
+ * `construction("l1", "l5")`, what changed, resolved — so a replay flags
+ * exactly those.
+ *
+ * **What follows from a curve bounding nothing.** A member of an extrude's
+ * outline flagged leaves the extrude **open** (`unsweep`, journalled ahead of
+ * this call's entry, as a deleted edge's is): the record stays, the walls of
+ * the edges still real are swept, and clearing the flag closes it again
+ * (`relinkOpen`) — the line was never gone. It used to be refused. A revolve
+ * cannot stand open, so its outline is still refused, by name. **A hole's
+ * member fills the hole** (`holesGoing`, as `del` of the circle does), the
+ * fill journalled as the `unhole` it is, before this call's own entry.
+ * **Clearing adds no hole**: a circle made real inside an outline is not part
+ * of the region until `hole("e1", "c1")` says so. A point that a record's
+ * profile is cut at is refused: it is a vertex of that profile.
+ *
+ * **`{ alone: true }`, last, is a file's from before format 22** (persist.ts
+ * writes it into every older entry): the names given and nothing else — no
+ * partner — as that build flagged them. Never typed.
  *
  * A call that changes nothing journals nothing, so it is no undo step — `hide`'s
  * rule. Returns the names whose flag changed.
  */
 export function construction(model: Model, ...args: unknown[]): string[] {
+  let alone = false;
+  const last = args.at(-1);
+  if (last !== null && typeof last === "object" && !Array.isArray(last)) {
+    args.pop();
+    alone = (last as { alone?: unknown }).alone === true;
+  }
   const on = typeof args.at(-1) === "boolean" ? (args.pop() as boolean) : true;
   for (const a of args) {
     if (typeof a !== "string") {
@@ -4194,29 +4689,74 @@ export function construction(model: Model, ...args: unknown[]): string[] {
     }
   }
   const given = args as string[];
-  if (!given.length) throw new Error("construction needs a name — of a line, arc or circle, a group or a feature");
-  const curves = model.expand(given, "construction").filter((n) => takesConstruction(model, n));
-  if (!curves.length) {
-    const list = given.map((n) => `"${n}"`).join(", ");
-    throw new Error(`${list} ${given.length === 1 ? "has" : "have"} no line, arc or circle in ${given.length === 1 ? "it" : "them"} — `
-      + "only they bound regions, so only they can be construction");
+  if (!given.length) throw new Error("construction needs a name — of a line, a point, a plane, a body, or a group of them");
+  const named = new Set<string>();
+  for (const n of given) {
+    if (model.groups.has(n)) {
+      for (const m of model.groupOf(n).members) if (model.entities.has(m) && model.takesConstruction(m)) named.add(m);
+    } else if (model.features.has(n) || model.blends.has(n)) {
+      // An open extrude is in no chain, and is still the thing a person points at.
+      const body = bodyNameOf(model, n) ?? (model.features.has(n) ? n : null);
+      if (body === null || !model.features.has(body)) throw new Error(`"${n}" is in no body now — there is no body of its to be construction`);
+      named.add(body);
+    } else if (model.entities.has(n)) {
+      if (model.takesConstruction(n)) named.add(n);
+    } else if (n === ORIGIN && model.isFrame(ORIGIN)) {
+      throw new Error("the origin is every model's own datum — reference already, and part of no body. A plane you made can be construction");
+    } else if (model.surfaces.has(n) || model.regions.has(n)) {
+      throw new Error(`"${n}" is a ${model.surfaces.has(n) ? "surface" : "region"} — a curve, a point, a plane or a body can be construction; `
+        + `${model.surfaces.has(n) ? "a surface cannot yet" : "a region is what its curves bound, so flag the curves"}`);
+    } else if (!model.relations.has(n)) {
+      throw new Error(`construction: "${n}" is not an entity, a relation, a group or a feature`);
+    }
   }
-  const changed = curves.filter((n) => model.isConstruction(n) !== on);
+  if (!named.size) {
+    const list = given.map((n) => `"${n}"`).join(", ");
+    throw new Error(`${list} ${given.length === 1 ? "has" : "have"} nothing in ${given.length === 1 ? "it" : "them"} that can be construction — `
+      + "a line, arc or circle, a point, a plane or a body can");
+  }
+  // The partner of each across a link: the two profiles are edited as one.
+  if (!alone) {
+    const links = linksOf(model);
+    for (const n of [...named]) for (const { partner } of partnersOf(model, n, links)) if (model.takesConstruction(partner)) named.add(partner);
+  }
+  const changed = [...named].filter((n) => model.isConstruction(n) !== on);
   if (!changed.length) return [];
   let fills: (() => string[])[] = [];
   if (on) {
-    for (const f of featuresOnProfile(model, changed)) {
-      const held = changed.filter((n) => f.loops[0].some((m) => memberName(m) === n));
-      if (!held.length) continue;
-      throw new Error(`"${held[0]}" is part of ${f.name}'s outline — a solid's outline cannot stop being a boundary under it. `
+    const curves = changed.filter((n) => isCurveKind(model.entities.get(n)?.kind));
+    const going = new Set(curves);
+    for (const f of featuresOnProfile(model, curves)) {
+      const held = curves.filter((n) => f.loops[0].some((m) => memberName(m) === n));
+      if (!held.length || (!alone && f.kind === "extrude" && canUnsweep(model, f.name, going))) continue;
+      throw new Error(`"${held[0]}" is part of ${f.name}'s outline — ${f.kind === "extrude" ? "its extrude cannot lose it and stand" : "a revolve cannot stand open"}. `
         + `del("${f.name}") keeps the sketch and removes the solid; then it can be construction`);
     }
-    fills = [...regionsLosing(model, new Set(changed)), ...holesGoing(model, new Set(changed), true)];
+    for (const pt of changed.filter((n) => model.entities.get(n)?.kind === "point")) {
+      const cuts = (m: ProfileMember) => typeof m !== "string" && (m.from === pt || m.to === pt);
+      const f = [...model.features.values()].find((x) => x.loops.some((l) => l.some(cuts)));
+      const rg = [...model.regions.values()].find((x) => x.steps.some((st) => st.face.some(cuts)));
+      if (f || rg) {
+        throw new Error(`"${pt}" is where ${(f ?? rg)!.name}'s profile is cut — a vertex of it — and a construction point cuts nothing`);
+      }
+    }
+    fills = [...regionsLosing(model, going), ...holesGoing(model, going, true)];
+    for (const fill of fills) fill();
+    // An extrude whose outline loses an edge stays, open — the edge is still there, reference.
+    if (!alone) unsweepGoing(model, new Set(curves.filter((n) => model.entities.has(n))));
   }
-  for (const fill of fills) fill();
-  return model.asOperation("construction", on ? changed : [...changed, false], () => {
-    for (const n of changed) model.setConstruction(n, on);
-    return changed;
+  const now = changed.filter((n) => model.has(n));
+  return model.asOperation("construction", [...now, ...(on ? [] : [false]), ...(alone ? [{ alone: true }] : [])], () => {
+    for (const n of now) model.setConstruction(n, on);
+    // An edge an extrude just stopped sweeping for this flag is no longer on
+    // its way anywhere (`ExtrudeFeature.shed`): it is there, reference, and
+    // is taken back as an edge drawn again the moment the flag is cleared.
+    if (on) {
+      for (const f of model.features.values()) {
+        if (f.kind === "extrude" && f.shed?.some((n) => now.includes(n))) f.shed = f.shed.filter((n) => !now.includes(n));
+      }
+    }
+    return now;
   });
 }
 
@@ -4621,6 +5161,7 @@ export function unsweep(model: Model, record: string, names: unknown): string {
       const member = stays(f.member) ? f.member : loops.flat().map(memberName)[0] ?? f.member;
       model.rewriteFeature(name, {
         ...draft, member, loops, twins, walls: f.walls.filter(stays), names: f.names.filter(stays), owns: f.owns.filter(stays),
+        ...(f.aside ? { aside: f.aside.filter(stays) } : {}),
         ...(opened || f.open ? { open: true as const } : {}),
         shed: [...(f.shed ?? []).filter((n) => model.entities.has(n)), ...gone],
       });

@@ -34,7 +34,7 @@
 // written as one.
 
 import type { Model } from "./model.ts";
-import { chainsOf } from "./modes.ts";
+import { chainsOf, referenceFeatures } from "./modes.ts";
 import { looseCurves, solidsOf, type Body, type Curve, type Edge, type Face, type LooseCurve, type Shell, type Surface, type Vertex } from "./solids.ts";
 import { cross3, dot3, sub3, unit3 } from "./vec3.ts";
 import type { NurbsCurve, NurbsSurface } from "./solids/kernel.ts";
@@ -107,16 +107,20 @@ export interface KernelSolid {
  * built — a plate with its holes and bosses — is handed in (`kernel`), its
  * features written as that one solid and not again on their own.
  */
-export function stepExport(model: Model, options: StepOptions = {}, kernel: readonly KernelSolid[] = []): StepExport {
+export function stepExport(model: Model, options: StepOptions = {}, given_: readonly KernelSolid[] = []): StepExport {
   const hidden = [...model.features.values()].filter((f) => model.hidden.has(f.name)).map((f) => f.name);
+  // **A construction body is not exported** (docs/plans/fillets-one-thing.md):
+  // it is reference, as a construction line is — left out, and said.
+  const reference = referenceFeatures(model);
+  const kernel = given_.filter((k) => !k.features.some((f) => reference.has(f)));
   // Every feature of a body of two or more is the kernel's to write — as that
   // body, never one by one (a cut written as a solid would be the opposite of
   // what it is). One the kernel did not hand in is left out and said.
   const given = new Set(kernel.flatMap((k) => k.features));
   const kernels = chainsOf(model, { hidden: true }).bodies.filter((c) => c.features.length > 1);
   const covered = new Set(kernels.flatMap((c) => c.features.map((f) => f.name)));
-  const missing = kernels.filter((c) => !model.hidden.has(c.name) && !c.features.every((f) => given.has(f.name)));
-  const rest = [...model.features.keys()].filter((n) => !covered.has(n) && !given.has(n));
+  const missing = kernels.filter((c) => !model.hidden.has(c.name) && !reference.has(c.name) && !c.features.every((f) => given.has(f.name)));
+  const rest = [...model.features.keys()].filter((n) => !covered.has(n) && !given.has(n) && !reference.has(n));
   const own = solidsOf(model, rest);
   // In feature order: a body is where its first feature is.
   // Surfaces after every feature, in their own order (their records are not features).
@@ -124,7 +128,10 @@ export function stepExport(model: Model, options: StepOptions = {}, kernel: read
   const at = (b: Body) => order.indexOf(b.feature);
   const bodies = [...kernel.map((k) => k.body), ...own.bodies].sort((a, b) => at(a) - at(b));
   const skipped = [...own.skipped, ...missing.map((c) => ({ feature: c.name, why: "its body is the solid kernel's, which has not built it" }))];
-  const left = [...skipped, ...hidden.map((feature) => ({ feature, why: "hidden" }))];
+  const left = [
+    ...skipped, ...hidden.map((feature) => ({ feature, why: "hidden" })),
+    ...[...reference].filter((n) => model.features.has(n) && model.isConstruction(n) && !hidden.includes(n)).map((feature) => ({ feature, why: "construction" })),
+  ];
   if (bodies.length === 0) {
     if (model.features.size === 0 && model.surfaces.size === 0) throw new Error("there is no solid to export — extrude or revolve a region first; a STEP file of nothing would open empty");
     throw new Error(`there is no solid to export — ${left.map((s) => `${s.feature}: ${s.why}`).join("; ")}`);

@@ -73,6 +73,14 @@ async function saved(): Promise<string> {
   return r.value as string;
 }
 
+/** Where two files first differ, for a failure's message. */
+function firstDiff(a: string, b: string): string {
+  const [A, B] = [a.split("\n"), b.split("\n")];
+  let i = 0;
+  while (i < A.length && i < B.length && A[i] === B[i]) i++;
+  return `line ${i + 1}: ${JSON.stringify(A.slice(i, i + 4).join(" "))} vs ${JSON.stringify(B.slice(i, i + 4).join(" "))}`;
+}
+
 interface SeenFeature {
   name: string; loops: string[][]; twins: string[][]; walls: string[]; top?: string; depth: string; owns: string[];
   pairs: [string, string][]; value: number;
@@ -193,10 +201,13 @@ test("the fillet tool rounds a base corner — and the lid is rounded exactly as
   // In the sketch's own terms: the lid's arc sits 20 over the base's, rounded
   // exactly as it is.
   assert.ok(dist3(m.points[twin.center], m.points[base.center].map((c, i) => c + 20 * G_Z[i])) < 1e-6);
-  // Leg two's twin is the edge it was, re-pointed at the new tangent point's twin.
-  const legTwo = m.lines.find((l) => l.name === corner.legTwo)!;
-  const twinLegTwo = m.lines.find((l) => l.name === f.twins[0][f.loops[0].indexOf(corner.legTwo)])!;
-  assert.deepEqual(twinLegTwo.refs, legTwo.refs.map((p) => pairOf(p)));
+  // The corner's two lines and the corner are kept, construction, on both
+  // profiles, and left out of the loop; the shorter lines in their place end
+  // at the arc, and their twins at the lid's arc (docs/plans/fillets-one-thing.md).
+  assert.ok(!f.loops[0].includes(corner.legOne) && !f.loops[0].includes(corner.legTwo), `the lines set aside are not swept: ${f.loops[0]}`);
+  assert.ok(m.lines.some((l) => l.name === corner.legOne) && m.lines.some((l) => l.name === corner.legTwo) && m.points[corner.at], "and are still there");
+  const lidLines = f.twins[0].map((n) => m.lines.find((l) => l.name === n)).filter((l): l is NonNullable<typeof l> => !!l);
+  for (const end of [twin.start, twin.end]) assert.ok(lidLines.some((l) => l.refs.includes(end)), `a lid line ends at the lid arc's end ${end}`);
   afterFillet = await saved();
 });
 
@@ -222,12 +233,14 @@ test("set the depth from the command line: the rounded lid moves to 35, twin arc
   await app.page.mouse.move(5, 5);
   await shot("set");
   await key("Control+z");
-  assert.equal(await saved(), afterFillet, "the set undone, byte for byte");
+  const undone = await saved();
+  assert.equal(undone, afterFillet, `the set undone, byte for byte — ${firstDiff(undone, afterFillet)}`);
 });
 
 test("one Ctrl+Z takes the fillet away and brings the four-cornered lid back; Ctrl+Shift+Z rounds it again", async () => {
   await key("Control+z");
-  assert.equal(await saved(), beforeFillet, "back to the extruded rectangle, byte for byte");
+  const back = await saved();
+  assert.equal(back, beforeFillet, `back to the extruded rectangle, byte for byte — ${firstDiff(back, beforeFillet)}`);
   const [f] = await features();
   assert.equal(f.loops[0].length, 4);
   assert.equal(f.walls.length, 4);

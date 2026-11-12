@@ -18,6 +18,8 @@ export interface PointEntity {
   kind: "point";
   name: string;
   varIndices: number[]; // one per dimension
+  /** Construction: reference only — it cuts no edge it is held on. Absent when not. See `Model.setConstruction`. */
+  construction?: true;
 }
 
 export interface LineEntity {
@@ -129,6 +131,8 @@ export interface FrameEntity {
   xref: string;   // a point name; its direction from the origin is +x
   /** 3D only: a point on the +y side of the frame's plane. Absent in 2D. */
   yref?: string;
+  /** Construction: a reference plane — never the plane a feature is laid out by unless named. Absent when not. See `Model.setConstruction`. */
+  construction?: true;
 }
 
 /**
@@ -844,6 +848,27 @@ export interface ExtrudeFeature {
   shed?: string[];
   /** Why it makes no body, when a relation it needs has been deleted (`Model.deleteRelation`): said by the organiser. */
   unbuilt?: string;
+  /**
+   * **Set aside** (docs/plans/fillets-one-thing.md): what a fillet or chamfer
+   * of this profile's corner replaced — the two lines and their corner, on
+   * both linked profiles, and the chord between the two corners — kept, as
+   * construction, and no longer swept. The owner: *"the previous geometry
+   * should not be deleted - as in the two lines and corner point on the two
+   * linked sketches which form the extrude - it should be made into
+   * construction geometry."* The record lists them so that a regeneration
+   * keeps what it would otherwise take as "left the profile", and keeps each
+   * corner's pair in the `extrusion` — which is what goes on linking the two
+   * construction lines as partners (twins.ts pairs lines by their points).
+   * All of it is among `names`; the lid's half and the chord among `owns`.
+   */
+  aside?: string[];
+  /**
+   * **A construction body** (`Model.setConstruction` on a feature): reference
+   * only — drawn muted, left out of an export, and never the body a new
+   * feature joins or cuts unless it is named (`into`). On the body's first
+   * feature; a flag asked of any feature of a body lands there.
+   */
+  construction?: true;
   /** Everything the record refers to. See above. */
   names: string[];
   /**
@@ -915,6 +940,10 @@ export interface RevolveFeature {
   region?: string;
   /** Why it makes no body, when its angle has been deleted (`Model.deleteRelation`): said by the organiser. */
   unbuilt?: string;
+  /** What a fillet or chamfer of the profile's corner set aside, kept as construction. See `ExtrudeFeature.aside`. */
+  aside?: string[];
+  /** A construction body. See `ExtrudeFeature.construction`. */
+  construction?: true;
   /** Everything the record refers to. See `ExtrudeFeature`. */
   names: string[];
   /** What the feature made — what selects and hides as it; deleting the feature leaves it (see `ExtrudeFeature`). */
@@ -2932,34 +2961,55 @@ export class Model {
   // ---- construction geometry ---------------------------------------------
 
   /**
-   * Whether `name` is **construction geometry**: a line, arc or circle that
-   * forms no regions (loops.ts leaves it out) and is in every other way an
-   * ordinary entity — constrained, solved, picked, snapped to, drawn (thin and
-   * muted, never dashed). False for anything else, a name that is not there
-   * included: a point or a frame bounds nothing, so it has no flag to carry.
+   * Whether `name` is **construction** (docs/plans/construction.md, and
+   * docs/plans/fillets-one-thing.md for every kind but a curve). The owner:
+   * *"anything can be construction. Lines, points, planes, bodies. Anything is
+   * fair game."* One flag, meaning one thing on every kind — **reference: it
+   * is related to and dimensioned like anything else, and left out of what is
+   * built from it**:
+   *
+   * - a **curve** forms no regions (loops.ts leaves it out);
+   * - a **point** cuts no edge it is held on — a T made by a construction
+   *   point is no vertex (loops.ts);
+   * - a **frame** is a reference plane: never the plane a feature is laid out
+   *   by unless it is named;
+   * - a **body** (the flag on its first feature) is drawn as reference, left
+   *   out of an export, and never joined or cut by a new feature unless named.
+   *
+   * In every other way an ordinary thing — constrained, solved, picked,
+   * snapped to, drawn (thin and muted, never dashed). False for a name that
+   * is not there.
    */
   isConstruction(name: string): boolean {
     const e = this.entities.get(name);
-    return e !== undefined && isCurveKind(e.kind) && (e as { construction?: true }).construction === true;
+    if (e !== undefined) return (e as { construction?: true }).construction === true;
+    return this.features.get(name)?.construction === true;
+  }
+
+  /** Whether `name` is something the construction flag can be set on: a curve, a point, a frame, or a feature (its body). */
+  takesConstruction(name: string): boolean {
+    const e = this.entities.get(name);
+    if (e !== undefined) return e.kind === "point" || e.kind === "frame" || isCurveKind(e.kind);
+    return this.features.has(name);
   }
 
   /**
-   * Sets or clears the flag on one line, arc or circle. **On the entity, not in
-   * a set beside it** — the owner: *"construction geometry should be a per
-   * entity flag"* — so it goes with the entity when it is deleted, stays with a
-   * line an operation re-points, and can never be a group's property: a group
-   * is only ever expanded into the entities this is called on, at the moment of
-   * the call (operations.ts's `construction`). Absent rather than false when
-   * cleared, so an entity that was never flagged and one flagged and cleared
-   * are the same object. A primitive: journals nothing, and refuses nothing a
-   * feature could object to — the operation asks that first.
+   * Sets or clears the flag on one curve, point, frame or feature. **On the
+   * thing, not in a set beside it** — the owner: *"construction geometry
+   * should be a per entity flag"* — so it goes with the entity when it is
+   * deleted, stays with a line an operation re-points, and can never be a
+   * group's property: a group is only ever expanded into the entities this is
+   * called on, at the moment of the call (operations.ts's `construction`).
+   * Absent rather than false when cleared, so a thing that was never flagged
+   * and one flagged and cleared are the same object. A primitive: journals
+   * nothing, and refuses nothing a feature could object to — the operation
+   * asks that first.
    */
   setConstruction(name: string, on: boolean): void {
-    const e = this.entities.get(name);
-    if (!e || !isCurveKind(e.kind)) {
-      throw new Error(`"${name}" is not ${orList(["a line", "arc", "circle", ...curveNouns()])} — only they bound regions, so only they can be construction`);
+    if (!this.takesConstruction(name)) {
+      throw new Error(`"${name}" is not ${orList(["a line", "arc", "circle", ...curveNouns(), "point", "frame", "body"])} — only they can be construction`);
     }
-    const flagged = e as { construction?: true };
+    const flagged = (this.entities.get(name) ?? this.features.get(name)) as { construction?: true };
     if (on) flagged.construction = true;
     else delete flagged.construction;
   }

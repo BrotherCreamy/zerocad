@@ -23,6 +23,7 @@
 import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { fillet } from "../operations.ts";
+import { linksOf } from "../twins.ts";
 import type { Model } from "../model.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
@@ -36,10 +37,26 @@ function sharesCorner(model: Model, a: string, b: string): boolean {
   return la.refs.some((p) => lb.refs.includes(p));
 }
 
-/** The two lines that end at `point`, when exactly two do — a corner a click on its point takes whole. */
+/**
+ * The two lines that end at `point`, when exactly two do — a corner a click on
+ * its point takes whole. **The two that bound there**: a corner already cut
+ * at its far end has the line set aside (construction) and its shorter line
+ * both ending here, and the one drawn in ink is the one meant
+ * (docs/plans/fillets-one-thing.md); with no real line there, the two
+ * construction ones.
+ */
 export function cornerAt(model: Model, point: string): [string, string] | null {
-  const lines = [...model.entities.values()].filter((e) => e.kind === "line" && e.refs.includes(point)).map((e) => e.name);
-  return lines.length === 2 ? [lines[0], lines[1]] : null;
+  // A wall standing on the corner is a feature's, not a leg of the sketch —
+  // and so is the chord of a corner set aside, a line between a point and its
+  // partner across a link.
+  const walls = new Set([...model.features.values()].flatMap((f) => (f.kind === "extrude" ? f.walls : [])));
+  const links = linksOf(model);
+  const chord = (refs: readonly string[]) => links.some((l) => l.fwd.get(refs[0]) === refs[1] || l.fwd.get(refs[1]) === refs[0]);
+  const lines = [...model.entities.values()]
+    .filter((e) => e.kind === "line" && e.refs.includes(point) && !walls.has(e.name) && !chord(e.refs)).map((e) => e.name);
+  const real = lines.filter((n) => !model.isConstruction(n));
+  const two = real.length === 2 ? real : real.length === 0 && lines.length === 2 ? lines : null;
+  return two ? [two[0], two[1]] : null;
 }
 
 /** The step that rounds the corner of `a` and `b` at `radius`: the typed call. */

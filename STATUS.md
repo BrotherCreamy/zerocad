@@ -10,6 +10,39 @@ etc).
 
 ## What's working right now
 
+- **A fillet is one thing, and anything can be construction**
+  (docs/plans/fillets-one-thing.md, built; review item 7; format 22). The
+  owner: *"the previous geometry should not be deleted … it should be made
+  into construction geometry"*, *"adding a 2d fillet to the originating
+  chain of a region of a body should produce an identical outcome to 3d
+  filleting that edge"*, *"anything can be construction. Lines, points,
+  planes, bodies."* **A sketch `fillet` or `chamfer` keeps the two lines
+  and their corner** — construction, every relation on them intact — and
+  makes a tangent point `on` each line, a shorter line from each far end
+  and the arc (or chamfer line) between (`cornerCut`, `shortenLegs`,
+  operations.ts). On a profile a record stands on, **the record sets its
+  half aside** (`ExtrudeFeature.aside`: the twin lines, the twin corner, the
+  chord), rebuilds on the rounded loop, re-points any kernel blend's wall
+  places, and hands the same cut on to every record standing on its lid
+  (`regenerateRounded`). **`filletEdges` of an edge between two walls is
+  that call** (`profileCorner`, blends.ts), so the two routes give one model
+  and one body (compared entity for entity and face for face); a rim edge
+  is the kernel's blend as before. A fillet asked of the lid's lines is
+  made on the base (`baseCorner`). A line set aside **stands for** its
+  shorter line in `extrude`/`revolve`/`region` (`standsFor`). The `tan`
+  relation reads a touching point held `on` the line (the join form).
+  **Construction on every kind** (`Model.setConstruction`): a point cuts no
+  edge it is held on (loops.ts), a frame lays out no feature unless named
+  (`orientingPlane`), a body (`construction("e1")`) is drawn in the
+  construction ink (`referenceRGB`), left out of `exportStep` and never
+  joined or cut unless named (`defaultMode`); a linked profile's entity is
+  flagged with its partner; an outline edge flagged leaves the extrude open
+  until cleared. One row on every menu. The sketch tool refuses a kernel
+  chamfer's own face in words (`chamferOfFace`). Format 22 marks older
+  `fillet`/`chamfer` entries `"repointed"` and `construction` `{ alone:
+  true }`. Unit: `test/filletsonething.test.ts`; e2e:
+  `filletsonething.e2e.ts` (mouse and iPhone 13).
+
 - **A tool says how to use it** (docs/plans/tool-howto.md, built). The owner:
   *"I don't even know how to add a parallel relation. Maybe a little tooltip
   should pop up when I hover over (desktop) or select (phone) a tool."* Every

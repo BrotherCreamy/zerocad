@@ -145,23 +145,24 @@ test("deleting a point takes what could not survive without it", async () => {
   const before = await app.model();
   assert.equal(before.byKind.arc, 1);
 
-  // p2 is where l1 and l2 met, and the fillet reused it as a tangent point, so
-  // it is now an endpoint of l1 *and* of the arc. All three go, and with them
-  // every relation naming any of them — but p1 and p3 stay: they were the
-  // drawing's points before any of this.
+  // p2 is where l1 and l2 met. The fillet kept it — construction, with l1 and
+  // l2 still ending at it (docs/plans/fillets-one-thing.md) — and made the arc
+  // between two shorter lines. So deleting it takes l1 and l2 and every
+  // relation naming any of the three, and the arc stays; p1 and p3 stay too:
+  // they were the drawing's points before any of this.
   const removed = removedNames(await typeAndRead('del("p2")'));
   const after = await app.model();
-  assert.ok(removed.includes("p2") && removed.includes("l1") && removed.includes("a1"),
-    `expected the corner, its edge and the arc, got ${JSON.stringify(removed)}`);
+  assert.ok(removed.includes("p2") && removed.includes("l1") && removed.includes("l2") && !removed.includes("a1"),
+    `expected the corner and its two lines, not the arc, got ${JSON.stringify(removed)}`);
   assert.ok(!removed.includes("p1") && !removed.includes("p3"),
     "a curve does not take the drawing's points with it");
-  assert.equal(after.byKind.arc, undefined, "the arc is gone");
+  assert.equal(after.byKind.arc, 1, "the arc stays, between the two shorter lines");
   assert.ok(after.points.p1 && after.points.p3, "the neighbouring corners are not");
   assert.equal(await app.status(), "SOLVED", "and what is left still solves");
   assert.deepEqual(app.pageErrors, [], "nothing threw while rendering the remains");
 
   await undoKey(); // one action, one keystroke — the confirmation story
-  assert.equal((await app.model()).byKind.arc, 1, "all of it came back at once");
+  assert.ok((await app.model()).lines.some((l) => l.name === "l1") && (await app.model()).points.p2, "all of it came back at once");
 });
 
 test("a solve after a deletion moves nothing and produces no NaNs", async () => {

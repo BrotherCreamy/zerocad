@@ -38,7 +38,8 @@ import {
 import { addBSpline, checkBSpline, pathCurveOf, type BSplineEntity } from "./kinds/spline.ts";
 import { domain, nearestParam, subCurve, type BSpline } from "./bspline.ts";
 import {
-  canOpen, del, featuresTouching, givenRegenerated, regenerateAfter, regenerateNamed, regenerateOpen, regenerationRefusal, type Regenerated,
+  REPOINTED, baseCorner, canOpen, cornerCut, del, featuresTouching, givenRegenerated, regenerateAfter, regenerateNamed, regenerateOpen,
+  regenerateRounded, regenerationRefusal, shortenLegs, type Regenerated,
 } from "./operations.ts";
 import { extrusionChord } from "./relations/extrusion.ts";
 import { linksOf, partnersOf, type Link } from "./twins.ts";
@@ -853,53 +854,88 @@ export function extend(model: Model, curve: string, end: unknown, to?: string | 
 /**
  * **Cuts a corner with a line** — `chamfer("l1", "l2", 5)`, or two setbacks,
  * `chamfer("l1", "l2", 5, 3)` (along l1, then l2). The two lines must share
- * their corner point. Each leg is re-pointed at a new end the setback back
- * from the corner, and a line joins the two. **The corner point stays where
- * the corner is** — held there as the legs' `intersection`, no curve's end any
- * more — so every dimension on it still measures the sharp corner, and the
- * setbacks are `dist` from it: one setback is one dimension and an
- * `equalSpacing` (the second end as far from the corner as the first), two are
- * two dimensions. Lines are read lazily, so `par` on a leg still holds it.
+ * their corner point.
+ *
+ * **The corner is kept** (docs/plans/fillets-one-thing.md), as `fillet` keeps
+ * it: the two lines and their corner point stay as they were, with every
+ * relation on them, and become construction; a new point stands the setback
+ * back along each (`on` its line), a shorter line runs to it from each leg's
+ * far end, and a line joins the two. The setbacks are `dist` from the corner:
+ * one setback is one dimension and an `equalSpacing` (the second end as far
+ * from the corner as the first), two are two dimensions. On a profile a solid
+ * stands on the same is made on the other profile in the same call, and the
+ * body is swept from the new loop (`regenerateRounded`); asked of a lid's
+ * lines, or of the solid's edge between the two walls (`chamferEdges`), it is
+ * this call on the base.
  *
  * Refuses a setback that is not positive or that would run past a leg's far
- * end, and legs on one line. A feature standing on either leg is regenerated
- * inside the call, as `fillet` regenerates it (read `fillet` for the lid), and
- * the list journalled beside the call. Returns the new line's name.
+ * end, and legs on one line. Returns the new line's name.
+ *
+ * **`how`, `"repointed"`, is a file's from before format 22**: the chamfer as
+ * it was — each leg re-pointed at its new end, the corner point left held as
+ * the legs' `intersection` — for the names that file's later entries hold.
  */
-export function chamfer(model: Model, l1: string, l2: string, d1: number, d2?: number | null, regenerated?: unknown): string {
+export function chamfer(model: Model, l1: string, l2: string, d1: number, d2?: number | null, regenerated?: unknown, how?: unknown): string {
   if (typeof d1 !== "number" || !(d1 > 0) || (d2 != null && (typeof d2 !== "number" || !(d2 > 0)))) {
     throw new Error("chamfer needs positive setbacks — chamfer(\"l1\", \"l2\", 5), or two: chamfer(\"l1\", \"l2\", 5, 3)");
   }
-  const [a, b] = [model.line(l1), model.line(l2)];
   if (l1 === l2) throw new Error(`chamfer needs two lines: ${l1} twice is one`);
-  const C = a.refs.find((p) => b.refs.includes(p));
-  if (!C) throw new Error(`"${l1}" and "${l2}" do not meet at a shared point — chamfer cuts the corner two lines share`);
-  const A = a.refs[0] === C ? a.refs[1] : a.refs[0], B = b.refs[0] === C ? b.refs[1] : b.refs[0];
-  const c = model.coords(C);
-  const legA = model.coords(A).map((v, i) => v - c[i]), legB = model.coords(B).map((v, i) => v - c[i]);
-  const [la, lb] = [Math.hypot(...legA), Math.hypot(...legB)];
-  const [ua, ub] = [legA.map((v) => v / la), legB.map((v) => v / lb)];
-  const cos = ua.reduce((s, v, i) => s + v * ub[i], 0);
-  if (Math.abs(cos) > 1 - 1e-12) throw new Error(`${l1} and ${l2} lie on one line — there is no corner to chamfer`);
-  const e2 = d2 ?? d1;
-  if (d1 >= la || e2 >= lb) {
-    throw new Error(`a setback of ${d1 >= la ? d1 : e2} runs past ${d1 >= la ? l1 : l2}'s far end (it is ${(d1 >= la ? la : lb).toFixed(3)} long)`);
-  }
+  if (how != null && how !== REPOINTED) throw new Error(`chamfer's last argument is a file's from before format 22 — "${REPOINTED}" — and nothing else`);
   const given = regenerated == null ? null : givenRegenerated(regenerated, "chamfer");
-  const args: unknown[] = d2 == null ? [l1, l2, d1] : [l1, l2, d1, d2];
+  const e2 = d2 ?? d1;
   let after: Regenerated[] | null = null;
-  return model.asOperation("chamfer", () => (after === null ? args : [l1, l2, d1, d2 ?? null, after]), () => {
-    const T1 = model.addPoint(c.map((v, i) => v + ua[i] * d1)).name;
-    const T2 = model.addPoint(c.map((v, i) => v + ub[i] * e2)).name;
-    model.retargetLine(l1, C, T1);
-    model.retargetLine(l2, C, T2);
+  if (how === REPOINTED) {
+    const [a, b] = [model.line(l1), model.line(l2)];
+    const C = a.refs.find((p) => b.refs.includes(p));
+    if (!C) throw new Error(`"${l1}" and "${l2}" do not meet at a shared point — chamfer cuts the corner two lines share`);
+    const A = a.refs[0] === C ? a.refs[1] : a.refs[0], B = b.refs[0] === C ? b.refs[1] : b.refs[0];
+    const c = model.coords(C);
+    const legA = model.coords(A).map((v, i) => v - c[i]), legB = model.coords(B).map((v, i) => v - c[i]);
+    const [la, lb] = [Math.hypot(...legA), Math.hypot(...legB)];
+    const [ua, ub] = [legA.map((v) => v / la), legB.map((v) => v / lb)];
+    const cos = ua.reduce((s, v, i) => s + v * ub[i], 0);
+    if (Math.abs(cos) > 1 - 1e-12) throw new Error(`${l1} and ${l2} lie on one line — there is no corner to chamfer`);
+    if (d1 >= la || e2 >= lb) {
+      throw new Error(`a setback of ${d1 >= la ? d1 : e2} runs past ${d1 >= la ? l1 : l2}'s far end (it is ${(d1 >= la ? la : lb).toFixed(3)} long)`);
+    }
+    return model.asOperation("chamfer", () => [l1, l2, d1, d2 ?? null, after, REPOINTED], () => {
+      const T1 = model.addPoint(c.map((v, i) => v + ua[i] * d1)).name;
+      const T2 = model.addPoint(c.map((v, i) => v + ub[i] * e2)).name;
+      model.retargetLine(l1, C, T1);
+      model.retargetLine(l2, C, T2);
+      const line = model.addLine(T1, T2).name;
+      if (model.isConstruction(l1) && model.isConstruction(l2)) model.setConstruction(line, true);
+      intersection(model, C, l1, l2);
+      dist(model, C, T1, d1);
+      if (d2 == null) equalSpacing(model, T1, C, T2);
+      else dist(model, C, T2, d2);
+      after = regenerateAfter(model, [l1, l2], given);
+      return line;
+    });
+  }
+  if (!model.line(l1).refs.some((p) => model.line(l2).refs.includes(p))) {
+    throw new Error(`"${l1}" and "${l2}" do not meet at a shared point — chamfer cuts the corner two lines share`);
+  }
+  // Asked of a lid's two lines, it is made on the profile the record is rebuilt from.
+  const [a, b] = baseCorner(model, l1, l2);
+  const cut = cornerCut(model, a, b, "chamfer");
+  const cos = cut.u.reduce((s, v, i) => s + v * cut.v[i], 0);
+  if (Math.abs(cos) > 1 - 1e-12) throw new Error(`${a} and ${b} lie on one line — there is no corner to chamfer`);
+  const [la, lb] = [cut.a, cut.b].map((far) => Math.hypot(...model.coords(far).map((v, i) => v - cut.p[i])));
+  if (d1 >= la || e2 >= lb) {
+    throw new Error(`a setback of ${d1 >= la ? d1 : e2} runs past ${d1 >= la ? a : b}'s far end (it is ${(d1 >= la ? la : lb).toFixed(3)} long)`);
+  }
+  const args: unknown[] = d2 == null ? [a, b, d1] : [a, b, d1, d2];
+  return model.asOperation("chamfer", () => (after === null ? args : [a, b, d1, d2 ?? null, after]), () => {
+    const T1 = model.addPoint(cut.p.map((v, i) => v + cut.u[i] * d1)).name;
+    const T2 = model.addPoint(cut.p.map((v, i) => v + cut.v[i] * e2)).name;
+    const job = shortenLegs(model, cut, T1, T2);
     const line = model.addLine(T1, T2).name;
-    if (model.isConstruction(l1) && model.isConstruction(l2)) model.setConstruction(line, true);
-    intersection(model, C, l1, l2);
-    dist(model, C, T1, d1);
-    if (d2 == null) equalSpacing(model, T1, C, T2);
-    else dist(model, C, T2, d2);
-    after = regenerateAfter(model, [l1, l2], given);
+    if (cut.legs.every((l) => l.was)) model.setConstruction(line, true);
+    dist(model, cut.corner, T1, d1);
+    if (d2 == null) equalSpacing(model, T1, cut.corner, T2);
+    else dist(model, cut.corner, T2, d2);
+    after = regenerateRounded(model, job, given);
     return line;
   });
 }
@@ -1026,6 +1062,10 @@ export function chainThrough(model: Model, curve: string): string[] {
   const order = [...model.entities.keys()];
   for (const c of model.entities.values()) {
     if (c.kind !== "line" && c.kind !== "arc" && c.kind !== "spline") continue;
+    // A construction curve is no part of an outline's chain (a corner's line
+    // set aside by a fillet ends where the shorter line in its place begins),
+    // unless it is the curve the chain was asked from.
+    if (c.name !== curve && model.isConstruction(c.name)) continue;
     for (const p of chainEnds(c)) at.set(keyOf(p), [...(at.get(keyOf(p)) ?? []), c.name]);
   }
   const found = new Set([curve]);

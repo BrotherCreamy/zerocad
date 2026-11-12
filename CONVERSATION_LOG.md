@@ -10,6 +10,75 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-12 — a fillet is one thing: what was tried, and what the corner's keeping cost
+
+Built on `claude/fillets-one-thing` from docs/plans/fillets-one-thing.md,
+with review item 7. The register has every choice; this is why, and what
+was dropped.
+
+**The corner is kept, not moved.** The old fillet reused the corner point
+as leg one's tangent point and re-pointed leg two — tidy, and wrong by the
+owner's sentence: a dimension to the corner moved with it, and a block
+rounded at 5 grew by 5. Keeping the corner means two new lines and two new
+points per cut, and the record must learn that an entity can leave its
+profile without being gone: the `aside` list. The alternative — flagging the
+old lines construction *and* re-pointing them to the tangent points — was
+rejected before it was written: the lines would no longer run between the
+drawn corners, so nothing on them would still be what the person drew.
+
+**The tangent's double root, again.** The first build held each new tangent
+point `on` its construction line and made the arc `tan` to that line in the
+form a line with no shared end gets: the centre's distance to the line.
+The solver solved it; the diagnosis called the second tangency redundant.
+It is: at the tangent point the `on` and the distance rows are a double
+root (the comment in `tangent` had already said so for the shared-end
+case). So `tan` now looks for a *touching* point — an arc end that is the
+line's own, or one held on the line by `pointOnLine` — and uses the join
+form there. Nothing redundant, on a sketch-mode profile and a revolve
+alike.
+
+**Which lines a second cut takes.** Rounding the far end of a line already
+set aside could stack a construction line on a construction line. Instead
+the cut reads the corner: a real line ending there whose other end is held
+on a construction line that also ends there is a *piece*, and is shortened
+in place. Read off names and relations only, so a replay reads the same.
+
+**The solid's edge fillet routes to the sketch's only when typed live.** A
+replayed `filletEdges` entry is the record it names; a file from before 22
+may list a profile corner the kernel rounded, and must keep it the kernel's.
+`model.journalling` is the gate — a replay records nothing.
+
+**Why `extrude("l1")` still works after `fillet("l1", "l2")`.** `l1` is the
+construction line now, which bounds nothing, and refusing it in words sends
+the person looking for a name they cannot see. The line stands for the one
+real line whose every end is an end of it or held on it.
+
+**A fillet of a profile corner on one end only is not built.** The design
+allowed it as a loft and said to refuse where the kernel cannot; the SMLib
+wrapper has no loft, and a fillet asked of the lid is made on both profiles
+and journalled as the base's. Filed, with the question of whether the owner
+means the rim (which the kernel rounds on one end today).
+
+**What "construction" means on each kind** was decided once and written
+on `isConstruction`: reference — related to and dimensioned like anything,
+left out of what is built from it. A construction frame laying out no
+feature unless named is the one that could surprise: a default frame
+flagged construction stops being the plane extrudes default to.
+
+**The e2e pictures.** `SOLVED` fades from the status by design, so two of
+the pictures show the counts without the verdict; nothing is unsolved. The
+hidden-line view doubles every mark, which crowds the corner in 490 and
+491 — the linked-profiles register already files that.
+
+**Browser-only bug 78.** The unit suite passed with the kept corner; the
+sketch-edit e2e did not: the trim tool's click halfway along the shorter
+line typed `trim("l3", …)` — the construction line lying along it, first in
+entity order and exactly as near — and on the iPhone the offset tool's chain
+from that pick was one line, since a chain runs past construction curves.
+Nothing in the unit tests clicks. `hitTest` gives a tie within half a pixel
+to the real curve now; where only the construction line runs, between the
+tangent point and the sharp corner, it picks as before.
+
 ## 2026-11-12 — through all is a relation: what was tried, what was measured, what was kept out
 
 Built on `claude/through-all-relation` from docs/plans/through-all-relation.md

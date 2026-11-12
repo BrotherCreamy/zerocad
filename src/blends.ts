@@ -20,7 +20,10 @@
 
 import type { BlendFeature, Model } from "./model.ts";
 import { bodyNameOf } from "./modes.ts";
+import { fillet } from "./operations.ts";
 import { chamferSetback, filletRadius } from "./relations/blend.ts";
+import { faceSource, parseEdgeName } from "./relations/solidref.ts";
+import { chamfer } from "./sketchedit.ts";
 
 /** What a kernel edge's name looks like: two faces' names, `e1.lid|e2.m0` (naming.ts). Never a seam. */
 const EDGE_NAME = /^[^|\s]+\|[^|\s]+$/;
@@ -49,13 +52,63 @@ function bodyFor(model: Model, op: string, feature: unknown): string {
   return body;
 }
 
+/**
+ * **The corner of a profile a kernel edge is swept from**, as its two lines —
+ * or null for any other edge. An edge between two walls of one extrude, each
+ * the whole of a line, the two lines sharing an end: the solid's edge *is*
+ * that corner, swept. Read off the record and the names, never the kernel.
+ */
+export function profileCorner(model: Model, edge: string): [string, string] | null {
+  const parts = parseEdgeName(edge);
+  if (!parts) return null;
+  const [a, b] = parts.map((p) => faceSource(model, p));
+  if (a?.kind !== "wall" || b?.kind !== "wall" || a.feature !== b.feature || a.feature.kind !== "extrude" || !a.whole || !b.whole) return null;
+  const [la, lb] = [model.entities.get(a.entity), model.entities.get(b.entity)];
+  if (la?.kind !== "line" || lb?.kind !== "line" || la.name === lb.name || !la.refs.some((p) => lb.refs.includes(p))) return null;
+  return [la.name, lb.name];
+}
+
+/**
+ * **A fillet is one thing** (docs/plans/fillets-one-thing.md). The owner:
+ * *"adding a 2d fillet to the originating chain of a region of a body should
+ * produce an identical outcome to 3d filleting that edge."* So an edge that
+ * is a profile's corner swept (`profileCorner`) is not blended by the kernel:
+ * it is the sketch's own `fillet` (or `chamfer`) of that corner — the same
+ * call, the same journal entry, the same entities on both profiles, the same
+ * body — and the two routes cannot be told apart afterwards. Every other
+ * edge (a lid's rim, a base's, an edge between two features, a round wall's)
+ * replaces no sketch entity and is the kernel's blend, one record for them
+ * all, as it was.
+ *
+ * A list of both is both: the record for the kernel's edges is made first,
+ * so that the corners cut after it move its walls' places with them
+ * (`remapBlends`, operations.ts) rather than under it. Returns the record's
+ * name where there is one, else what the last corner made (its arc, or the
+ * chamfer's line).
+ *
+ * **Only a live call is read this way.** A journal's `filletEdges` entry is
+ * the record it made — a new file's lists no corner, and a file from before
+ * format 22 may list one that the kernel rounded then — so a replay (which
+ * records nothing) makes exactly the record the entry names.
+ */
 function blend(model: Model, op: "fillet" | "chamfer", journal: string, feature: unknown, edges: unknown, size: unknown): string {
   const body = bodyFor(model, op, feature);
   const list = checkEdges(op, edges);
-  return model.asOperation(journal, [feature, list, size], () => {
-    const d = op === "fillet" ? filletRadius(model, size as number) : chamferSetback(model, size as number);
-    return model.addBlend({ kind: op, into: body, edges: list, size: d, names: [d], owns: [d] }).name;
-  });
+  const corners = list.map((e) => (model.journalling ? profileCorner(model, e) : null));
+  const rest = list.filter((_, i) => corners[i] === null);
+  let made = "";
+  if (rest.length) {
+    made = model.asOperation(journal, [feature, rest, size], () => {
+      const d = op === "fillet" ? filletRadius(model, size as number) : chamferSetback(model, size as number);
+      return model.addBlend({ kind: op, into: body, edges: rest, size: d, names: [d], owns: [d] }).name;
+    });
+  }
+  let last = "";
+  for (const c of corners) {
+    if (c === null) continue;
+    last = op === "fillet" ? fillet(model, c[0], c[1], size as number) : chamfer(model, c[0], c[1], size as number);
+  }
+  return made || last;
 }
 
 /**

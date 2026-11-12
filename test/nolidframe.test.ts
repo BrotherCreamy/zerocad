@@ -185,10 +185,10 @@ test("a fillet after the extrude regenerates with no frame made: a twin arc on t
   assert.equal(f.loops[0].length, 5, "rounded");
   assert.deepEqual(frames(m), framesBefore, "regenerating made no frame");
   assert.equal(f.top, undefined);
-  const ta = m.arc(f.twins[0][1]);
+  const ta = m.arc(f.twins[0][f.loops[0].indexOf(arc)]);
   assert.ok(near(m.normalOf(ta.name), m.normalOf(arc), 1e-12), "the twin arc faces as its base does");
   assert.deepEqual(coincident(m), []);
-  assert.equal(baseOf(m, f.depth).size, 5 + 1 + 1, "five corners, the centre, the radius");
+  assert.equal(baseOf(m, f.depth).size, 5 + 1 + 1 + 1, "five corners, the centre, the corner set aside (docs/plans/fillets-one-thing.md), the radius");
   for (const [twin, base] of baseOf(m, f.depth)) {
     if (m.entities.get(twin)!.kind === "point") assert.ok(near(m.coords(twin), m.coords(base).map((c, i) => c + 20 * t.uz[i]), 1e-7), twin);
   }

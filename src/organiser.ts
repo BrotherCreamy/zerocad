@@ -29,7 +29,7 @@ import { describeSurface, surfaceChains, surfaceDetail, surfaceNameOf } from "./
 import { endRelation, memberName } from "./model.ts";
 import { regionText } from "./operations.ts";
 import { stopsShort } from "./farside.ts";
-import { chainsOf, modeOf } from "./modes.ts";
+import { bodyNameOf, chainsOf, modeOf } from "./modes.ts";
 import type { Menu, MenuItem } from "./menu.ts";
 import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
@@ -148,8 +148,10 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // a through-all end is held on the vertex that was farthest when it was
     // set, and is never re-pointed inside a solve — so when a turn or a new
     // body leaves something farther, the row says so and offers the one tap.
+    // And *construction*, on the feature a construction body's flag is on (docs/plans/fillets-one-thing.md).
     const short = f.kind === "extrude" && f.unbuilt === undefined && !f.open ? shortOf(model, f) : null;
-    const state = f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : short ? " · short" : "";
+    const state = (f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : short ? " · short" : "")
+      + (f.construction ? " · construction" : "");
     return {
       name: f.name, detail: (mode === "new" ? f.kind : `${f.kind} · ${mode}`) + state, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
@@ -352,13 +354,20 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
   const f = model.features.get(name) ?? model.blends.get(name);
   if (f) {
     const short = f.kind === "extrude" ? shortOf(model, f) : null;
+    // The one construction row every kind has (docs/plans/fillets-one-thing.md): a feature's is its body's.
+    const body = bodyNameOf(model, name) ?? name;
+    const reference = model.isConstruction(body);
     return {
       header: f.kind === "fillet" || f.kind === "chamfer"
         ? `${name}  ${f.kind} of ${f.edges.length} edge${f.edges.length === 1 ? "" : "s"} of ${f.into}`
-        : short ? short.summary.replace(" — tap to take the far side again", "") : `${name}  ${f.kind}, ${f.owns.length} made`,
+        : short ? short.summary.replace(" — tap to take the far side again", "") : `${name}  ${f.kind}, ${f.owns.length} made${reference ? "  ·  construction" : ""}`,
       items: [
         ...(short ? [{ label: "Go through again", action: { do: "run" as const, command: short.command } }] : []),
         { label: `Edit ${name}`, action: { do: "run", command: `edit(${quoted(name)})` } },
+        ...(model.features.has(body) ? [{
+          label: reference ? "Not construction" : "Construction",
+          action: { do: "run", command: `construction(${quoted(body)}${reference ? ", false" : ""})` },
+        } as MenuItem] : []),
         { label: "Delete", action: { do: "run", command: `del(${quoted(name)})` } },
       ],
     };

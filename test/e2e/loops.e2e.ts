@@ -91,6 +91,22 @@ async function clickProbe(sx: number, sy: number): Promise<{ at: [number, number
   return app.page.evaluate(() => (window as never as { __probe: Promise<never> }).__probe);
 }
 
+/**
+ * `loopAt` asked at canvas position (sx, sy) without a click: for a spot that
+ * is no longer empty canvas — the rounded corner's sharp point and its two
+ * lines are kept there as construction (docs/plans/fillets-one-thing.md), so
+ * a pointer there hovers one of them.
+ */
+async function loopProbe(sx: number, sy: number): Promise<{ members: string[]; area: number } | null> {
+  return app.page.evaluate(async ([x, y]) => {
+    const path = "/src/loops.ts";
+    const { loopAt } = await import(path);
+    const { model, engine } = (window as never as { __neocad: { model: unknown; engine: { view: unknown } } }).__neocad;
+    const loop = loopAt(model, engine.view, x, y) as { members: { name: string }[]; area: number } | null;
+    return loop && { members: loop.members.map((m) => m.name), area: loop.area };
+  }, [sx, sy] as [number, number]);
+}
+
 const cmd = () => app.page.$eval("#cmd", (el) => (el as HTMLInputElement).value);
 
 // --- drawn with the tools --------------------------------------------------------
@@ -142,7 +158,10 @@ test("turned to look at it obliquely, loops() lists the outline and the island i
   await app.type("loops()");
   const listed = (await app.repl("loops()")).value as string[];
   assert.equal(listed.length, 2, listed.join(" | "));
-  const outline = [rectangle[0], arc, ...rectangle.slice(1)].join(",");
+  // The rounded corner's two edges are construction now, two shorter lines in
+  // their place either side of the arc (docs/plans/fillets-one-thing.md): the
+  // loop is walked from the first edge still as drawn.
+  const outline = `${rectangle[2]},${rectangle[3]},l\\d+,${arc},l\\d+`;
   assert.match(listed[0], new RegExp(`^loop of ${outline} in f1, area [\\d.]+$`), "the outline, through the arc, counter-clockwise about f1's +z");
   assert.match(listed[1], new RegExp(`^loop of ${ring} in f1, area [\\d.]+, inside ${outline}$`), "the island, inside it");
   assert.match(await app.log(), new RegExp(`loop of ${outline} in f1`), "and the typed entry printed it");
@@ -174,7 +193,10 @@ test("a real click inside the outline is inside it by loopAt, on the island is t
   const inside = await clickProbe(...await app.screenOf(onG(36, 34)));
   const expected = (await app.screenOf(onG(36, 34))).map((x) => Math.round(x));
   assert.ok(Math.hypot(inside.at[0] - expected[0], inside.at[1] - expected[1]) < 1.5, `the click landed at ${inside.at}`);
-  assert.deepEqual(inside.loop?.members, [rectangle[0], arc, ...rectangle.slice(1)], "between the island and the outline: the outline");
+  const members = inside.loop?.members ?? [];
+  assert.equal(members.length, 5, "between the island and the outline: the outline");
+  assert.ok(members.includes(arc) && members.includes(rectangle[2]) && members.includes(rectangle[3]), `through the arc: ${members}`);
+  assert.ok(!members.includes(rectangle[0]) && !members.includes(rectangle[1]), "the rounded corner's edges are construction, not in the loop");
   assert.equal(await cmd(), "", "the click typed nothing — no click behaviour changed");
 
   // Below-left of the island's centre: clear of the centre point, of its
@@ -183,9 +205,10 @@ test("a real click inside the outline is inside it by loopAt, on the island is t
   assert.deepEqual(island.loop?.members, [ring], "on the island: the island, the innermost loop");
   assert.equal(await cmd(), "");
 
-  // Just past the rounded corner, inside where the square corner was.
-  const corner = await clickProbe(...await app.screenOf(onG(69.5, 10.5)));
-  assert.equal(corner.loop, null, "outside the fillet's arc is outside the loop");
+  // Just past the rounded corner, inside where the square corner was — which
+  // is still there, construction, so this one is asked without a click.
+  const corner = await loopProbe(...await app.screenOf(onG(69.5, 10.5)));
+  assert.equal(corner, null, "outside the fillet's arc is outside the loop");
   const beside = await clickProbe(...await app.screenOf(onG(85, 25)));
   assert.equal(beside.loop, null, "and beside it, nothing");
   assert.equal(await cmd(), "");

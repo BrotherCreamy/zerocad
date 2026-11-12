@@ -1648,7 +1648,8 @@ export function findLoops(model: Model): Loop[] {
   const classOf = joinClasses(model);
   const { edges, circles } = collect(model, classOf);
   const groups = candidatePlanes(model, edges, circles);
-  const held = heldOnCurves(model);
+  // A construction point cuts no edge it is held on (`Model.isConstruction`): reference, and no vertex of a region.
+  const held = heldOnCurves(model).filter((h) => !model.isConstruction(h.point));
 
   const found: Found[] = [];
   const keys = new Set<string>();

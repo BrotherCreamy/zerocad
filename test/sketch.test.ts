@@ -5,7 +5,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { CircleTool } from "../src/tools/circle.ts";
 import { ArcTool } from "../src/tools/arc.ts";
-import { fillet } from "../src/operations.ts";
+import { fillet, standsFor } from "../src/operations.ts";
 import { fix } from "../src/relations/basic.ts";
 import { parallel } from "../src/relations/geometry.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
@@ -162,7 +162,7 @@ test("fillet: rounds a right angle, tangent to both legs", async () => {
   assert.ok(Math.abs(ends[1][0] - 5) < 1e-6 && Math.abs(ends[1][1]) < 1e-6, `tangent point on leg 2 = ${ends[1]}`);
 });
 
-test("fillet: trims both legs back and leaves no orphaned point", async () => {
+test("fillet: keeps both legs and their corner as construction, and the shorter lines it makes end on the arc", async () => {
   await loadKernel();
   const model = new Model(2);
   rightCorner(model);
@@ -170,24 +170,26 @@ test("fillet: trims both legs back and leaves no orphaned point", async () => {
   const arcName = fillet(model, "l1", "l2", 5);
   model.solve();
 
-  // The legs now end at the tangent points, not at the old corner.
+  // The legs are as they were drawn — a to p, p to b — and construction now;
+  // the lines that bound in their place end at the tangent points, on the arc.
   const l1 = model.line("l1"), l2 = model.line("l2");
+  assert.deepEqual([l1.refs, l2.refs], [["a", "p"], ["p", "b"]], "neither leg re-pointed");
+  assert.ok(["l1", "l2", "p"].every((n) => model.isConstruction(n)), "the legs and their corner, set aside");
   const arc = model.arc(arcName);
   const arcEnds = [arc.start, arc.end];
-  assert.ok(arcEnds.includes(l1.refs[1]), "leg 1 ends on the arc");
-  assert.ok(arcEnds.includes(l2.refs[0]), "leg 2 starts on the arc");
+  const [s1, s2] = [standsFor(model, "l1"), standsFor(model, "l2")];
+  assert.ok(s1 !== "l1" && s2 !== "l2", "each leg stands for the shorter line made in its place");
+  assert.ok(arcEnds.includes(model.line(s1).refs[1]) && model.line(s1).refs[0] === "a", "leg 1's line runs from a to the arc");
+  assert.ok(arcEnds.includes(model.line(s2).refs[0]) && model.line(s2).refs[1] === "b", "leg 2's line runs from the arc to b");
 
-  // Every point in the model is referenced by something — the old corner was
-  // reused as a tangent point rather than stranded.
+  // Every point in the model is referenced by something.
   const referenced = new Set<string>();
-  // Through refsOf, so this keeps asking the real question as entity kinds are
-  // added — the frame the fixture built references two points of its own.
   for (const e of model.entities.values()) model.refsOf(e).forEach((n) => referenced.add(n));
   for (const e of model.entities.values()) {
     if (e.kind === "point") assert.ok(referenced.has(e.name), `${e.name} is orphaned`);
   }
   assert.ok(before.has("p"), "sanity: the corner existed beforehand");
-  assert.ok(model.entities.has("p"), "and it still does, now as a tangent point");
+  assert.ok(model.entities.has("p"), "and it still does, as construction");
 });
 
 test("fillet: works on a non-right angle too", async () => {
@@ -215,21 +217,23 @@ test("fillet: works on a non-right angle too", async () => {
   assert.ok(Math.abs(model.radius(arcName) - 4) < 1e-6);
 });
 
-test("a line-form relation follows the line through a fillet; a point-form one does not", async () => {
+test("a relation on a leg holds through a fillet whichever form it was written in: the corner is kept, so the point form has its point", async () => {
   await loadKernel();
 
-  // Line form: "this edge is level". The fillet re-points the edge, and the
-  // relation goes with it — the leg stays horizontal.
+  // Line form: "this edge is level". The line stays, construction, and the
+  // shorter line in its place is held on it, so it is level too.
   const good = new Model(2);
   rightCorner(good);
   fillet(good, "l1", "l2", 5);
   assert.equal(good.solve().solved, true);
-  const gl2 = good.line("l2");
+  const gl2 = good.line(standsFor(good, "l2"));
   const [gs, ge] = [good.coords(gl2.refs[0]), good.coords(gl2.refs[1])];
-  assert.ok(Math.abs(gs[1] - ge[1]) < 1e-6, `leg 2 should still be level, got ys ${gs[1]} and ${ge[1]}`);
+  assert.ok(Math.abs(gs[1] - ge[1]) < 1e-6, `leg 2's line should still be level, got ys ${gs[1]} and ${ge[1]}`);
 
-  // Point form: "these two points share a y". It keeps constraining the two
-  // points it named, and the re-pointed leg is left free to swing.
+  // Point form: "these two points share a y". The corner it names is kept,
+  // so it goes on holding the leg level — which it did not when the fillet
+  // re-pointed the leg away from the corner (the form's one weakness; a trim
+  // still has it, so the line form is still the one the tools write).
   const stale = new Model(2);
   axisFrame(stale);
   stale.addPoint([0, 20], "a");
@@ -242,12 +246,11 @@ test("a line-form relation follows the line through a fillet; a point-form one d
   parallel(stale, "l1", "f.y");
   parallel(stale, "p", "b", "f.x"); // names the corner, not the edge
   fillet(stale, "l1", "l2", 5);
-  stale.solve();
-  const sl2 = stale.line("l2");
-  assert.notEqual(sl2.refs[0], "p", "leg 2 was re-pointed away from the corner");
+  assert.equal(stale.solve().solved, true);
+  assert.deepEqual(stale.line("l2").refs, ["p", "b"], "leg 2 still runs from the corner");
+  const sl2 = stale.line(standsFor(stale, "l2"));
   const [ss, se] = [stale.coords(sl2.refs[0]), stale.coords(sl2.refs[1])];
-  assert.ok(Math.abs(ss[1] - se[1]) > 1e-3,
-    "the point-form relation stayed on the old corner, so leg 2 is no longer level — which is why the line form exists");
+  assert.ok(Math.abs(ss[1] - se[1]) < 1e-6, "the point-form relation holds the corner, and the line made in leg 2's place is level with it");
 });
 
 test("a line relation keeps holding after the line is re-pointed by hand", async () => {

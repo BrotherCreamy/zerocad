@@ -99,9 +99,9 @@ test("a dimensioned sketch says its dimensions", async () => {
   // The fillet's arc lies in a frame's plane in the 3D app: a sketch frame,
   // parked out of the way, in the plane the rectangle was drawn in.
   await sketchFrame(app);
-  await app.type('fillet("l1", "l4", 22)'); // brings its own rad("a1", 22)
-  await app.type('l5 = ln("p2", pt(60, 120))');
-  await app.type('ang("l1", "l5", Math.PI / 6)');
+  await app.type('fillet("l1", "l4", 22)'); // brings its own rad("a1", 22) — and two shorter lines, l5 and l6, beside the two it keeps
+  await app.type('k = ln("p2", pt(60, 120))');
+  await app.type('ang("l1", k, Math.PI / 6)');
   assert.equal(await app.status(), "SOLVED");
 
   const drawn = (await glyphs()).map((g) => g.symbol);

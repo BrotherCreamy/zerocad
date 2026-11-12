@@ -376,7 +376,7 @@ test("the ＋ types a group of the selection, or with nothing selected a new emp
   assert.equal(addCommand([]), "opengroup(group())");
 });
 
-test("a row's menu: Rename, Add/Remove selection, Open/Close, Ungroup for a group; Edit and Delete for a feature — each its command", async () => {
+test("a row's menu: Rename, Add/Remove selection, Open/Close, Ungroup for a group; Edit, Construction and Delete for a feature — each its command", async () => {
   await loadKernel();
   const m = new Model(3);
   const { lines } = rectangle(m);
@@ -396,7 +396,7 @@ test("a row's menu: Rename, Add/Remove selection, Open/Close, Ungroup for a grou
   assert.deepEqual(items([])[3], ["Close", "closegroup()"]);
   assert.match(rowMenu(m, "g1")!.header!, /g1  group of 1 member  ·  open/);
   assert.deepEqual(rowMenu(m, "e1")!.items.map((i) => [i.label, i.action.do === "run" ? i.action.command : ""]),
-    [["Edit e1", 'edit("e1")'], ["Delete", 'del("e1")']]);
+    [["Edit e1", 'edit("e1")'], ["Construction", 'construction("e1")'], ["Delete", 'del("e1")']], "one construction row on every kind: a body's too");
   assert.equal(rowMenu(m, lines[0]), null);
 });
 

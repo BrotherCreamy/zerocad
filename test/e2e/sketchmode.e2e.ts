@@ -247,7 +247,7 @@ test("a filleted block's side wall: picked with the sketch tool, the view square
   await shot("7-circle-on-the-filleted-wall");
 });
 
-test("the chamfer's face, which no loop bounds: a frame made there, the work plane, the view square to it — no feature", { skip }, async () => {
+test("the chamfer's face, which no loop bounds: refused as a plane to draw on, saying why and what works — no frame made there", { skip }, async () => {
   await app.page.click("#mode .done");
   // The view the block was first seen in, the chamfer's face toward it.
   await app.page.evaluate((c) => {
@@ -257,6 +257,8 @@ test("the chamfer's face, which no loop bounds: a frame made there, the work pla
   }, solid.camera);
   await app.page.waitForTimeout(200);
   const features = await value("model.features.size") as number;
+  const frames = await value("[...model.entities.values()].filter((e) => e.kind === 'frame').length") as number;
+  const typedBefore = (await typedLines()).length;
   await app.page.click('#toolbar button[data-tool="sketch"]');
   await app.page.waitForTimeout(250);
   const at = await chamferPixel();
@@ -265,13 +267,14 @@ test("the chamfer's face, which no loop bounds: a frame made there, the work pla
   await app.page.waitForTimeout(150);
   await shot("8-chamfer-hovered", true);
   await clickAt(...at);
-  await app.page.waitForFunction(() => (document.getElementById("mode") as HTMLElement).dataset.where !== "", null, { timeout: 5000 });
-  const wp = await value("workplane()") as string;
-  assert.equal(await value(`model.planeKind(${JSON.stringify(wp)})`), "frame");
-  assert.match((await typedLines()).at(-1)!, /^workplane\(frame\(pt\(/);
+  await app.page.waitForTimeout(300);
+  // Review item 7 (docs/plans/fillets-one-thing.md): a frame made on a kernel
+  // chamfer's face was held by nothing and stayed behind when the solid moved.
+  // The face is refused, in words, with what works instead.
+  assert.match((await app.page.textContent("#log")) ?? "", /that face is e\d+'s — a chamfer the solid kernel cut along an edge/, "refused, saying why");
+  assert.match((await app.page.textContent("#log")) ?? "", /a chamfer between two walls is the sketch's own/, "and what works");
   assert.equal(await value("model.features.size"), features, "no feature made");
-  const n = await value(`model.planeValues(${JSON.stringify(wp)}).n`) as number[];
-  assert.ok(Math.abs(Math.abs(n[2]) - Math.SQRT1_2) < 1e-3, `a 45° face: ${n}`);
-  assert.ok(near(await toward(), n, 1e-6), "square to it");
-  await shot("9-on-the-chamfer");
+  assert.equal(await value("[...model.entities.values()].filter((e) => e.kind === 'frame').length"), frames, "and no frame made there");
+  assert.ok(!(await typedLines()).slice(typedBefore).some((l) => /^workplane\(/.test(l)), "nothing typed");
+  await shot("9-on-the-chamfer-refused");
 });

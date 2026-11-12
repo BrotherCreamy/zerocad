@@ -194,7 +194,10 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
   assert.equal(f.name, "e1");
   const arc = (await app.model()).arcs[0].name;
   assert.equal(f.loops.length, 3, "the outline, the hole, the island");
-  assert.deepEqual(f.loops[0].slice().sort(), [...outline, arc].sort());
+  // The two edges at the rounded corner are construction, two shorter lines in their place (docs/plans/fillets-one-thing.md).
+  assert.equal(f.loops[0].length, outline.length + 1);
+  assert.ok(f.loops[0].includes(arc));
+  assert.equal(f.loops[0].filter((n) => outline.includes(n)).length, 2, `two edges as drawn, two shorter ones and the arc: ${f.loops[0]}`);
   assert.deepEqual(f.loops.slice(1), [[hole], [island]]);
   assert.equal(f.walls.length, 5, "five corners have walls; circles have none");
   await lidAt(f, 20);

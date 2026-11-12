@@ -20,7 +20,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model, type ExtrudeFeature, type ProfileMember } from "../src/model.ts";
 import { dist, fix, onPlane } from "../src/relations/basic.ts";
 import { parallel } from "../src/relations/geometry.ts";
-import { del, extrude, fillet, regen, revolve, set } from "../src/operations.ts";
+import { REPOINTED, del, extrude, fillet, regen, revolve, set, standsFor } from "../src/operations.ts";
 import { open, save, VERSION } from "../src/persist.ts";
 import { findLoops } from "../src/loops.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -72,9 +72,25 @@ const twinOver = (m: Model, dimension: string, base: string) => [...baseOf(m, di
 /** Everything that answers to a name — entities, relations, features — for "nothing was renamed". */
 const allNames = (m: Model) => [...m.entities.keys(), ...m.relations.keys(), ...m.features.keys()];
 
+/** The arc's end a cut laid on `line`, the line it set aside — the tangent point, held `on` it. */
+function touchOn(m: Model, arc: string, line: string): string {
+  const a = m.arc(arc);
+  const t = [a.start, a.end].find((e) => [...m.relations.values()].some((r) => r.op === "pointOnLine" && r.args[0] === e && r.args[1] === line));
+  assert.ok(t, `${arc} touches ${line}`);
+  return t!;
+}
+
+/**
+ * The profile a fillet of `lines[0]` and `lines[1]` of a rectangle leaves, as
+ * a record walks it (docs/plans/fillets-one-thing.md): the two lines kept,
+ * construction, and the shorter lines made in their place either side of the
+ * arc — walked from the first edge the record still has.
+ */
+const rounded = (m: Model, lines: readonly string[], arc: string) => [lines[2], lines[3], standsFor(m, lines[0]), arc, standsFor(m, lines[1])];
+
 // --- the bug, measured --------------------------------------------------------
 
-test("the bug, measured: a fillet that regenerates nothing leaves the lid four-cornered, one edge leaning from over the tangent point to the far corner", async () => {
+test("a fillet told to regenerate nothing — a version-8 file's — leaves the record and the lid as they were: four-cornered, over the corner the base set aside", async () => {
   await loadKernel();
   const { m, t, points, lines } = rectangle();
   const e1 = m.featureOf(extrude(m, lines[0], 20), "extrude");
@@ -85,18 +101,18 @@ test("the bug, measured: a fillet that regenerates nothing leaves the lid four-c
   assert.deepEqual(f, e1, "the record exactly as it was");
   assert.deepEqual(f.loops, [lines], "still four lines — no arc in the profile");
   assert.equal([...m.entities.values()].filter((e) => e.kind === "arc").length, 1, "no twin arc");
-  // The corner point is leg one's tangent point now, and its twin went with it.
-  assert.ok(near(local(t, m.coords(points[1])), [32, 0, 0], 1e-2));
+  // The corner stays where it was, its two lines construction — the corner
+  // itself not, since the wall the record still sweeps stands on it — and so
+  // does its twin: the lid's edge still runs over it.
+  assert.ok(near(local(t, m.coords(points[1])), [40, 0, 0], 1e-6));
+  assert.ok([lines[0], lines[1]].every((n) => m.isConstruction(n)) && !m.isConstruction(points[1]), "the lines set aside; the corner still a wall's");
   const tl2 = m.line(f.twins[0][1]);
   const [a, b] = tl2.refs.map((p) => local(t, m.coords(p)));
-  assert.ok(near(a, [32, 0, 20], 1e-2) && near(b, [40, 30, 20], 1e-6), `leg two's twin runs ${a} → ${b}`);
-  // Leg two is plumb; its twin leans 8 across 30 — atan(8/30), about 14.9°.
-  const lean = (Math.atan2(Math.abs(b[0] - a[0]), b[1] - a[1]) * 180) / Math.PI;
-  assert.ok(Math.abs(lean - 14.93) < 0.05, `the lid's edge leans ${lean}°`);
-  // The new tangent point has no twin and no wall: four walls, four twins.
+  assert.ok(near(a, [40, 0, 20], 1e-6) && near(b, [40, 30, 20], 1e-6), `leg two's twin runs ${a} → ${b}`);
+  // The new tangent points have no twin and no wall: four walls, four twins.
   assert.equal(f.walls.length, 4);
-  const t2 = m.line(lines[1]).refs[0];
-  assert.equal(twinOver(m, f.depth, t2), undefined);
+  const arc = [...m.entities.values()].find((e) => e.kind === "arc")!.name;
+  assert.equal(twinOver(m, f.depth, touchOn(m, arc, lines[1])), undefined);
 });
 
 // --- fillet regenerates --------------------------------------------------------
@@ -114,28 +130,34 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
 
   const arc = fillet(m, lines[0], lines[1], 8);
   const ab = m.arc(arc);
-  const t2 = m.line(lines[1]).refs[0];
-  // The fillet's own three (tangent point, centre, arc); then the regeneration's
-  // four (the tangent point's twin, the centre's, the twin arc, one wall).
-  assert.equal(m.entities.size - ents, 3 + 4);
-  // …and each of the four has its twin on the lid (docs/plans/linked-profiles.md).
+  const t2 = touchOn(m, arc, lines[1]);
+  // The fillet's own six (two tangent points, the centre, the two shorter
+  // lines, the arc — the corner and its two lines stay, construction); then
+  // the regeneration's eight (the tangent points' twins and the centre's, the
+  // twin lines, the twin arc, two walls).
+  assert.equal(m.entities.size - ents, 6 + 8);
+  // …and each of the six has its twin on the lid (docs/plans/linked-profiles.md).
   const twins = [...m.relations.values()].filter((r) => r.twin).length - twinsWere;
-  assert.equal(m.relations.size - rels - twins, 4, "the fillet's four relations; the depth is rebuilt, not added");
-  assert.equal(twins, 4, "tan, tan, rad and arcends, each said of the lid's arc too");
+  assert.equal(m.relations.size - rels - twins, 6, "the fillet's six relations; the depth is rebuilt, not added");
+  assert.equal(twins, 6, "on, on, tan, tan, rad and arcends, each said of the lid's arc too");
   assert.equal(m.features.size, 1);
   const f = m.featureOf("e1", "extrude");
   assert.equal(f.depth, e1.depth, "the same dimension");
   assert.equal(f.top, undefined, "still no lid frame (docs/plans/no-lid-frame.md)");
   assert.ok(!f.owns.some((n) => m.entities.get(n)?.kind === "frame"), "nor any frame made by regenerating");
-  assert.deepEqual(f.loops, [[lines[0], arc, lines[1], lines[2], lines[3]]], "the arc between the legs, in the record's own order");
-  assert.deepEqual(f.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "arc", "line", "line", "line"]);
-  assert.deepEqual([f.twins[0][0], ...f.twins[0].slice(2)], keptTwins, "every twin edge kept, under its name");
+  assert.deepEqual(f.loops, [rounded(m, lines, arc)], "the arc between the shorter lines, walked from the first edge the record kept");
+  assert.deepEqual(f.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "line", "line", "arc", "line"]);
+  assert.deepEqual(f.twins[0].slice(0, 2), keptTwins.slice(2), "every twin edge still swept is kept, under its name");
+  assert.deepEqual(f.aside, [lines[0], keptTwins[0], lines[1], keptTwins[1], points[1], keptCorners[1], keptWalls[1]],
+    "what the cut replaced, set aside on both profiles: the lines and their twins, the corner and its twin, the wall between");
+  assert.ok(f.aside!.every((n) => m.isConstruction(n)), "all of it construction");
   assert.equal(f.walls.length, 5);
-  for (const w of keptWalls) assert.ok(f.walls.includes(w), `${w} kept`);
-  // The dimension holds exactly the new twins: five corners and the centre, and
-  // the arc's radius — no frame's pairs.
+  for (const w of keptWalls) assert.ok(f.walls.includes(w) || f.aside!.includes(w), `${w} kept`);
+  // The dimension holds exactly the new twins: five corners and the centre,
+  // the corner set aside (its twin still its twin, so the two construction
+  // lines are still a pair) and the arc's radius — no frame's pairs.
   const pairs = baseOf(m, f.depth);
-  assert.equal(pairs.size, 5 + 1 + 1);
+  assert.equal(pairs.size, 5 + 1 + 1 + 1);
   for (const p of [...points, t2, ab.center]) assert.ok([...pairs.values()].includes(p), `${p} has a twin`);
   points.forEach((p, i) => assert.equal(twinOver(m, f.depth, p), keptCorners[i], `${p} keeps its twin`));
   assert.equal(m.relationOf(f.depth).args[1], 20, "the same value");
@@ -143,13 +165,13 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   // The twin arc: about the centre's twin, between the twins of the arc's own
   // ends, facing as the base arc does (an orientation, which a translation
   // keeps), the same radius.
-  const ta = m.arc(f.twins[0][1]);
+  const ta = m.arc(f.twins[0][3]);
   assert.ok(near(m.normalOf(ta.name), m.normalOf(arc), 1e-9));
   assert.equal(ta.center, twinOver(m, f.depth, ab.center));
   assert.equal(ta.start, twinOver(m, f.depth, ab.start));
   assert.equal(ta.end, twinOver(m, f.depth, ab.end));
-  // Leg two's twin is the same entity, re-pointed at the new tangent point's twin.
-  assert.deepEqual(m.line(f.twins[0][2]).refs, [twinOver(m, f.depth, t2), twinOver(m, f.depth, points[2])]);
+  // The shorter line's twin runs from the tangent point's twin to the far corner's.
+  assert.deepEqual(m.line(f.twins[0][4]).refs, [twinOver(m, f.depth, t2), twinOver(m, f.depth, points[2])]);
   const wall = f.walls.find((w) => m.line(w).refs[0] === t2);
   assert.ok(wall, "a wall at the new tangent point");
   assert.equal(m.line(wall!).refs[1], twinOver(m, f.depth, t2));
@@ -171,7 +193,7 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   assert.equal(m.journal.filter((e) => e.op === "fillet").length, 1);
 });
 
-test("a relation on a surviving twin survives the fillet, and so does one on the filleted corner's wall — the corner survives, as leg one's tangent point", async () => {
+test("a relation on a surviving twin survives the fillet, and so does one on the filleted corner's wall — the corner survives, construction, and so does its wall", async () => {
   await loadKernel();
   const { m, points, lines } = rectangle();
   const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
@@ -181,10 +203,11 @@ test("a relation on a surviving twin survives the fillet, and so does one on the
   fillet(m, lines[0], lines[1], 8);
   assert.ok(m.relations.has(onTwin) && m.relations.has(onWall));
   const g = m.featureOf("e1", "extrude");
-  assert.ok(g.walls.includes(wallAtCorner), "the corner's wall stands, on the tangent point now");
+  assert.ok(!g.walls.includes(wallAtCorner) && g.aside!.includes(wallAtCorner) && m.isConstruction(wallAtCorner),
+    "the corner's wall stands, construction — set aside with the corner, no longer a wall of the body");
   assert.equal(m.entities.get(g.twins[0][2])?.kind, "line");
-  assert.equal(g.twins[0][3], m.relationOf(onTwin).args[0], "the twin the relation is on is still the feature's");
-  assert.equal(m.entities.get(g.twins[0][1])?.kind, "arc", "and the lid was rounded round them");
+  assert.equal(g.twins[0][0], m.relationOf(onTwin).args[0], "the twin the relation is on is still the feature's");
+  assert.equal(m.entities.get(g.twins[0][3])?.kind, "arc", "and the lid was rounded round them");
   assert.equal(m.solve().solved, true);
 });
 
@@ -200,8 +223,8 @@ test("a corner two features share — the plate extruded up and down from one sk
   assert.equal(m.solve().solved, true);
   for (const [name, depth] of [["e1", 20], ["e2", -10]] as const) {
     const f = m.featureOf(name, "extrude");
-    assert.deepEqual(f.loops, [[lines[0], arc, lines[1], lines[2], lines[3]]], name);
-    assert.equal(m.entities.get(f.twins[0][1])?.kind, "arc", `${name} has a twin arc`);
+    assert.deepEqual(f.loops, [rounded(m, lines, arc)], name);
+    assert.equal(m.entities.get(f.twins[0][3])?.kind, "arc", `${name} has a twin arc`);
     assert.equal(f.walls.length, 5);
     lidAt(m, t, f.depth, depth);
   }
@@ -217,12 +240,16 @@ test("a solid standing on the lid follows too: filleting the base re-points the 
   m.solve();
   fillet(m, lines[0], lines[1], 8);
   const regenerated = (m.journal.at(-1)!.args[4] as [string, unknown][]).map(([n]) => n);
-  assert.deepEqual(regenerated, ["e1", "e2"], "e1 by its legs, e2 by the lid edge e1 re-pointed");
+  assert.deepEqual(regenerated, ["e1", "e2"], "e1 by its legs, e2 by the lid's corner — the same cut, seen from the other profile");
   const f1 = m.featureOf("e1", "extrude");
   const f2 = m.featureOf("e2", "extrude");
   assert.equal(f2.loops[0].length, 5);
-  assert.ok(f2.loops[0].includes(f1.twins[0][1]), "e2's profile runs along e1's twin arc");
-  assert.equal(m.entities.get(f2.twins[0][f2.loops[0].indexOf(f1.twins[0][1])])?.kind, "arc");
+  const twinArc = f1.twins[0][3];
+  assert.equal(m.entities.get(twinArc)?.kind, "arc");
+  assert.ok(f2.loops[0].includes(twinArc), "e2's profile runs along e1's twin arc");
+  assert.equal(m.entities.get(f2.twins[0][f2.loops[0].indexOf(twinArc)])?.kind, "arc");
+  // The lid's two lines and corner are set aside on e2 as the base's are on e1 — the hierarchy, not a timeline.
+  assert.ok(f2.aside!.length >= 3 && f2.aside!.every((n) => m.isConstruction(n)), `e2 set aside ${f2.aside}`);
   assert.equal(m.solve().solved, true);
   lidAt(m, t, f1.depth, 20);
   // e2 is oriented by the sketch frame too, the frame its profile is parallel to.
@@ -237,7 +264,7 @@ test("set on the depth after the fillet carries the rounded lid: every twin, the
   fillet(m, lines[0], lines[1], 8);
   m.solve();
   const f = m.featureOf("e1", "extrude");
-  assert.equal(baseOf(m, f.depth).size, 5 + 1 + 1, "the depth holds the rounded lid");
+  assert.equal(baseOf(m, f.depth).size, 5 + 1 + 1 + 1, "the depth holds the rounded lid, and the corner set aside");
   set(m, `${f.depth}.value`, 35);
   assert.equal(m.solve().solved, true);
   lidAt(m, t, f.depth, 35);
@@ -269,17 +296,17 @@ test("a partial revolve regenerates likewise: a twin arc on the end frame, the n
   const f = m.featureOf("e1", "revolve");
   assert.equal(f.angle, e1.angle);
   assert.equal(f.end, e1.end, "the same end frame");
-  assert.deepEqual(f.loops, [[lines[0], arc, lines[1], lines[2], lines[3]]]);
-  assert.deepEqual(f.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "arc", "line", "line", "line"]);
-  assert.deepEqual([f.twins[0][0], ...f.twins[0].slice(2)], keptTwins);
-  const ta = m.arc(f.twins[0][1]);
+  assert.deepEqual(f.loops, [rounded(m, lines, arc)]);
+  assert.deepEqual(f.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "line", "line", "arc", "line"]);
+  assert.deepEqual(f.twins[0].slice(0, 2), keptTwins.slice(2));
+  const ta = m.arc(f.twins[0][3]);
   const k = t.uy, n = m.normalOf(arc);
   const kn = k.reduce((x, v, i) => x + v * n[i], 0);
   const kxn = [k[1] * n[2] - k[2] * n[1], k[2] * n[0] - k[0] * n[2], k[0] * n[1] - k[1] * n[0]];
   const turnedN = n.map((v, i) => v * Math.cos(quarter) + kxn[i] * Math.sin(quarter) + k[i] * kn * (1 - Math.cos(quarter)));
   assert.ok(near(m.normalOf(ta.name), turnedN, 1e-8), "facing as its base does, turned");
-  // Five corners and the centre, the arc's radius — and no frame pair.
-  assert.equal(baseOf(m, f.angle).size, 5 + 1 + 1);
+  // Five corners and the centre, the corner set aside, the arc's radius — and no frame pair.
+  assert.equal(baseOf(m, f.angle).size, 5 + 1 + 1 + 1);
   assert.equal(m.solve().solved, true);
   for (const [twin, base] of baseOf(m, f.angle)) {
     if (m.entities.get(twin)?.kind !== "point") continue;
@@ -296,10 +323,10 @@ test("a whole-turn revolve regenerates its record only — it has no end face to
   const before = m.entities.size;
   const arc = fillet(m, lines[0], lines[1], 5);
   const f = m.featureOf("e1", "revolve");
-  assert.deepEqual(f.loops, [[lines[0], arc, lines[1], lines[2], lines[3]]]);
+  assert.deepEqual(f.loops, [rounded(m, lines, arc)]);
   assert.deepEqual(f.twins, []);
   assert.equal(f.end, null);
-  assert.equal(m.entities.size - before, 3, "the fillet's own three, nothing more");
+  assert.equal(m.entities.size - before, 6, "the fillet's own six, nothing more");
   assert.ok(f.names.includes(arc));
   assert.deepEqual(m.journal.at(-1)!.args[4], [["e1", f.loops]]);
 });
@@ -458,7 +485,8 @@ test("a version-8 file's fillet after an extrude opens as it was — regeneratin
   // Expanded as a version-8 build expanded it: the lid frame's points its own.
   extrude(m, lines[0], 20, null, null, 9);
   m.solve();
-  fillet(m, lines[0], lines[1], 8, null, []);
+  // As a version-8 build cut it: the legs re-pointed (format 22 marks every older fillet so).
+  fillet(m, lines[0], lines[1], 8, null, [], REPOINTED);
   // Drawn after the fillet, so the file names a point the regeneration would claim.
   const later = m.addPoint([60, 60, 0]).name;
   m.solve();
@@ -481,15 +509,19 @@ test("a version-8 file's fillet after an extrude opens as it was — regeneratin
   assert.deepEqual(allNames(opened), allNames(m));
   const resaved = JSON.parse(save(opened));
   assert.equal(resaved.version, VERSION);
-  assert.deepEqual(resaved.journal.find((e: { op: string }) => e.op === "fillet").args, [...entry.args, []]);
+  assert.deepEqual(resaved.journal.find((e: { op: string }) => e.op === "fillet").args, [...entry.args, [], REPOINTED],
+    "and marked as the fillet that re-pointed its legs (format 22)");
 
-  // A 3D fillet before any feature, from a version-8 file: untouched.
+  // A 3D fillet before any feature, from a version-8 file: untouched but for the mark.
   const { m: n, lines: k } = rectangle();
-  fillet(n, k[0], k[1], 8);
+  fillet(n, k[0], k[1], 8, null, null, REPOINTED);
   const plain = JSON.parse(save(n));
   plain.version = 8;
+  const cut = plain.journal.find((e: { op: string }) => e.op === "fillet");
+  assert.deepEqual(cut.args, [k[0], k[1], 8, null, null, REPOINTED]);
+  cut.args = cut.args.slice(0, 3);
   const back = JSON.parse(save(open(JSON.stringify(plain))));
-  assert.deepEqual(back.journal, plain.journal);
+  assert.deepEqual(back.journal, plain.journal.map((e: { op: string; args: unknown[] }) => (e === cut ? { op: "fillet", args: [k[0], k[1], 8, null, null, REPOINTED] } : e)));
 });
 
 // --- the command line ---------------------------------------------------------
