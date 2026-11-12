@@ -21,7 +21,13 @@ import { pullTo } from "../src/tools/engine.ts";
 import { baseOf } from "./profiles.ts";
 import "../src/modules/builtin.ts";
 
-await ensureKernelLoaded(await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url)));
+const wasm = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
+await ensureKernelLoaded(wasm);
+// Which kernel this is: `npm run build:kernel:dev` makes a debug build (~148 KB,
+// its linear algebra ten times slower), a release build is ~32 KB without
+// wasm-opt (`build:kernel:noopt`). A kernel step's time is meaningless on the
+// debug one, so the table says which it was given.
+console.log(`kernel: ${wasm.byteLength} bytes (${wasm.byteLength > 100_000 ? "a debug build — time nothing on it" : "a release build"})`);
 
 const sub = (a: number[], b: number[]) => a.map((x, i) => x - b[i]);
 const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
@@ -292,3 +298,126 @@ for (const name of fixtures) {
   });
 }
 
+
+// --- what a direction row costs the kernel (docs/plans/solver-cost.md, item 3) -----------------------
+//
+// A unit direction depends on every coordinate of both ends, so `par(l,
+// "origin.x")` in 3D names six variables a row where the raw wedge against a
+// constant axis named two of them; and the kernel's conjugate gradient pays
+// by the non-zero. Counted here, before anything is done about it: the rows
+// and non-zeros of the par-to-axes frame by the kind of row, how long one
+// evaluation of the rows takes against one kernel step on the Jacobian it
+// gives, and how many CG iterations that step takes — by a TypeScript mirror
+// of solver.rs's loop (the kernel does not report them), run on the same
+// triplets to the same tolerance.
+
+import { solve_step } from "../src/kernel/wasm-gen/neocad_kernel.js";
+import type { ResidualBlock } from "../src/kernel/problem.ts";
+
+/** Forty rectangles held `par` to the axes, widths dimensioned and every other height, chained: the spec's drag frame (test/keptsizes.measure.ts's `axisRects`). */
+function axisRects(n: number): Model {
+  const m = new Model(3);
+  for (let r = 0; r < n; r++) {
+    const x0 = r * 50;
+    [[x0, 0, 0], [x0 + 40, 0, 0], [x0 + 40, 25, 0], [x0, 25, 0]].forEach((c, i) => m.addPoint(c, `r${r}k${i}`));
+    for (let i = 0; i < 4; i++) m.addLine(`r${r}k${i}`, `r${r}k${(i + 1) % 4}`, `r${r}e${i}`);
+    parallel(m, `r${r}e0`, "origin.x"); parallel(m, `r${r}e2`, "origin.x");
+    parallel(m, `r${r}e1`, "origin.y"); parallel(m, `r${r}e3`, "origin.y");
+    dist(m, `r${r}k0`, `r${r}k1`, 40);
+    if (r % 2 === 0) dist(m, `r${r}k1`, `r${r}k2`, 25);
+    if (r === 0) fix(m, "r0k0", [0, 0, 0]); else dist(m, `r${r - 1}k1`, `r${r}k0`, 10);
+  }
+  return m;
+}
+
+type Triplets = { r: number[]; rows: number[]; cols: number[]; vals: number[]; labels: (string | undefined)[] };
+/** The problem's rows and sparse Jacobian at its current values — `Problem.evaluate`, which is private to the kernel and read here only to count. */
+function jacobian(m: Model, extra: ResidualBlock[] = []): Triplets {
+  return (m.problem as unknown as { evaluate: (extra: ResidualBlock[]) => Triplets }).evaluate(extra);
+}
+
+/** solver.rs's `solve_damped_step`, step for step, counting its CG iterations; returns them. */
+function cgIterations(j: Triplets, n: number, lambda: number, maxIter = 200, tol = 1e-10): number {
+  const m = j.r.length;
+  const mul = (v: number[]) => { const out = new Array<number>(m).fill(0); for (let k = 0; k < j.vals.length; k++) out[j.rows[k]] += j.vals[k] * v[j.cols[k]]; return out; };
+  const mulT = (v: number[]) => { const out = new Array<number>(n).fill(0); for (let k = 0; k < j.vals.length; k++) out[j.cols[k]] += j.vals[k] * v[j.rows[k]]; return out; };
+  const diag = new Array<number>(n).fill(0);
+  for (let k = 0; k < j.vals.length; k++) diag[j.cols[k]] += j.vals[k] * j.vals[k];
+  const apply = (v: number[]) => { const out = mulT(mul(v)); for (let i = 0; i < n; i++) out[i] += lambda * (1 + diag[i]) * v[i]; return out; };
+  const dotv = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
+  let res = mulT(j.r).map((x) => -x);
+  let p = res.slice();
+  let rsOld = dotv(res, res);
+  if (Math.sqrt(rsOld) < tol) return 0;
+  const iters = Math.max(1, Math.min(maxIter, Math.max(n, 1)));
+  let count = 0;
+  for (let it = 0; it < iters; it++) {
+    const ap = apply(p);
+    const pap = dotv(p, ap);
+    count++;
+    if (Math.abs(pap) < 1e-300) break;
+    const alpha = rsOld / pap;
+    for (let i = 0; i < n; i++) res[i] -= alpha * ap[i];
+    const rsNew = dotv(res, res);
+    if (Math.sqrt(rsNew) < tol) break;
+    const beta = rsNew / rsOld;
+    for (let i = 0; i < n; i++) p[i] = res[i] + beta * p[i];
+    rsOld = rsNew;
+  }
+  return count;
+}
+
+/** Rows and non-zeros by the word a label starts with (`par(`, `dist(`, …), and the empty rows (a wedge's component along the axis is identically zero). */
+function rowCensus(j: Triplets): string {
+  const perRow = new Array<number>(j.r.length).fill(0);
+  for (const r of j.rows) perRow[r]++;
+  const byKind = new Map<string, { rows: number; nnz: number; empty: number }>();
+  j.labels.forEach((l, i) => {
+    const kind = (l ?? "extra").replace(/\(.*$/, "");
+    const e = byKind.get(kind) ?? { rows: 0, nnz: 0, empty: 0 };
+    e.rows++; e.nnz += perRow[i]; if (!perRow[i]) e.empty++;
+    byKind.set(kind, e);
+  });
+  return [...byKind].map(([k, e]) => `${k}: ${e.rows} rows, ${e.nnz} nnz (${(e.nnz / Math.max(1, e.rows - e.empty)).toFixed(1)} a non-empty row${e.empty ? `, ${e.empty} empty` : ""})`).join("; ");
+}
+
+console.log("\n## the par-to-axes frame: what the rows cost, and what the kernel's step costs on them (forty rectangles; a frame pulling r21k2 up 9)");
+console.log("| state | variables | rows | non-zeros | by kind | evaluate ms | solve_step ms (λ = 1e-3) | CG iterations (mirror, λ = 1e-3) | CG iterations (λ = 1e-10) |");
+console.log("|---|---|---|---|---|---|---|---|---|");
+{
+  const m = axisRects(40);
+  m.solve();
+  const n = m.problem.varCount;
+  const from = m.coords("r21k2");
+  const pullAt = (k: number) => pullTo(m, "r21k2", [from[0], from[1] + 9 * k / 30, from[2]]);
+  const census = (name: string, extra: ResidualBlock[]) => {
+    const j = jacobian(m, extra);
+    const evalMs = best(m, () => { for (let i = 0; i < 10; i++) jacobian(m, extra); }).ms / 10;
+    const rows = new Uint32Array(j.rows), cols = new Uint32Array(j.cols), vals = new Float64Array(j.vals), r = new Float64Array(j.r);
+    const stepMs = best(m, () => { for (let i = 0; i < 10; i++) solve_step(rows, cols, vals, r, n, 1e-3); }).ms / 10;
+    console.log(`| ${name} | ${n} | ${j.r.length} | ${j.vals.length} | ${rowCensus(j)} | ${evalMs.toFixed(2)} | ${stepMs.toFixed(3)} | ${cgIterations(j, n, 1e-3)} | ${cgIterations(j, n, 1e-10)} |`);
+  };
+  census("at rest, no pull", []);
+  census("the first frame's pull, before its solve", pullAt(1));
+  // Ten frames in, the lines near the dragged corner are off their axes by
+  // the frame's step, and a unit direction's gradient is no longer diagonal:
+  // the non-zeros a row are what a drag really pays for.
+  for (let k = 1; k <= 10; k++) m.solveFrame(pullAt(k));
+  census("ten frames in, the eleventh's pull, before its solve", pullAt(11));
+  m.solve();
+  // The frame itself, as the engine runs it: the median of thirty, best of five.
+  let bestMed = Infinity, iters = 0;
+  for (let rep = 0; rep < 5; rep++) {
+    const t: number[] = [];
+    let it = 0;
+    for (let k = 1; k <= 30; k++) {
+      const t0 = performance.now();
+      it += m.solveFrame(pullAt(k)).iterations;
+      t.push(performance.now() - t0);
+    }
+    const med = [...t].sort((a, b) => a - b)[15];
+    if (med < bestMed) { bestMed = med; iters = it / 30; }
+    m.solve();
+  }
+  console.log(`\nthe frame: median ${bestMed.toFixed(2)} ms, ${iters.toFixed(1)} LM iterations a frame`);
+}

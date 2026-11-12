@@ -138,8 +138,17 @@ etc).
   quieter ink, and a `conflict` heading first in the constraints palette.
   Unit: `test/directionrows.test.ts`, `test/culprit.test.ts`; e2e:
   `reviewsolver.e2e.ts` (mouse and iPhone 13). Measurements, and what is
-  slower (a par-heavy solve 1.5× to 2.3×; a solve that brings every length
-  back at once 2× to 6×), in the spec's *As built*.
+  slower, in the spec's *As built* — and re-measured on a release kernel
+  by docs/plans/solver-cost.md (the kernel here had been a debug build):
+  a size has drifted past 1e-6 of itself (`DRIFT`), the pull is a weak
+  **probe** that tells the sizes the relations own from the free ones and a
+  **finish** that pulls the free ones as a `dist` would (`PROBE_WEIGHT`,
+  `OWNED`, `FINISH_WEIGHT`), so one dimension set on forty chained
+  free-width rectangles is 109 ms where it was 238 (1287 on the debug
+  kernel) and exact where it was 1e-2 off. The drag frame's cost is the
+  rows' evaluation (the kernel's step is 0.5 ms of 8.5). Unit:
+  `test/keptsizes.test.ts`; tables: `test/keptsizes.measure.ts`,
+  `test/solver.measure.ts`.
 - **Many at once is one relation among equals, and a wall is named by the
   line it is swept from** (docs/plans/review-relations.md, built; review
   items 5 and 6 of TODO.md's register, against the owner's *"correct

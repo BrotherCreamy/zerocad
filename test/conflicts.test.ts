@@ -568,10 +568,16 @@ test("the cost: the check on every solve, and the search, on the largest fixture
   // **And the clock bound does bound it** — on a clock the test turns, so the
   // result is the same on any machine: each reading of `performance.now()`
   // is 100 ms after the last, the budget is the product's 500 ms, and the
-  // search stops at the sixth reading, five trials in (5 solves, measured,
-  // against 25 with the clock lifted) — the culprit still named,
-  // its set not found (`found` false), which is what the app shows past the
-  // bound (*against a set not found in time*).
+  // search stops at the sixth reading, five trials in — the culprit still
+  // named, its set not found (`found` false), which is what the app shows
+  // past the bound (*against a set not found in time*). A trial is one kernel
+  // solve where its part simply fails to solve, and up to seven where it
+  // folds a side instead (the push and release that tell a collapse from a
+  // small size, the steer's pull and release, and the push again): which of
+  // the two a conflict's compromise is depends on where the free coordinates
+  // of this under-determined chain stood when the par was typed (every gap
+  // is a distance, so each rectangle's offset is free), and both have been
+  // seen here — 5 solves for the five trials, and 19 (docs/plans/solver-cost.md).
   m.searchMs = SEARCH_MS;
   work.reset();
   const realNow = performance.now.bind(performance);
@@ -585,7 +591,7 @@ test("the cost: the check on every solve, and the search, on the largest fixture
   }
   console.log(`40 rectangles, the same search on the product's budget with 100 ms a reading: ${work.solves()} solves → ${bounded.relations.join(" ")}, found ${bounded.conflicts.map((k) => k.found)}`);
   assert.ok(work.solves() < searchSolves, `bounded: ${work.solves()} solves, against ${searchSolves} with the clock lifted`);
-  assert.ok(work.solves() <= 8, `bounded: ${work.solves()} solves on a budget of five readings`);
+  assert.ok(work.solves() <= 5 * 7, `bounded: ${work.solves()} solves on a budget of five readings`);
   assert.deepEqual(bounded.relations, [p], "past the bound the culprit is named alone");
   assert.deepEqual(bounded.conflicts.map((k) => k.found), [false]);
 });

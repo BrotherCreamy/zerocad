@@ -10,6 +10,95 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-12 — the solver's two costs: what the spec assumed, what the measurements said, and the kernel nobody had timed
+
+The brief was to build docs/plans/solver-cost.md exactly, and its first
+order was to measure before touching. The measuring overturned most of it.
+
+**The kernel was a debug build.** The first census of the par-to-axes
+drag frame put the kernel's step at 1.7 ms for fifteen CG iterations on
+1286 non-zeros — a hundred microseconds an iteration for five thousand
+flops, which no release build does. `src/kernel/wasm-gen` on this box had
+the timestamp of the `debug` target directory: `build:kernel` had failed
+at binaryen's download and every worker had fallen back to
+`build:kernel:dev`, which is `wasm-pack build --dev`, unoptimised. A
+release build without wasm-opt (`--no-opt`, which wasm-pack 0.15 has) took
+the step to 0.09 ms and the frame from 23 to 8.5 ms. So every kernel
+timing in the register up to this package — the review's 20.6 ms frame,
+its 1407 ms edit — was a debug kernel's, and the spec's third item, "the
+direction row's cost is the kernel's", was built on it. The table was
+re-made on both kernels and the first commit says so; the measure scripts
+now print the kernel's size so no table can be read without knowing.
+
+**Item 3 answered itself.** On the release kernel the frame is 8.2–9.1 ms
+of which the kernel's five steps are 0.5 ms; six evaluations of the rows
+are the other eight. (a) was already true (the axis is a datum; six
+variables a row). (b), two rows for three, was worked through on paper:
+the turn vector is perpendicular to the axis, so the three components'
+normal equations are exactly the two projected rows' and the kernel does
+identical work; and for a tilted frame the projection is two extra Dual
+dot products, dearer than the dead component it saves. So (c): the register
+gets the real item, the Dual arithmetic of the direction rows, with the
+numbers (a `par` block 5.1 µs; a constant-aware `Dual.mul` tried and
+measured at 4.1 µs a block but within the box's noise on the frame, so
+not taken), and the CG preconditioner is filed where it does matter — the
+weak pull, below — not the frame.
+
+**Item 1's premise was wrong by a factor of forty.** The spec said a gap
+set in forty chained free-width rectangles drifts every width by 1e-7.
+Fifty-two do; four drift 3.1% — the straight step opens the gap by
+narrowing its two neighbours, and keeping them 40 wide (the chain opens
+instead) is exactly what the register says a kept size is for. So raising
+the drift threshold cannot make the pull go away, and the two thresholds
+the spec offered were both tried against the pictures: a thousandth lets
+a pinned level line slide 1e-5 of its length (directionrows' test fails),
+and a thousandth of the drawing's extent lets a rectangle narrow 3% in a
+drawing fifty rectangles wide. 1e-6 of the size — the review's own
+promise for kept lengths — passes everything and still skips the 1e-7
+drifts.
+
+**Item 2 was measured and does not work.** Pull only the four drifted
+widths over the component: the pull is met by narrowing the two rectangles
+beside them, 1.25 off — a free size that is not pulled is where a pull
+goes. One ring of blocks round the drifted sizes, solved `only` among
+them: 0.63 off the same way, and a ring cannot translate a chain at all.
+So the spec's second lever was dropped and the register says why.
+
+**Where the time really went.** Each of the base's solves was traced: the
+pull ran its full thirty iterations and stopped with the widths 2.7e-4
+short (the base left them 1e-2 off, which nobody had noticed). The mirror
+of solver.rs's CG on the pull's Jacobian showed the mechanism: the pull is
+weak by design — a fortieth of a dist row's weight on a 40-long line — so
+the damped normal equations are badly conditioned, CG hits its
+200-iteration cap at every λ under 1e-3, the step is inexact, and LM
+creeps. Making the pull strong converges in nine exact iterations but
+breaks the other case: a width a dimension just set is pulled halfway back
+and the release wanders (heights 2.8 off). Making it moderately strong
+(0.1) left 7e-2. The classifier the base already had — "what stays off
+after a weak pull and release is the relations' own" — is the right idea
+read at the wrong time; read after four weak iterations, as the share of
+the drift that moved, it separates cleanly (owned sizes keep 98%, free ones
+0–12%), and then the free ones can be pulled at a dimension's weight with
+nothing fighting. One wrinkle found by the one-rectangle test: the probe
+can push a free size *further* off (a height 2e-6 out became 7e-4), so
+"owned" is "moved less than half its drift", not "still off by more than
+half".
+
+**A test bound moved, and why that is not a regression.** The conflict
+search's bounded test asserted five trials at ≤ 8 kernel solves; it read
+19, because the `par` across a corner now folds a side where it sheared.
+The drawing is under-determined (every gap a sphere), the drag's release
+leaves its free coordinates 3e-3 elsewhere than before, and from there the
+conflict's compromise is the folding one. Checked from three more starting
+points on each version: the base sheared from all, this build folds from
+two of four. Both verdicts are CONFLICT with the right culprit; the
+folding path is what the CHANGELOG's own "874 ms before" was. The bound
+is now seven solves a trial, the most a folding trial spends.
+
+**Left for the owner to decide:** CLAUDE.md still names `build:kernel:dev`
+as the fallback; `build:kernel:noopt` is the one to time on. And the
+phone has still not been measured for any of this.
+
 ## 2026-11-12 — there is no sketch: what the word was doing, and the choices behind its going
 
 Built on `claude/no-sketch` from docs/plans/no-sketch.md. The register has

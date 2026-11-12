@@ -33,6 +33,43 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A kept size is pulled by a probe and a finish, and a drift is what can
+  be seen** (docs/plans/solver-cost.md, built 2026-11-12 on
+  `claude/solver-cost`; the spec's two premises were measured first and
+  did not hold, CONVERSATION_LOG has the measurements). Each vetoable:
+  - **A size has drifted when it is off by 1e-6 of itself** (`DRIFT`) — the
+    1e-6 review-solver asked lengths be kept to — not the spec's thousandth
+    (a level line pinned at one end slides 1e-5 and must be carried whole)
+    and not a share of the drawing's size (a rectangle 3% narrower in a
+    drawing fifty rectangles wide would have been let go). Relative to the
+    size alone: the stretch of a turned line is first order in the turn
+    whatever its length.
+  - **Every held size of the connected part is still pulled, not one ring**:
+    a free size that is not pulled is where the pull goes (measured twice —
+    the four narrowed widths alone, and one ring of blocks round them — and
+    the drift moved one rectangle over both times).
+  - **The pull is a weak probe for four iterations, then the free sizes
+    pulled as a dimension pulls** (`PROBE_WEIGHT` 0.1, `PROBE_ITER` 4,
+    `OWNED` 0.5, `FINISH_WEIGHT` 1). A size the relations own keeps 98% of
+    its change under the probe and is never pulled against them; a free one
+    is then pulled exactly, in six to nine iterations where one weak pull
+    crept thirty and stopped 2.7e-4 short. The base's second round is gone.
+  - **The direction row against an axis is left three components in 3D**,
+    not two: the kernel does the same work either way (the turn is
+    perpendicular to the axis), and a projection onto a tilted frame's plane
+    costs more Dual arithmetic than the dead component.
+  - **`build:kernel:noopt` is the fallback when binaryen cannot be
+    downloaded**, and the measure scripts say which kernel they ran on: the
+    `--dev` kernel every worker here has had is a debug build, ten times
+    slower in the kernel's step, and every kernel timing in the register up
+    to this one was taken on it (CLAUDE.md still names `build:kernel:dev`;
+    the owner's call whether it should name this instead).
+  - **The conflict search's bounded-trial test allows seven kernel solves a
+    trial** (it allowed one and a half): a trial that folds a side costs the
+    push, the steer and the push again, and which compromise a conflict
+    lands on depends on where an under-determined chain's free coordinates
+    stand.
+
 - **A fillet is one thing, and anything can be construction** (the owner,
   2026-11-12: *"adding them to the originating chain/loop of a region of a
   body shouldn't break the body … should produce an identical outcome to 3d
@@ -3230,37 +3267,43 @@ are flagged as such.
           damping in `kernel-rs` — every solve in the app would change — or
           the sizes put back at the drag's release, which would be seen as a
           jump. Pinned at 5% by `test/directionrows.test.ts`.
-    - [ ] **A direction row costs more to solve.** A unit direction depends
-          on every coordinate of both ends, so `par(l, "origin.x")` in 3D has
-          6 non-zeros a row where it had 2, and the kernel's CG pays by the
-          non-zero: forty rectangles, 8 iterations before and after, 1.5×
-          to 2.3× the time (135 → 209 ms by one measure, 126 → 295 by the
-          spec's table, both at a load of thirty; not told apart). And a
-          solve that changes a turned line's length is solved on, pulled and
-          released: 2× to 6× the plain solve when every length in the
-          drawing was wrong at once (forty rectangles, every point moved:
-          156 → 960 ms, 22 iterations for 8), which an edit is not. Wants
-          measuring on a quiet machine and on the phone before anything is
-          done about it.
-          **Measured at the review (2026-11-12, load 5–9, best of five,
-          base → merged):** a drag frame — one rectangle 1.1 → 1.3 ms; ten
-          rectangles of four perps chained by `par` 48.8 → 27.7; forty of
-          them 385 → 178; forty held `par` to the axes and dimensioned
-          4.2 → 20.6; features-v12 61.9 → 53.2; shapes-v15 77.8 → 81.4. One
-          dimension set and solved — forty chained rectangles each with its
-          width dimensioned 1815 → 1121 ms, twenty 305 → 358, ten 68 → 109,
-          forty separate 20.7 → 21.5. So not a blanket cost: perp-heavy
-          drags are twice as fast and most edits within 1–3× either way.
-          **The case to fix first: forty chained rectangles whose widths
-          are free, one dimension set, 165 → 1407 ms** — `keptSizes`
-          bringing forty free lengths back at once. Likely fix: do not
-          re-pull a size that drifted less than can be seen (`KEPT` is
-          1e-9). The par-to-axes drag frame at 5× is the second. Still
-          wants the phone. **Specified** as
-          [`solver-cost.md`](docs/plans/solver-cost.md) (2026-11-12): a
-          drift is what can be seen, the pull is one ring out and not the
-          component, the axis row's non-zeros counted before anything is
-          done about them.
+    - [x] **A direction row costs more to solve — measured, and the cost
+          was elsewhere** (the register entry above; docs/plans/solver-cost.md,
+          built 2026-11-12). What this item said: a unit direction has 6
+          non-zeros a row where it had 2, the kernel's CG pays by the
+          non-zero, 1.5× to 2.3×, and a solve that brings every length back
+          is 2× to 6×. What is true, on a release kernel (every number here
+          before was a debug kernel's, ten times slower in the kernel's
+          step): at rest a `par` row has 2.0 non-zeros, as the raw row had,
+          and 2.8 mid-drag (the `dist` rows 4.0); the kernel's step is
+          0.09 ms, 15–17 CG iterations, five a frame — **0.5 ms of an 8.5 ms
+          frame**; the other eight are six evaluations of the rows at
+          1.0–1.2 ms each, most of it the Dual arithmetic of 160 `par`
+          blocks (5.1 µs a block, Map allocation). The case to fix first,
+          **forty chained rectangles whose widths are free, one dimension
+          set: 238 → 109 ms** (1287 on the debug kernel), and exact where the
+          base left the widths 1e-2 off — `keptSizes` was creeping, not
+          over-pulling. Left:
+        - [ ] **The direction rows' evaluation**: a `par(line, axis)` block
+              is 5.1 µs — `unit` 0.7, the wedge 1.5, the dot 1.0,
+              `turnFactor` 1.0, the scaling 2.2 — nearly all of it Maps. A
+              constant-aware `Dual.mul` (a Dual with no gradient treated as
+              a number) measured the block at 4.1 µs and the frame within
+              the box's noise (12.3/12.6 against 10.7 ms at a load of 3–5),
+              so it was not taken; a `blend`-style `turnToParallel` (plain
+              partials, one gradient pass a component, as `turnFactor`
+              already is) is the next thing to try. The frame of forty
+              par-to-axes rectangles is 8.2–9.1 ms on this box's release
+              kernel against the spec's 8.
+        - [ ] **The kernel's CG cap meets a weak pull**: `solve_step` caps CG
+              at 200 iterations and 1e-10, and on the pull's Jacobian (a
+              chain of forty rectangles, 480 variables, nothing fixed) it
+              hits the cap at every λ under 1e-3 and returns an inexact step
+              — a step of 2–3.7 ms where a frame's is 0.09. The probe takes
+              four such steps. A preconditioner (Jacobi is the diagonal it
+              already has) or a cap that grows with n would make the probe
+              exact; `kernel-rs`, so not this package's.
+        - [ ] **Still wants the phone**, for all of it.
     - [ ] **A conflict on a solid says two things in the log.** The status
           names the culprit (`r7 par l5 l6 — against r6`) and the log line
           under it reads "collapsing l6, l2, l4, l8", the collapse path's

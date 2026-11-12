@@ -413,12 +413,18 @@ and each was arrived at by measuring the simpler thing first.
   long. `model.ts` holds no equations, but it knows what a line is, so the
   fix is there: a block says which entities it reads for their direction
   only (`addResidual`'s `turns`), and after a solve that changed the length
-  of any of them `Model.keptSizes` solves on with those lengths pulled back
-  to what they were and then released. What a relation really changes — a
-  side a dimension was just put on — is changed by the release; the rest
-  comes back to 1e-10 of itself. A drag's frame is not steered (a pull on a
-  size there would move a free rectangle whole under a dragged corner), so a
-  drag still costs a turned line a little: 3% where it cost 47%.
+  of any of them by more than can be seen (1e-6 of it) `Model.keptSizes`
+  solves on with those lengths pulled back to what they were and then
+  released. The pull is a weak **probe** for four iterations, which tells a
+  size a relation owns — a side a dimension was just put on, which keeps
+  its change — from a free one, which comes most of the way back; then the
+  free ones alone are pulled as a dimension pulls, a row that is a length,
+  so the step is exact and the sizes come back to 1e-11 of themselves
+  (docs/plans/solver-cost.md: one weak pull on everything was a compromise
+  the kernel's conjugate gradient could not take exactly, and crept). A
+  drag's frame is not steered (a pull on a size there would move a free
+  rectangle whole under a dragged corner), so a drag still costs a turned
+  line a little: 3% where it cost 47%.
 
 The residual's form is not journalled, so no file changed: a unit-direction
 row has the roots the raw one had, less the collapsed one, and every fixture

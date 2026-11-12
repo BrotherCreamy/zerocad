@@ -3266,18 +3266,21 @@ export class Model {
    * move that turns a line also stretches it — measured, a `perp` between two
    * free 60-long lines left them 169 long with the rows normalised, and a
    * `par` 61 and 62. So where a solve changed the size of something a
-   * direction block reads for its direction (`turning`), the part is solved
-   * on from the answer, **steered** as `steered` steers: those sizes pulled
-   * toward what they were, then released. Kept if it solves, folds nothing
-   * and changes those sizes less; else the first answer stands.
+   * direction block reads for its direction (`turning`) by more than can be
+   * seen (`DRIFT`), the part is solved on from the answer with those sizes
+   * pulled toward what they were — a weak **probe** that tells the sizes the
+   * relations own from the free ones, then a **finish** that pulls the free
+   * ones as a dimension would (docs/plans/solver-cost.md) — then released.
+   * Kept if it solves, folds nothing and changes those sizes less; else the
+   * first answer stands.
    *
    * Only what a direction block reads so is pulled: a line no relation reads
    * for its direction still stretches to a `coin` on its end, and a `dist`
    * still sets a length — a size the relations really do change (a side a
-   * dimension was just put on) is changed by the release, as in every steered
-   * solve. And it is asked of every solve, not only one a direction relation
-   * began: a level line whose one end is pinned somewhere else is carried
-   * there whole, as it was when its row was linear and could do nothing else.
+   * dimension was just put on) is theirs, and is never pulled against them.
+   * And it is asked of every solve, not only one a direction relation began:
+   * a level line whose one end is pinned somewhere else is carried there
+   * whole, as it was when its row was linear and could do nothing else.
    *
    * Not asked on a drag's frame (`solveFrame`): a frame is one solve, and a
    * pull on a size there would move a free rectangle whole under a dragged
@@ -3309,9 +3312,23 @@ export class Model {
     for (const names of this.turning.values()) {
       for (const n of names) if (!turned.has(n) && this.varsOfEntity(n).some(moved)) turned.add(n);
     }
-    const drifted = sizes(turned).filter((s) => off(s) > KEPT);
+    // **A drift that cannot be seen is not a drift** (docs/plans/solver-cost.md).
+    // Forty chained rectangles with their widths free, one gap between two of
+    // them set: every point moves, so every width is measured, and fifty-two
+    // of them are off by 1e-7 of themselves — the solve's own precision, not
+    // a change — beside the four the straight step really narrowed (3.1%).
+    // Pulling on all fifty-six was four solves of the whole drawing. So a
+    // size is drifted past `DRIFT`, what the review asked lengths be kept to.
+    const drifted = sizes(turned).filter((s) => off(s) > DRIFT);
     if (!drifted.length) return plain;
     const after = this.problem.snapshot();
+    // **Every held size of the connected part is pulled, not only the drifted
+    // ones** — measured the other way first (docs/plans/solver-cost.md): a pull
+    // on the four widths a gap's edit had narrowed, and nothing else, was met
+    // by narrowing the two rectangles beside them instead; the drift moved
+    // one rectangle over, and a pull on one ring of blocks round the drifted
+    // sizes left the same. A free size that is not pulled is where a pull
+    // goes. So the part is the component, as it was.
     const part = this.problem.connected(drifted.flatMap((s) => s.m.vars));
     const blocks = new Set(part.blocks);
     const names = new Set<string>();
@@ -3320,22 +3337,35 @@ export class Model {
     const before = held.reduce((sum, s) => sum + off(s), 0);
     // From the answer just found, not from where the solve began: the
     // relations hold here already, and only the sizes are to come back.
-    const pull = (of: readonly { m: Measure; was: number }[]): ResidualBlock[] =>
-      of.map(({ m, was }) => ({ varIndices: m.vars, fn: (l) => [m.size(l).sub(was).mul(STEER / was)] }));
-    let spent = this.problem.solve({ only: blocks, extra: pull(held), maxIter: NUDGE_ITER, stall: SETTLED }).iterations;
-    let released = this.problem.solve({ only: blocks });
+    const pull = (of: readonly { m: Measure; was: number }[], weight: number): ResidualBlock[] =>
+      of.map(({ m, was }) => ({ varIndices: m.vars, fn: (l) => [m.size(l).sub(was).mul(weight)] }));
+    // **A probe, then a finish.** What the relations changed on purpose (a side
+    // a dimension was just put on) must not be pulled: pulled as hard as the
+    // dimension pulls, it ends halfway and the release wanders from there (a
+    // chained drawing's heights 2.8 off, measured). But pulled weakly, as one
+    // pull on everything used to be, the step is a compromise the kernel's
+    // conjugate gradient cannot take exactly — its iterations capped, the
+    // weak rows under the damping — and the pull crept for thirty iterations
+    // to within 2.7e-4 (forty chained rectangles, widths free). So the pull is
+    // asked twice. First a weak one, `PROBE_WEIGHT` of a `dist` row's for a
+    // few iterations (`PROBE_ITER`), to tell the two kinds apart: a size the
+    // relations own hardly moves (its drift stays within 2% of itself), a
+    // free one comes most of the way back (measured 0.00–0.12 of its drift).
+    // Then the free ones, and only they, are pulled as a `dist` would pull,
+    // a row that is a length: nothing fights it, so the step is exact and it
+    // runs to the root in a handful of iterations (six to nine where the one
+    // weak pull took thirty), and the release has nothing left to do.
+    const offs = held.map(off);
+    let spent = this.problem.solve({ only: blocks, extra: pull(held, PROBE_WEIGHT), maxIter: PROBE_ITER }).iterations;
+    // Owned: drifted, and the probe moved it less than `OWNED` of that drift
+    // either way. Not "still off by more than that": a free size the probe
+    // disturbs ends further off than it began (a rectangle's height, 2e-6 out
+    // after the plain solve, 7e-4 after a probe that pulled on its width),
+    // and that is a size to pull, not one to leave.
+    const free = held.filter((s, i) => !(offs[i] > DRIFT && Math.abs(off(s) - offs[i]) < OWNED * offs[i]));
+    spent += this.problem.solve({ only: blocks, extra: pull(free, FINISH_WEIGHT), maxIter: NUDGE_ITER, stall: SETTLED }).iterations;
+    const released = this.problem.solve({ only: blocks });
     spent += released.iterations;
-    // **What the relations changed anyway is theirs** (a side a dimension was
-    // just put on): against it the pull was a compromise, and the release
-    // from a compromise leaves the sizes beside it a little off as well
-    // (measured, a rectangle's height 1e-6 out when its width was set). So
-    // those are let go and the rest pulled once more, this time to rest.
-    const rest = held.filter((s) => off(s) <= CHANGED);
-    if (released.solved && rest.length < held.length && rest.some((s) => off(s) > KEPT)) {
-      spent += this.problem.solve({ only: blocks, extra: pull(rest), maxIter: NUDGE_ITER, stall: SETTLED }).iterations;
-      released = this.problem.solve({ only: blocks });
-      spent += released.iterations;
-    }
     const folded = this.shrunk(ctx, SUSPECT, this.entitiesIn(new Set(part.vars))).length > 0;
     if (!released.solved || folded || !(held.reduce((sum, s) => sum + off(s), 0) < before)) {
       this.problem.restore(after);
@@ -4181,19 +4211,51 @@ const SANK = 0.5;
 
 /**
  * How much of its size a direction block's entity may change, as a share of
- * that size, before `keptSizes` asks whether it had to: a thousandth of the
- * 1e-6 docs/plans/review-solver.md asks lengths be kept to.
+ * that size, before `keptSizes` asks whether it had to: the 1e-6
+ * docs/plans/review-solver.md asks lengths be kept to, and under anything a
+ * person could see on a drawing. It was 1e-9, a thousandth of that, and at
+ * that the solver's own precision read as a drift — fifty-two of fifty-six
+ * widths in a chained drawing, off by 1e-7, pulled back at the price of
+ * three more solves of the drawing (docs/plans/solver-cost.md). Not a
+ * thousandth of the size, as that spec first proposed: a level line whose
+ * end is pinned elsewhere slides 1e-5 of its length under the angle's row,
+ * and a thousandth would have let it (test/directionrows.test.ts); nor a
+ * share of the drawing's size, which would have left a rectangle 3% narrower
+ * in a drawing fifty rectangles wide. Relative to the size alone, because the
+ * stretch of a turned line is first order in the turn whatever its length.
  */
-const KEPT = 1e-9;
-
-/** The share of its size a pulled size is still off by for `keptSizes` to take the change as the relations' own doing, and stop pulling on it. */
-const CHANGED = 1e-3;
+const DRIFT = 1e-6;
 
 /**
- * When `keptSizes`' pull has settled: a step that lowers the residual by less
- * than this share of it. Where every size can come back the pull runs to
- * zero long before; where one cannot (a side a dimension changed) it is a
- * compromise that never does, and the release that follows finishes it.
+ * How hard `keptSizes`' probe pulls each held size toward what it was, as a
+ * residual per unit of length — a tenth of a `dist` row's. Weak enough that a
+ * size a relation owns stays where the relation has it (the compromise is
+ * w²/(1 + w²) of the way, 1%), strong enough that a free size comes most of
+ * the way back in `PROBE_ITER` iterations: measured 0.98 against 0.00–0.12
+ * of the drift on forty chained rectangles, dimensioned and free. A pull
+ * relative to the size (`STEER`, as the probe first was) left a free width
+ * at 0.45 of its drift after four iterations, too near `OWNED` to read.
+ */
+const PROBE_WEIGHT = 0.1;
+
+/** The iterations the probe takes: enough for the two kinds of size to part, and no more, since it is a compromise anyway. */
+const PROBE_ITER = 4;
+
+/** The share of its drift the probe must fail to move a size by, either way, for it to be the relations' own and left to them. */
+const OWNED = 0.5;
+
+/**
+ * How hard `keptSizes` pulls the free sizes once they are known: a residual of
+ * one per unit of length, a `dist` row's own weight, so the finishing solve
+ * is conditioned as a dimensioned drawing's is and its steps are exact.
+ */
+const FINISH_WEIGHT = 1;
+
+/**
+ * When a pull that is a compromise has settled: a step that lowers the
+ * residual by less than this share of it. `keptSizes`' finish runs to zero
+ * long before where every size can come back; where free sizes conflict it
+ * never does, and the release that follows finishes it.
  */
 const SETTLED = 1e-3;
 

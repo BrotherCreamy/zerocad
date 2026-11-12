@@ -14,6 +14,7 @@
     "test:all": "npm run typecheck && npm test && npm run test:kernel && npm run test:e2e",
     "typecheck": "tsc --noEmit",
     "build:kernel:dev": "cd kernel-rs && wasm-pack build --dev --target web --out-dir ../src/kernel/wasm-gen",
+    "build:kernel:noopt": "cd kernel-rs && wasm-pack build --release --no-opt --target web --out-dir ../src/kernel/wasm-gen",
     "build:single": "node scripts/singlefile.mjs",
     "build:pwa": "node --experimental-strip-types scripts/pwa.ts",
     "build:icons": "node --experimental-strip-types scripts/icons.ts",
