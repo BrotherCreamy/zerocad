@@ -436,6 +436,14 @@
     #organiser button:disabled{color:#2f4050}
     #organiser .oopen{color:#46586a}
     #organiser .orow[data-open] .oopen,#organiser .orow[data-open] .oopen:hover{color:#e8a33d}
+    /* A group's definedness (docs/plans/no-sketch.md): a filled dot when every
+       member is held, a hollow one in the free ink (main.ts's FREE, the blue
+       free entities are drawn in) when some can still move, faint before a
+       solve has said. In the docked row and the see-through tree alike. */
+    .odef{flex:none;box-sizing:border-box;width:calc(7px * var(--ui));height:calc(7px * var(--ui));border-radius:50%;
+      border:calc(1.4px * var(--ui)) solid #8fa7bb;background:#8fa7bb;margin:0 calc(2px * var(--ui))}
+    .odef[data-defined="no"]{border-color:#5aa2ff;background:transparent}
+    .odef[data-defined="unknown"]{border-color:#46586a;background:transparent;border-style:dotted}
     /* A feature that says something is wrong and offers the tap that fixes it
        (a through-all cut that stops short): the marker's place, in the
        warning's ink, and the word after its kind with it. */

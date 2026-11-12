@@ -90,7 +90,7 @@ export class PlaneTool extends Tool {
   static readonly options: OptionSpecs = {
     on: {
       default: "pick",
-      label: "plane",
+      label: "on",
       choices: { pick: "pick a face", top: NAMED_PLANES.top.label, front: NAMED_PLANES.front.label, right: NAMED_PLANES.right.label },
       buttons: true,
       remember: false,

@@ -10,6 +10,29 @@ etc).
 
 ## What's working right now
 
+- **There is no sketch** (docs/plans/no-sketch.md, built 2026-11-12). The
+  owner: *"There is no such thing as a sketch. There are geometry groups …
+  I want geometry to be able to belong to multiple groups. A group is only
+  fully defined when every element within the group is fully defined."*
+  The model was already this; the word is gone from everything a person
+  reads. The **Plane tool** (`src/tools/plane.ts`, `plane`; `arm("sketch")`
+  an alias that says so) chooses a plane to draw on; the face menu's item
+  is **Draw on this face**, the frame's **Draw on this**, the chip's menu
+  reads *drawing on e1's top*; the workbench is **Drawing** (`drawing`;
+  `workbench("sketch")` and a file saved in it still open it, through
+  `WORKBENCH_ALIASES`, never listed, never written back); the module keeps
+  its id `sketch`, labelled *Drawing: …*. `test/nosketch.test.ts` greps
+  every string literal in `src/` and asks every tool, label, menu and
+  `help()` at run time. **A group's definedness** is a reading of the last
+  diagnosis (`organiserSections`/`rowMenu` take `Diagnosis.free`): a dot
+  before the group's count in the organiser, filled when every entity
+  member is held, hollow in the free ink when some can move, its tooltip
+  the count (*1 of its 9 members can still move*), and **Select what is
+  free** on the row's menu typing `select(…)` of exactly those — no new
+  solve, no new relation. **A tool's running guidance is the hand's word**:
+  summaries say `{tap}` and `toolSummary(name, hand)` reads them; every line
+  a tool logs passes through the engine's `ctx.log`, which fills `{tap}` for
+  the hand on the canvas. Pictures 525–536.
 - **A fillet is one thing, and anything can be construction**
   (docs/plans/fillets-one-thing.md, built; review item 7; format 22). The
   owner: *"the previous geometry should not be deleted … it should be made
@@ -238,13 +261,13 @@ etc).
   *Known and deliberate*: extend and offset of a spline, a revolve of an
   elliptical arc, part of either piece bounding a region — refused by name
   (TODO.md). *Not tried on a phone.*
-- **Sketch mode** (docs/plans/sketch-mode.md, built). The owner: *"sketch
+- **A plane to draw on** ("sketch mode" until 2026-11-12; docs/plans/sketch-mode.md, built). The owner: *"sketch
   on a plane without it being a special feature … add 'on plane' relations
   to each entity as it gets sketched … go normal to the plane/face"*. A mode,
   not a feature: the work plane set (`workplane(ref)`), the view square to
   it, every point every drawing tool makes held by one `onPlane`
   (`test/sketchmode.test.ts` checks it over the tool registry, on nine kinds
-  of plane). The **sketch tool** picks a face, a flat kernel face no loop
+  of plane). The **Plane tool** picks a face, a flat kernel face no loop
   bounds (a frame made there, `src/kernelplane.ts`), or the ground's **Top,
   Front, Right** — `"origin"`, `"origin.xz"`, `"origin.yz"`, plane
   references (`parseFramePlane`, model.ts; any frame's `"f1.xz"`/`"f1.yz"`)

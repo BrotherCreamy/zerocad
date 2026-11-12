@@ -139,7 +139,7 @@ test("iPhone 13: a tap on a tool arms it and shows its tip — name, what it doe
   const t = await chosenBecomes(phone, (s) => s.shown, "Dimension's tip");
   assert.equal((await phone.model()).activeTool, "dimension", "armed, as a tap always did");
   assert.equal(t.name, "Dimension");
-  assert.equal(t.summary, "Dimensions what you click, a solid's faces too; a click places it");
+  assert.equal(t.summary, "Dimensions what you tap, a solid's faces too; a tap places it");
   assert.deepEqual(t.how, [
     "Tap what to measure: a line, a circle, two points…",
     "Then tap empty space to place it.",

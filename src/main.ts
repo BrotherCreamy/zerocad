@@ -2414,9 +2414,12 @@ async function main() {
   const organiserEl = document.getElementById("organiser");
   if (organiserEl) {
     organiser = new Organiser(organiserEl, document.querySelector<HTMLElement>('.panel[data-panel="organiser"] .padd'), {
-      sections: () => organiserSections(model, engine.selection.prune(model)),
+      // A group's definedness is read off the last diagnosis's free set
+      // (docs/plans/no-sketch.md) — the one `showDiagnosis` draws the free ink
+      // from, so the row's dot and the canvas's blue agree.
+      sections: () => organiserSections(model, engine.selection.prune(model), diagnosis?.free ?? null),
       selection: () => engine.selection.prune(model),
-      menu: (name) => rowMenu(model, name, engine.selection.prune(model)),
+      menu: (name) => rowMenu(model, name, engine.selection.prune(model), diagnosis?.free ?? null),
       showMenu: (m, x, y) => {
         hoverEl.hidden = true;
         const wrap = menuEl.parentElement!.getBoundingClientRect();

@@ -274,7 +274,7 @@ test("a circle drawn on the wall lands on it, and extruded a positive depth stan
   await shot("3-boss");
 });
 
-test("the same by the context menu, on the right wall: Sketch on this face types workplane(…) for it, and a second boss stands off that side", async () => {
+test("the same by the context menu, on the right wall: Draw on this face types workplane(…) for it, and a second boss stands off that side", async () => {
   // Turned so the right wall faces the camera too.
   await app.type("lookAt(\"f1\"); orbit(-1.2, -0.9)");
   await centreOn(CENTROID);

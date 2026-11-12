@@ -7,6 +7,79 @@ decisions.
 
 ---
 
+## 2026-11-12 — there is no sketch: the Plane tool, Draw on this face, a group's definedness, and a tool's guidance in the hand's word
+
+The owner: *"There is no such thing as a sketch. There are geometry groups
+(you can come up with a better name… reason I don't want to use sketch is
+it implied exclusivity, but I want geometry to be able to belong to
+multiple groups). A group is only fully defined when every element within
+the group is fully defined."* The model already was this — a group is a
+set that owns nothing, an entity is in any number of them, a plane is
+where a click lands and an `onplane` if one is made — but the **word** was
+everywhere a person read, and every use of it said that geometry is inside
+a container (docs/plans/no-sketch.md, with an *As built*).
+
+| | |
+|---|---|
+| ![Desktop: the Plane tool armed over a 60 × 40 × 15 block from above its front-right, the lid lit green with Top, Front and Right as faint patches round it; the chip reads plane · click a lit face or plane to draw on it, the options panel plane · on · Top Front Right](docs/images/525-the-plane-tool-armed-over-a-block-the-lid-lit.png) | ![The lid taken: the view square to it, the lid tinted green, the chip reading on e1's top ⊥ Done · select, the log's workplane("p5.p6.p8")](docs/images/526-the-lid-taken-the-chip-says-on-e1s-top.png) |
+| ![The lid's right-click menu, Draw on this face first — workplane("p5.p6.p8") beside it — then Edit e1, Flip direction, the tools](docs/images/527-the-face-menu-draw-on-this-face.png) | ![A 60 × 40 rectangle held still — a corner fixed, two sides dimensioned 60 and 40, every side along an axis — and a fixed point p5 in it, all one group: the organiser's g1 row with a filled dot before its 9, the status SOLVED · 0 free](docs/images/528-a-group-of-a-held-rectangle-the-filled-dot.png) |
+| ![p5's fix deleted: the dot hollow in the free ink, the status 2 free, and the row's menu open — g1 group of 9 members · 1 of 9 free, with Select what is free typing select("p5")](docs/images/529-the-point-let-go-the-hollow-dot-and-select-what-is-free.png) | ![Select what is free chosen: p5 alone selected, magenta, inside the still-held rectangle](docs/images/530-what-is-free-selected.png) |
+| ![iPhone 13, the block typed and nothing yet touched: the chip reads select · tap a thing, or hold and drag to box](docs/images/531-iphone-before-any-touch-the-status-says-tap.png) | ![iPhone 13: the Plane tool tapped — its chosen tip Plane / Draw on a face or Top, Front, Right: all you draw stays on it / Tap a lit face — or Top, Front or Right in the options …, the block's faces lit, the options row Top Front Right](docs/images/532-iphone-the-plane-tool-chosen-the-chip-says-tap.png) |
+| ![iPhone 13: the lid tapped, the view square to it, on e1's top ⊥ Done in the chip](docs/images/533-iphone-the-lid-tapped-on-e1s-top.png) | ![iPhone 13: the offset tool tapped on empty canvas — the log's offset: tap a line, arc or circle — the chain it is in is offset](docs/images/534-iphone-a-tools-miss-says-tap.png) |
+| ![iPhone 13: the line tool chosen — the chip line · tap the start, the tip Draws lines: tap the start, then the end of each in turn](docs/images/535-iphone-the-line-tool-chosen-its-summary-says-tap.png) | ![iPhone 13: the g1 row held — its menu, g1 group of 9 members · 1 of 9 free, Select what is free among the items](docs/images/536-iphone-the-hollow-dot-and-the-held-rows-menu.png) |
+
+- **The word is gone from everything a person reads.** The "sketch" tool
+  is the **Plane** tool (`src/tools/plane.ts`, registered `plane`, icon as
+  it was): *Draw on a face or Top, Front, Right: all you draw stays on it*.
+  "Sketch on this face" is **Draw on this face**, first on a face's menu;
+  the frame's item is **Draw on this**; the chip's menu reads *drawing on
+  e1's top*; `help()` says a plane to draw on is the work plane, not a
+  feature and not a container. Error messages say *profile* or *drawing*.
+  `arm("sketch")` is an alias (`TOOL_ALIASES`, beside `circle3`) that arms
+  the plane tool and says so. The "Sketch" workbench is **Drawing**
+  (`drawing`); `workbench("sketch")` and a file saved in it open it
+  through `WORKBENCH_ALIASES`, never listed, never written back. The
+  module keeps its id `sketch`, labelled *Drawing: …*. Code names where
+  cheap (`drawingPlaneRef`, `drawOnFaceCommand`, `facePlaneFor`,
+  `PlaneTool`, `faceplane.ts`); the plan files keep their names with one
+  line at the top. `test/nosketch.test.ts` greps every string literal in
+  `src/` (the quoted module id the one exception) and asks every tool
+  name, summary and how-line, every label, `help()`, the menus and the
+  chip at run time.
+- **A group is fully defined when every member is** — a reading, not a
+  count of its own: `organiserSections` and `rowMenu` take the last
+  diagnosis's `free` set (the one the free ink is drawn from). A group row
+  wears a dot before its count: filled when no entity member can move,
+  hollow in the free ink when some can (a faint ring before a solve); its
+  tooltip says *1 of its 9 members can still move*; **Select what is free**
+  on the row's menu types `select(…)` of exactly those, and is off with the
+  reason when every member is held. The menu's header says *fully defined*
+  or *1 of 9 free*. A relation in a group is counted neither way. No new
+  solve, no new relation. The count is of members, not of the group's
+  degrees of freedom (the register says why).
+- **A tool's running guidance is the hand's word** (picture 503 said
+  "click a thing" on an iPhone). A summary says `{tap}` where a how-line
+  does and `toolSummary(name, hand)` reads it for the hand asking; every
+  line a tool logs while running passes through the engine's `ctx.log`,
+  which fills `{tap}` for the hand last on the canvas — once, in the one
+  place every tool's line goes. A source scan refuses a one-hand "click"
+  in `src/tools`. Picture 503 itself was the picture helper's mouse move
+  (the hand had been seeded from the device since 2026-11-05); picture 531
+  is the same screen with no mouse, saying *tap*.
+- **The blank status in pictures 515 and 521 is the fade, by design**:
+  `SOLVED` and a count that nothing agrees with fade after 3 s
+  (`statusFade`, statusline.ts line 34; `showDiagnosis`, main.ts) and a
+  faded status is `display:none` (index.html), text kept. Picture 510 kept
+  its *4 agreeing*. Measured in `nosketch.e2e.ts`: shown as the operation
+  lands, shown again at the next, `data-faded` 3.6 s on with the text
+  still `SOLVED`. Nothing changed.
+- Unit: `test/nosketch.test.ts` (7), `test/organiser.test.ts` (+1); the
+  suites that named the sketch tool or its words follow the rename. E2E:
+  `nosketch.e2e.ts` (6, mouse and iPhone 13). Decisions in TODO.md's
+  register; the alternatives in CONVERSATION_LOG.md.
+
+GATE_PLACEHOLDER
+
 ## 2026-11-12 — a fillet is one thing: the corner is kept as construction on both profiles, the solid's edge fillet is the sketch's, and anything can be construction
 
 The owner: *"adding them to the originating chain/loop of a region of a body

@@ -1,5 +1,10 @@
 # Plan: sketch editing — trim, extend, offset, mirror, chamfer, patterns
 
+> **The word "sketch" is retired** (2026-11-12, the owner: *"There is no such
+> thing as a sketch"*): the tool is the Plane tool, the menu item "Draw on
+> this face", the workbench "Drawing". This file keeps its name and its words
+> as history; see [`no-sketch.md`](no-sketch.md).
+
 **Status: built** (2026-11-06), on `claude/sketch-edit` — see *As built* at
 the end for what was built, the decisions taken and every deviation.
 

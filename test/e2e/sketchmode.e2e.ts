@@ -92,7 +92,7 @@ test("in a fresh document the sketch tool lights Top, and offers Top, Front and 
   await app.page.click('#toolbar button[data-tool="plane"]');
   await app.page.waitForTimeout(250);
   assert.equal((await chip()).what, "plane");
-  assert.equal((await chip()).next, "click a lit face or plane to sketch on it");
+  assert.equal((await chip()).next, "click a lit face or plane to draw on it");
   const buttons = await app.page.$$eval('#options .ochoose', (els) => els.map((b) => (b as HTMLElement).dataset.choice));
   assert.deepEqual(buttons, ["top", "front", "right"]);
   // The Top patch is drawn, faintly green, round the origin.
@@ -272,7 +272,7 @@ test("the chamfer's face, which no loop bounds: refused as a plane to draw on, s
   // chamfer's face was held by nothing and stayed behind when the solid moved.
   // The face is refused, in words, with what works instead.
   assert.match((await app.page.textContent("#log")) ?? "", /that face is e\d+'s — a chamfer the solid kernel cut along an edge/, "refused, saying why");
-  assert.match((await app.page.textContent("#log")) ?? "", /a chamfer between two walls is the sketch's own/, "and what works");
+  assert.match((await app.page.textContent("#log")) ?? "", /a chamfer between two walls is the profile's own/, "and what works");
   assert.equal(await value("model.features.size"), features, "no feature made");
   assert.equal(await value("[...model.entities.values()].filter((e) => e.kind === 'frame').length"), frames, "and no frame made there");
   assert.ok(!(await typedLines()).slice(typedBefore).some((l) => /^workplane\(/.test(l)), "nothing typed");

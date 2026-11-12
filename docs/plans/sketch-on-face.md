@@ -1,5 +1,10 @@
 # Plan: sketch on a solid's face
 
+> **The word "sketch" is retired** (2026-11-12, the owner: *"There is no such
+> thing as a sketch"*): the tool is the Plane tool, the menu item "Draw on
+> this face", the workbench "Drawing". This file keeps its name and its words
+> as history; see [`no-sketch.md`](no-sketch.md).
+
 > **Revised 2026-11-04 by [`frameless-curves.md`](frameless-curves.md)**: the
 > sketch tool and the menu item type `workplane("a.b.c")` — the work plane set
 > to the same three points, journalled, no frame made — where they typed
