@@ -85,11 +85,16 @@ export function profileCorner(model: Model, edge: string): [string, string] | nu
  * (`remapBlends`, operations.ts) rather than under it. Returns the record's
  * name where there is one, else what the last corner made (its arc, or the
  * chamfer's line).
+ *
+ * **Only a live call is read this way.** A journal's `filletEdges` entry is
+ * the record it made — a new file's lists no corner, and a file from before
+ * format 22 may list one that the kernel rounded then — so a replay (which
+ * records nothing) makes exactly the record the entry names.
  */
 function blend(model: Model, op: "fillet" | "chamfer", journal: string, feature: unknown, edges: unknown, size: unknown): string {
   const body = bodyFor(model, op, feature);
   const list = checkEdges(op, edges);
-  const corners = list.map((e) => profileCorner(model, e));
+  const corners = list.map((e) => (model.journalling ? profileCorner(model, e) : null));
   const rest = list.filter((_, i) => corners[i] === null);
   let made = "";
   if (rest.length) {

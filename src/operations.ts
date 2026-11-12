@@ -975,7 +975,9 @@ function framesByPreference(model: Model): string[] {
  */
 export function orientingPlane(model: Model, loop: Loop, toward: number[] = loop.plane.normal): string {
   const drawing = model.drawingPlane();
-  if (liesIn(model, loop, drawing)) {
+  // A construction frame is reference (docs/plans/fillets-one-thing.md): never
+  // the plane a feature is laid out by unless it is named.
+  if (!model.isConstruction(drawing) && liesIn(model, loop, drawing)) {
     // A curve's plane cannot be turned over the way three points can be
     // chosen facing the viewer: sketch on a cylinder's base, and the work
     // plane is the base rim, whose normal points up into the solid. A
@@ -985,7 +987,7 @@ export function orientingPlane(model: Model, loop: Loop, toward: number[] = loop
     if (!away) return drawing;
     return sketchFrameFor(model, loop, toward);
   }
-  if (loop.plane.frame !== null) return loop.plane.frame;
+  if (loop.plane.frame !== null && !model.isConstruction(loop.plane.frame)) return loop.plane.frame;
   for (const f of framesByPreference(model)) {
     const axes = framePlaneAxes(model, f);
     if (axes && parallel(axes.n, loop.plane.normal)) return f;

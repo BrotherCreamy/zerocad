@@ -33,6 +33,82 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A fillet is one thing, and anything can be construction** (the owner,
+  2026-11-12: *"adding them to the originating chain/loop of a region of a
+  body shouldn't break the body … should produce an identical outcome to 3d
+  filleting that edge … the previous geometry should not be deleted … it
+  should be made into construction geometry. Note: anything can be
+  construction."*; docs/plans/fillets-one-thing.md, built, with review item
+  7; format 22). The owner decided the kept corner, the identical outcome,
+  the propagation and that anything can be construction. These are the
+  choices made building it, one line each. Each vetoable:
+  - **A cut corner's two lines and point stay exactly as they were, with
+    every relation, and become construction**; the arc (or the chamfer's
+    line), two shorter lines and two tangent points held `on` the lines are
+    new. So a dimension to the corner still measures the sharp corner, and
+    a 40 wide block rounded at 5 is still 40 wide (it became 45 before).
+  - **The arc is `tan` to the construction lines** — the join form, the arc's
+    end held on the line being where the line touches it. The distance form
+    was measured redundant (a double root at the tangent point).
+  - **A second cut on a line already set aside shortens the shorter line in
+    place** — never a construction line over a construction line.
+  - **A line set aside stands for the shorter line made in its place** when
+    a loop is named by it (`extrude("l1")`, `revolve`, `region`): the
+    construction line is what still carries the name a person sees.
+  - **The corner point is construction only once nothing real ends at it**:
+    a record told to regenerate nothing (a version-8 file's fillet) keeps a
+    wall standing on the corner, which stays a real point.
+  - **The record keeps what it set aside** (`aside`: the lines, their twins,
+    the corner and its twin, the chord), owns the lid's half, and keeps the
+    corner's pair in the `extrusion`, so the two construction lines stay
+    partners and a relation on one is twinned to the other.
+  - **The hierarchy is walked from the records and the links**: the same
+    cut seen from the other profile is the next job, so a boss on the lid is
+    cut at the corner too. Not timeline-based: the order the records were
+    made in is read nowhere.
+  - **A kernel fillet or chamfer that named a wall by its place is
+    re-pointed** to the place that wall has now; one whose wall is gone is
+    left as written, and the body says so.
+  - **`filletEdges` of an edge between two walls is the sketch's `fillet`**
+    of the two lines (typed live; a replayed entry is the record it names).
+    Every other edge — a rim, an edge between features, a round wall's — is
+    the kernel's blend as before. A mixed list makes the record first.
+  - **A fillet asked of the lid's two lines is made on the base** (the
+    profile the record is rebuilt from) and journalled as the base's call:
+    the same entry whichever end was picked.
+  - **A fillet of a profile corner on one end only is not offered**: the
+    design's loft is not built (the SMLib wrapper exposes none); a rim edge
+    rounded on one end is the kernel's blend, as today.
+  - **A lid built after the cut has no construction corner**: the extrude
+    sweeps the rounded loop and twins its members only. Filleting after the
+    extrude gives both profiles the corner.
+  - **The round tool's preview is the kernel's blend** for a profile-corner
+    edge; ✓ types the sketch's fillet. Same body, two routes between press
+    and ✓. The fillet tool's own preview is the cut itself.
+  - **One flag on every kind** (`Model.setConstruction`: curve, point,
+    frame, feature); **a feature's is its body's**, on the body's first
+    feature (`construction("e1")`, any feature of the body). A surface, a
+    region and the origin cannot be construction (said in words).
+  - **A construction point cuts no edge it is held on**: a T made by one is
+    no vertex; a point a record's profile is cut at is refused.
+  - **A construction frame is never the plane a feature is laid out by
+    unless it is named** (`extrude("l1", 10, "f1")` still is).
+  - **A construction body is drawn in the construction ink's teal, left out
+    of a STEP export (said in `skipped`), and never the body a new feature
+    joins or cuts unless named (`into`)**; its row says *construction*.
+  - **A linked profile's entity is flagged with its partner** and the entry
+    lists both; a file from before 22 flags what it names (`{ alone: true }`).
+  - **An outline edge flagged construction leaves its extrude open**, as a
+    deleted edge does, and clearing the flag closes it; it was refused. A
+    revolve's outline is still refused.
+  - **A construction point is drawn as a ring**, a construction frame in
+    the construction ink, arms and name.
+  - **Review item 7: a kernel chamfer's face is refused as a sketch plane**,
+    in words, with what works; the frame once made there is not made. A
+    chamfer of a profile corner is a wall now and is sketched on like one.
+  - **Format 22**: every older `fillet`/`chamfer` marked `"repointed"`, every
+    older `construction` `{ alone: true }`, on the way in and kept on save.
+
 - **An extrude's two profiles are peers; a feature relates, it does not own**
   (the owner, 2026-11-09 and 2026-11-12: *"kind of like mirror relations"*,
   *"i don't like the idea of anything being 'consumed'"*, *"If you change one
@@ -522,15 +598,16 @@ otherwise.
     reining in one side should trim on the other also."* A deleted line
     takes its twin and the body is left open, said so; a trim lands on both
     (`linked-profiles.md`, which this rewrote).
-  - **A fillet is one thing** (`fillets-one-thing.md`): a 2D fillet or
-    chamfer on a body's originating loop must not break the body, must give
-    the result a 3D fillet of that edge gives, and keeps the two lines and
-    the corner point, on both linked sketches, as construction. *"Anything
-    can be construction. Lines, points, planes, bodies. Anything is fair
-    game."*
+  - **A fillet is one thing** (`fillets-one-thing.md`; **built**
+    2026-11-12): a 2D fillet or chamfer on a body's originating loop must
+    not break the body, must give the result a 3D fillet of that edge gives,
+    and keeps the two lines and the corner point, on both linked sketches,
+    as construction. *"Anything can be construction. Lines, points, planes,
+    bodies. Anything is fair game."* The register entry above has the
+    choices.
   - ***"Hierarchies do exist, but they are not timeline based."*** What
     depends on what is the relations' doing, not the order things were
-    made in. To be said in ARCHITECTURE with the fillet package.
+    made in. Said in ARCHITECTURE with the fillet package (built).
   - **A tool says how to use it** (`tool-howto.md`): *"I don't even know how
     to add a parallel relation. Maybe a little tooltip should pop up when I
     hover over (desktop) or select (phone) a tool."*
@@ -589,7 +666,11 @@ otherwise.
          `corner(l1, l2, θ)` of their lines; `e1.m3` still reads and is
          re-journalled by its line. The choices are the register entry
          below;
-  7. [ ] a chamfer face's sketch plane follows the solid or is refused;
+  7. [x] a chamfer face's sketch plane follows the solid or is refused —
+         built with `fillets-one-thing.md` (2026-11-12): the sketch tool
+         refuses a kernel chamfer's own face, saying why and what works;
+         a chamfer of a profile corner is a wall swept from a line now, and
+         is sketched on like any wall and follows;
   8. [ ] Through all as a relation to the far face's geometry, not a hook —
          specified in `docs/plans/through-all-relation.md` (2026-11-12),
          queued after linked profiles; Up to face is the same relation.
@@ -2696,6 +2777,43 @@ are flagged as such.
 
 ## Next up
 
+- [x] **A fillet is one thing; anything can be construction** (the owner,
+  2026-11-12; spec [`fillets-one-thing.md`](docs/plans/fillets-one-thing.md),
+  with review item 7). **Built** (2026-11-12, branch
+  `claude/fillets-one-thing`): a sketch fillet or chamfer keeps the two
+  lines and the corner as construction on both linked profiles and rounds
+  the body; the solid's edge fillet between two walls is that same call;
+  the cut propagates to every record standing on the corner; points, frames
+  and bodies take the construction flag; format 22. Decisions in the
+  register above. Left:
+    - [ ] **A fillet of a profile corner on one end only** (the lid's lines
+          rounded, the base's sharp): the design's loft of two profiles is
+          not built — the SMLib wrapper exposes no loft — and a fillet asked
+          of the lid is made on both. A rim edge rounded on one end is the
+          kernel's blend. Needs the owner's word on whether a loft is
+          wanted, or whether "one end only" means the rim.
+    - [ ] **A lid built after the cut has no construction corner**: extrude
+          sweeps the rounded loop and twins only its members, so the
+          fillet's `tan` and `on` relations have no twin there. The extrude
+          could copy the set-aside corner to the lid as construction too.
+    - [ ] **The round tool previews the kernel's blend for a profile-corner
+          edge** and ✓ types the sketch's fillet: the same body, but the
+          preview is not the cut. The tool could ask `profileCorner` and
+          preview through the sketch fillet's copy instead.
+    - [ ] **A construction surface** is refused in words; a construction
+          region is its curves'. Neither has a flag of its own.
+    - [ ] **A construction body is still a body for hit-testing and
+          hover**, and its faces still hide what is behind them: reference
+          ink only, no see-through. The owner may want it ghosted.
+    - [ ] **A construction point on a profile vertex is refused**; it could
+          instead open the extrude as a flagged edge does.
+    - [ ] **`cornerAt` (the fillet tool's corner click) excludes walls and
+          chords by reading the records and links** every click; cheap
+          today, worth a cache if a model has hundreds of features.
+    - [ ] **The e2e baseline on this container was cut off at 762 of ~812
+          tests** by the background time limit (see the PR's report); the
+          failures seen there are listed in the report with their reruns.
+
 - [x] **An extrude's two profiles are peers; features relate, they do not
   own** (the owner, 2026-11-09 and 2026-11-12; spec
   [`linked-profiles.md`](docs/plans/linked-profiles.md)). **Built**
@@ -2704,15 +2822,10 @@ are flagged as such.
   than dies and closes when its edge is drawn back, a trim and an extend on
   either profile landing on both, a feature deleted leaving its geometry and
   relations, format 21. Decisions in the register above. Left:
-    - [ ] **`fillets-one-thing.md`** is next and stands on this: a twin for
-          an entity added to a profile (`relinkOpen` does lines by their
-          joins; an arc needs `regen`/`closeOpen`), construction carried
-          through a twin (a pair flagged construction is still a pair and
-          keeps its twins — tested; the `construction` operation still
-          refuses an outline member and does not flag the partner, which is
-          the fillet package's to define), the body rebuilt from the
-          profiles' non-construction loops (`regen` walks past construction;
-          `rebuildOpen`/`regenerateGiven` take the loops as given).
+    - [x] **`fillets-one-thing.md`** — built (2026-11-12): the
+          `construction` operation flags the partner and leaves an outline
+          member's extrude open; a cut corner is set aside on both
+          profiles; the body is swept from the rounded loop.
     - [ ] **The region still says which profile was drawn**: after
           `del("e1")` the profile the extrude was made from wears `rg1` and
           the other does not (docs/images/448). Either the region made for

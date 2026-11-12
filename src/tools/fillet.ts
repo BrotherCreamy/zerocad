@@ -23,6 +23,7 @@
 import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { fillet } from "../operations.ts";
+import { linksOf } from "../twins.ts";
 import type { Model } from "../model.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
@@ -45,7 +46,14 @@ function sharesCorner(model: Model, a: string, b: string): boolean {
  * construction ones.
  */
 export function cornerAt(model: Model, point: string): [string, string] | null {
-  const lines = [...model.entities.values()].filter((e) => e.kind === "line" && e.refs.includes(point)).map((e) => e.name);
+  // A wall standing on the corner is a feature's, not a leg of the sketch —
+  // and so is the chord of a corner set aside, a line between a point and its
+  // partner across a link.
+  const walls = new Set([...model.features.values()].flatMap((f) => (f.kind === "extrude" ? f.walls : [])));
+  const links = linksOf(model);
+  const chord = (refs: readonly string[]) => links.some((l) => l.fwd.get(refs[0]) === refs[1] || l.fwd.get(refs[1]) === refs[0]);
+  const lines = [...model.entities.values()]
+    .filter((e) => e.kind === "line" && e.refs.includes(point) && !walls.has(e.name) && !chord(e.refs)).map((e) => e.name);
   const real = lines.filter((n) => !model.isConstruction(n));
   const two = real.length === 2 ? real : real.length === 0 && lines.length === 2 ? lines : null;
   return two ? [two[0], two[1]] : null;
