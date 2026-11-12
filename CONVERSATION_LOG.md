@@ -81,6 +81,30 @@ when pulled through their lids: every length well above ε·L, every
 perpendicular met because the edges had turned parallel. The tools never
 draw such a profile (a rectangle is four perps), so the tests were given
 what the tools give; the collapse check's blindness to angles is filed.
+## 2026-11-12 — "there is no such thing as a sketch"
+
+Asked whether the status's free count should include a flat drawing's
+freedom to lift off its plane, the owner answered a different and larger
+question: *"There is no such thing as a sketch. There are geometry groups …
+reason I don't want to use sketch is it implied exclusivity, but I want
+geometry to be able to belong to multiple groups. A group is only fully
+defined when every element within the group is fully defined. Should be
+trivial to calculate this stuff but it's not a concern of mine now."*
+
+The model has been this since `groups.md`: a group is a set, owns nothing,
+an entity may be in any number of them. What has not been this is the
+vocabulary a person meets — a "sketch tool" that in fact chooses a plane,
+"Sketch on this face", "Sketch mode", a "Sketch" workbench — every one of
+which says there is a container, and the owner has now said twice there is
+not (first on 2026-11-09: *"every sketch is a 3D sketch"*). So the package
+is a renaming with one small reading at the end (a group row that says
+whether every member is fully defined), `docs/plans/no-sketch.md`, queued
+behind the four packages already running. The free-count question is
+closed: not a concern now, left as it is.
+
+Rejected: renaming the module id `sketch` that files name in
+`ui({ modules })` — a format change for a word nobody reads; the label
+changes, the id stays.
 
 ## 2026-11-12 — linked profiles built: twins that hold nothing, an extrude that opens, a feature that owns nothing
 
