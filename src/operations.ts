@@ -4486,13 +4486,23 @@ function relinkOne(model: Model, name: string): boolean {
   // Its own already, or on its way out (`shed`): neither is an edge drawn again.
   const mine = new Set([...f.loops.flat().map(memberName), ...f.twins.flat(), ...f.walls, ...(f.shed ?? [])]);
   const added: [string, string][] = [];
+  // A profile's points by their joined class: the line tool joins a new line's
+  // ends to the corners it snapped to by `coin`, so its ends are *joined to*
+  // two profile points rather than being them.
+  const joins = joinClasses(model);
+  const at = (way: ReadonlyMap<string, string>) => {
+    const out = new Map<number | string, string>();
+    for (const p of way.keys()) if (isPoint(p) && !out.has(classKey(joins, p))) out.set(classKey(joins, p), p);
+    return out;
+  };
+  const [onBase, onLid] = [at(link.fwd), at(link.back)];
   for (const e of [...model.entities.values()]) {
     if (e.kind !== "line" || mine.has(e.name) || model.isConstruction(e.name)) continue;
-    const [a, b] = e.refs;
-    if (a === b || !isPoint(a) || !isPoint(b)) continue;
-    const way = link.fwd.has(a) && link.fwd.has(b) ? link.fwd : link.back.has(a) && link.back.has(b) ? link.back : null;
-    if (!way) continue;
-    const partner = way.get(e.name) ?? model.addLine(way.get(a)!, way.get(b)!).name;
+    const [a, b] = e.refs.map((p) => classKey(joins, p));
+    if (a === b) continue;
+    const [side, way] = onBase.has(a) && onBase.has(b) ? [onBase, link.fwd] : onLid.has(a) && onLid.has(b) ? [onLid, link.back] : [null, null];
+    if (!side || !way) continue;
+    const partner = way.get(e.name) ?? model.addLine(way.get(side.get(a)!)!, way.get(side.get(b)!)!).name;
     if (mine.has(partner)) continue;
     added.push(way === link.fwd ? [e.name, partner] : [partner, e.name]);
     mine.add(e.name);

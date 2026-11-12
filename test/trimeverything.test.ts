@@ -244,18 +244,24 @@ test("an elliptical arc trimmed at an end keeps its name and its hold moves to t
   replays(m);
 });
 
-test("an ellipse under an extrude that a trim would leave without its profile: refused, and the model — names and counters — exactly as it was", () => {
+// Refused until linked profiles (docs/plans/linked-profiles.md): a trim that
+// takes an extrude's loop away leaves it open now, both rims trimmed.
+test("an ellipse under an extrude that a trim leaves without its loop: both rims become the same elliptical arc, and the extrude is open", () => {
   const m = new Model(3);
   const el = addEllipse(m, m.addPoint([0, 0, 0]).name, m.addPoint([20, 0, 0]).name, 10).name;
   extrude(m, el, 5);
-  // Two stubs, each crossing the rim once: the arc left would close on nothing.
+  // Two stubs, each crossing the rim once: the arc left closes on nothing.
   seg(m, [-25, -3], [-15, -3]);
   seg(m, [15, -3], [25, -3]);
-  const was = save(m, false), entries = m.journal.length;
-  assert.throws(() => trim(m, el, [0, -10, 0]), /trimming that piece of el1 leaves a feature nothing to stand on/);
-  assert.equal(save(m, false), was, "nothing changed — the ellipse is an ellipse again");
-  assert.equal(m.entities.get(el)!.kind, "ellipse");
-  assert.equal(m.journal.length, entries, "nothing journalled");
+  solved(m);
+  trim(m, el, [0, -10, 0]);
+  assert.equal(m.entities.get(el)!.kind, "earc");
+  const f = m.featureOf("e1", "extrude");
+  assert.equal(f.open, true);
+  assert.deepEqual(f.loops, [[el]]);
+  assert.equal(m.entities.get(f.twins[0][0])!.kind, "earc", "the lid's rim is the same piece of an ellipse");
+  solved(m);
+  replays(m);
 });
 
 test("an ellipse under an extrude trimmed by a chord: the solid regenerates onto the elliptical arc and the chord, one typed call", () => {
