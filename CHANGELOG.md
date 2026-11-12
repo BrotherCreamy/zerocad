@@ -7,6 +7,88 @@ decisions.
 
 ---
 
+## 2026-11-12 — a direction relation turns a line and never scales it; a conflict names the relation that made it
+
+Review items 1 and 3 of the register (*Reviewed against the owner's
+principle*; the owner: *"All good."*), built from
+docs/plans/review-solver.md, whose *As built* has every measurement.
+
+| | |
+|---|---|
+| ![Desktop: Parallel pressed in the constraints palette over two free lines — both still sixty long, turned parallel, a // on each, SOLVED · 7 free](docs/images/460-parallel-pressed-over-two-free-lines-both-as-long-as-they-were.png) | ![iPhone 13: the same by finger — the two lines parallel and as long as they were, the palette up at the bottom](docs/images/461-iphone-parallel-tapped-both-lines-as-long-as-they-were.png) |
+| ![Desktop: the owner's first bug — CONFLICT, r6 on a red pill, par l1 l2 — against r1; the palette's conflict heading with r6 first and r1 under it, a delete on each; the par's two glyphs filled red, the corner perp's two outlined pink, the other perps plain](docs/images/462-the-owners-first-bug-the-par-named-against-its-corners-perp.png) | ![The rectangle's glyphs close, at the size they are drawn: two // filled red, two ⊥ outlined in the quieter ink, the rest plain](docs/images/463-the-glyphs-close-the-culprit-filled-what-it-is-against-outlined.png) |
+| ![iPhone 13: the same conflict by finger — the status on two lines, r6 on its red pill, against r1; the rectangle unmoved with its two filled-red // and two pink-outlined ⊥; the palette's conflict heading, r6 par l1 l2 then r1 perp l1 l2](docs/images/464-iphone-the-par-named-against-its-corners-perp.png) | ![iPhone 13, the glyphs close: the culprit's two // solid red blocks with dark slashes, what it is against two ⊥ with a pink outline and a pink mark, four plain ⊥ in grey](docs/images/465-iphone-the-glyphs-close.png) |
+| ![Desktop: the two inks over a solid's lit face, the lightest ground a glyph is drawn on — a filled-red // and a pink-outlined ⊥ on the pale lid, another pair beside it on the dark canvas](docs/images/466-over-a-solids-lit-face-the-culprit-filled-what-it-is-against-outlined.png) | ![iPhone 13: the same over a lid — r7 par l5 l6 — against r6](docs/images/467-iphone-over-a-solids-lit-face.png) |
+| ![The corner's perp deleted: the par is still what made it, now against r4, r3 — its glyphs filled red, the two far corners' perps outlined pink](docs/images/468-the-corners-perp-deleted-the-par-still-named-against-the-two-far-perps.png) | ![Reopened by autosave: r6 · r4 · r3 cannot all hold, none singled out, every one of the three outlined in the conflict's red and none filled](docs/images/469-reopened-the-set-none-singled-out-every-member-outlined-red.png) |
+
+- **The bug, as a test, first** (`test/directionrows.test.ts`): `par` between
+  two free lines 60.133 and 60.828 long left them **8.763 and 1.183**,
+  SOLVED, in 2D and 3D. The row was |u||v|·sin θ, and a shorter line is a
+  smaller residual. Every row of that shape did it: `perp` left the pair 56
+  and 87 long, `col` 17 and 3, `on` shortened the line a point was put on
+  from 60 to 21, `sym` its mirror line to 37.
+- **Now** each of those leaves its lines as long as they were to 3e-9 of the
+  length (1e-6 was asked). The rows read **unit directions** (`unit`,
+  vec.ts), so their gradient along a line is exactly zero; they are **the
+  angle**, not its sine or cosine (`turnToParallel`, `turnToSquare`,
+  `angleBetween`), because a sine is flat at 90° and `par` on two lines
+  exactly square otherwise could not move; and each is times how long the
+  longer of its lines was when the solve began, a plain number, so it is
+  still a length and the Jacobian still exact. Normalised: `par`, `perp`,
+  `ang`, `col`, `on`, `sym`, `tan` at a shared end, `ang3`, and
+  `perp(chord, e1)`.
+- **The rows alone were not enough**, and that is the measurement that
+  matters: with every row's gradient along its lines zero and nothing else,
+  `perp` between the two free lines left them **169** long. The kernel's
+  step moves each end along a straight line, and a straight move that turns
+  a line stretches it. So a block says which lines it reads for direction
+  only, and after any solve that changed the length of one `Model.solve`
+  solves on with those lengths pulled back, then released
+  (`Model.keptSizes`). A width set on a rectangle leaves its height exact;
+  a rectangle pinned by a corner moves whole; a bare line still stretches to
+  a `coin` on its end.
+- **A drag** is one solve and is not steered (a pull on a size there would
+  move a free rectangle whole under a dragged corner): one end of a par pair
+  dragged costs the other line **3.1%** of its length, where it cost 47%.
+- **A solve that fails is put back, as a collapse is.** A `par` and a `perp`
+  on one pair no longer fold a side — they have no answer — and least
+  squares would leave the rectangle sheared 45°. The drawing stays where it
+  was, the relation stays, the verdict is CONFLICT; so too for a `set` to a
+  value that cannot hold. `perp("l1", "l1")` is a conflict of one (it
+  solved, the line at nothing).
+- **A conflict names the relation that made it**: `r6 par l1 l2 — against
+  r1`. The drawing solved before the edit that broke it, so the culprit is
+  known without a search — the one relation of the failed part that has not
+  yet held in a solve, just added or its value just `set` — and the search
+  is only for the least set it cannot hold with, one relation tried before
+  any larger set. Past the bound the culprit is still named: `— against a
+  set not found in time`. A file opened in conflict, or an edit of more than
+  one relation, names the set and singles out none; an undo and a redo hand
+  on who had held, so a redone `par` reads as it did.
+- **Told apart on a phone**: the culprit's glyph is its box filled with the
+  conflict's red, its mark cut out dark; what it is against is outlined in a
+  quieter ink (#b98a86, the red let down toward grey); in the status the
+  culprit is on a red pill; the constraints palette lists the conflict
+  first, whatever is selected, the culprit first, × on each.
+- **Bug 74** (seventy-four now): a conflict on a solid's edges drew nothing
+  red — a glyph follows its anchor, and a solid's edges are quiet until
+  hovered. A relation in a conflict is always drawn.
+- **What it costs** (best of three, on a box at a load of thirty): the same
+  iterations on every fixture opened as filed, and every old file reopens to
+  the shape it was saved as. A par-heavy drawing solves 1.5× to 2.3× slower
+  at the same iterations (135 → 209 ms by one measure, 126 → 295 by the
+  other; the load does not let them be told apart) — forty rectangles'
+  Jacobian has 2629 non-zeros where it had 1353, a unit direction depending
+  on every coordinate of both ends. A solve that has to bring every length
+  back at once is 2× to 6× (forty rectangles with every point moved: 156 →
+  960 ms, 8 iterations → 22). A failing solve is no slower than it was (the
+  same forty with a `par` across a corner: 874 ms the best seen before, 780
+  as built) and its set is found sooner (507 → 197 ms). The spec has the
+  table.
+- **Tests**: unit 2011 (was 1923): `test/directionrows.test.ts` (69),
+  `test/culprit.test.ts` (19). E2E: `reviewsolver.e2e.ts` (9, mouse and
+  iPhone 13), and `conflicts.e2e.ts` in the new words.
+
 ## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
 
 The owner: *"when i make a rectangular prism, i attempt to draw an e.g.
