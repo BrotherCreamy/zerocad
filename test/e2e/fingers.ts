@@ -58,7 +58,7 @@
 
 import { setTimeout as sleep } from "node:timers/promises";
 import type { CDPSession } from "playwright";
-import type { AppContext } from "./harness.ts";
+import { timedCdp, type AppContext } from "./harness.ts";
 
 type At = [number, number];
 
@@ -99,7 +99,7 @@ export interface Fingers {
 const FRAME_MS = 33;
 
 export async function fingers(app: AppContext): Promise<Fingers> {
-  const cdp: CDPSession = await app.page.context().newCDPSession(app.page);
+  const cdp: CDPSession = timedCdp(await app.page.context().newCDPSession(app.page));
   const box = await app.page.$eval("#cv", (el) => {
     const r = el.getBoundingClientRect();
     return { x: r.x, y: r.y };

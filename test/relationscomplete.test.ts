@@ -252,6 +252,7 @@ test("a star names fewer relations in a conflict than a chain would — and one 
     for (let i = 1; i < 8; i++) equalLength(m, shape === "star" ? "l0" : `l${i - 1}`, `l${i}`);
     dist(m, `a${a}`, `b${a}`, 10);
     dist(m, `a${b}`, `b${b}`, 20);
+    m.searchMs = Infinity; // what is named is asked of the trials, not of a loaded box's clock
     return m.conflicting(m.solve()).relations.length;
   };
   assert.equal(named("star", 1, 7), 4);
@@ -269,6 +270,7 @@ test("a star names fewer relations in a conflict than a chain would — and one 
     const r = among(m, "equalLength", ...Array.from({ length: 8 }, (_, i) => `l${i}`));
     dist(m, `a${a}`, `b${a}`, 10);
     dist(m, `a${b}`, `b${b}`, 20);
+    m.searchMs = Infinity;
     const names = m.conflicting(m.solve()).relations;
     assert.equal(names.filter((n) => n === r).length, 1, "named once");
     return names.length;

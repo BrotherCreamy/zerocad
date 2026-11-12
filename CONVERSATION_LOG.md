@@ -93,6 +93,100 @@ outright, text kept. Picture 510 kept its count because *4 agreeing* does
 not fade. Measured in the browser rather than read off the code, and the
 measurement is now a test.
 
+## 2026-11-12 — the gate: what four "flaky" failures really were
+
+The brief was narrow — four tests fail on the base and every worker trips
+on them — and the rule was to measure each before touching it, and to fix
+the side the measurement blamed. What each one turned out to be:
+
+**The font scale was the app's.** The easy reading was "the test's flag no
+longer works on this Chromium", and the first probe agreed: 153 with
+`--blink-settings=accessibilityFontScaleFactor=1.3` reads
+`env(preferred-text-scale)` as 1 on a blank page, and CDP's
+`Emulation.setEmulatedOSTextScale` changes nothing either. The binary's
+strings said otherwise: `TextScaleMetaTag`,
+`scaleAllFontsIfNoMetaTextScaleTag`. With `<meta name="text-scale"
+content="scale">` in the page, both the flag and the CDP call report 1.3 —
+and `medium` becomes 21 px, which is exactly why android.md decided against
+carrying the meta. So this is Chrome's new rule, not a broken emulation: a
+page that does not opt in is told 1, and a real Pixel on Chrome ≥ 153 would
+get a 1.00 text size from this app. That makes it a browser-only bug of the
+app (79), and the fix is the app's: ask with the meta for one reading and
+take it out again in the same task. Two things decided along the way. The
+asked reading folds in the browser's own font size (1.3 at 20 px reads
+1.625), and the app's rule already multiplies by that, so the browser's
+share is divided out rather than the rule changed — the rule is right,
+the reading is composite. And the asking is Android-only and only when the
+plain reading is exactly 1: 141 is unchanged (its first reading is not 1),
+Windows Chrome, which may fold the scale into zoom, is not asked, and a
+system at its default costs one extra probe read. Rejected: skipping the
+measurement with a version message, which the brief allowed only if the
+browser truly could not be told a scale — it can; and setting the font
+scale by CDP in the harness, which would test the emulation's plumbing and
+not the page's reading.
+
+**The see-through line was the test.** The guess in TODO was "shot before
+it was drawn"; it was the opposite. Tracing the line's age and opacity at
+each screenshot showed the four shots of one sample taking 85 ms each
+alone and 1.7 s, once 7.7 s, under load, while the line fades from 3 s to
+10 s of age — so the fourth shot was of a half-faded or vanished line, and
+with A and B identical the ink detector found no ink. The fade is right
+(the owner's log over the drawing should be a glance, not a wall), so the
+test now samples the line as a fresh one is drawn by holding the animation
+off for the sample's length, and re-says the line if it is removed at 10 s
+while being sampled. Rejected: a longer hold in the app (changing the
+design for a test), and a sleep (which is what raced). The same trace
+found a second race under the same assertion, the lid's light ground read
+dark once at load 45 after a 300 ms sleep: the sample polls for the ground
+it expects now. The *other* failure in those runs — a tap between rows
+making no point, `24 !== 25` — is the touch harness's known loss under
+load, already filed; it was not touched and is counted in the report.
+
+**The cost test was a clock.** The 2000 ms assertion was never a guard on
+the app: it read 235 ms alone and 2888 ms when four suites shared the box.
+What it meant to guard — the search does not go pathological on 280
+relations — is a count: 25 kernel solves against a budget of 200 trials,
+which is also the statement "the product's own bounded search names the
+same thing on an unloaded machine". The test counts solves and iterations
+by wrapping `problem.solve`, prints the clock, and asserts it only when
+`NEOCAD_TIMING` is set. The bound's own test had the same flaw (`boundedMs
+< SEARCH_MS + 1000`: one slow trial under load breaks it); it now runs on a
+fake `performance.now` that advances 100 ms per reading, so it stops after
+five trials everywhere, and asserts what the app shows past the bound —
+the culprit alone, `found` false. Rejected: a generous multiple of the
+wall clock (10 s is still a flake at load 57), and adding a trial counter
+to `Model` (the test can count what it needs without the app growing a
+field for it).
+
+**Nothing to undo was a 1.6 s note read 150 ms late.** Same class as the
+tail: a test reading something that fades, at a fixed delay. It could not
+be reproduced in ten runs; the fix is still right (wait for the words),
+costs nothing, and removes the race from every `note` read in the file.
+
+**What load 40 added.** Running the fixed file with two more suites
+looping beside it, on a box three other workers were already using, found
+three things the first fix had not. Holding the fade off was not enough:
+the removal at 10 s is the tail's timer, and four screenshots of up to
+7.7 s outlive it, so the sample now sets the line's own stamp to now
+before each shot and lets the app's rule keep it — the test touching app
+state, written down as such, because the alternative was a sleep-shaped
+retry. The fade's own test, rewritten to read each line against its age,
+then failed by 0.1: the CSS animation runs on the frame clock, which lags
+the wall clock under load and never leads it, so the assertion is
+one-sided now (up to 3 s less faded than the age says, never more). And a
+renderer crash left the file hung in `browser.close()` for 38 minutes with
+every test already reported — a gate that hangs says less than one that
+fails, so the close is bounded. None of these are the app's. The one the
+brief's wording would have blamed on the browser version, the font scale,
+was the only one that was.
+
+**The server.** Not in the brief's four but in its spirit: a dev server
+that dies under load produced twenty-one failures that read as the app's.
+The runner now hears the exit, says so with the signal and the last
+stderr, and restarts the server on the same port. Restarting rather than
+stopping was the call: a run is a verdict on the app, and the files still
+to run deserve one; a third death stops it, because by then the box, not
+the app, is what is being tested.
 ## 2026-11-12 — a fillet is one thing: what was tried, and what the corner's keeping cost
 
 Built on `claude/fillets-one-thing` from docs/plans/fillets-one-thing.md,

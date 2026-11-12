@@ -227,6 +227,11 @@ test("a conflict on an extruded drawing names the user's relations, never the ex
   const bad = perpendicular(m, l1, l3);
   const report = m.solve();
   assert.equal(report.solved, false);
+  // What is named is asked of the trials, not of the clock: on a loaded box
+  // (four workers' suites on four cores) the 500 ms budget ran out and the
+  // bound's fallback named others — the bound doing its job, not the answer
+  // being wrong. conflicts.test.ts tests the bound itself, on a fixed clock.
+  m.searchMs = Infinity;
   const named = m.conflicting(report).relations;
   assert.ok(named.includes(bad), `the new perp is named: ${named}`);
   assert.ok(!named.includes(f.depth) && !named.some((r) => r.endsWith("_perp")), `the extrude's own are not: ${named}`);
@@ -271,6 +276,7 @@ test("a par across a corner of a four-perp rectangle names that corner's perp an
   const par = parallel(m, lines[0], lines[1]);
   const report = m.solve();
   assert.equal(report.solved, false);
+  m.searchMs = Infinity; // asked of the trials, not the clock (as above)
   assert.deepEqual(m.conflicting(report).relations.sort(), [corner, par].sort());
   for (const gone of [corner, par]) {
     const m2 = new Model(3);

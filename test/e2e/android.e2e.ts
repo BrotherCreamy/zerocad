@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CDPSession } from "playwright";
-import { axisFrame, forgetAutosave, openApp, PARKED, type AppContext } from "./harness.ts";
+import { axisFrame, forgetAutosave, openApp, PARKED, timedCdp, type AppContext } from "./harness.ts";
 import { fingers, type Fingers } from "./fingers.ts";
 import { ANDROIDS, androidWindowOf, type AndroidMode, type Turn } from "../devices.ts";
 
@@ -91,7 +91,7 @@ let cdp: CDPSession;
 let f: Fingers;
 before(async () => {
   app = await openApp({ device: "Pixel 7", init: { fn: platform } });
-  cdp = await app.page.context().newCDPSession(app.page);
+  cdp = timedCdp(await app.page.context().newCDPSession(app.page));
 });
 after(async () => { await app.close(); });
 
@@ -470,24 +470,74 @@ test("the app killed in the background and opened again: the hidden-flush kept t
 
 // ---- the scale -----------------------------------------------------------------------
 
-test("Android's font scale, measured: Chromium reports env(preferred-text-scale), and the device's 100 % follows it — 1.3 at the default, 1.69 at 130 %", async () => {
+/**
+ * What this browser tells a page of the system's font scale, read on the
+ * app's own page after the app has read it: `env(preferred-text-scale)` as
+ * the page stands (`plain`), the same with `<meta name="text-scale"
+ * content="scale">` in the document for the length of the reading (`asked`),
+ * `font-size: medium` on a lone probe as the page stands, and whether a meta
+ * of that name is in the document (the app's reading must leave none).
+ */
+const textScaleReadings = (a: AppContext) => a.page.evaluate(() => {
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:absolute;visibility:hidden;height:0;width:calc(100px * env(preferred-text-scale, 0))";
+  document.body.append(probe);
+  const read = () => probe.getBoundingClientRect().width / 100;
+  const left = document.querySelectorAll('meta[name="text-scale"]').length;
+  const plain = read();
+  const meta = document.createElement("meta");
+  meta.name = "text-scale";
+  meta.content = "scale";
+  document.head.append(meta);
+  const asked = read();
+  meta.remove();
+  probe.style.cssText = "position:absolute;font-size:medium;text-size-adjust:auto;-webkit-text-size-adjust:auto";
+  const medium = getComputedStyle(probe).fontSize;
+  probe.remove();
+  return { plain, asked, medium, left };
+});
+
+test("Android's font scale, measured: Chromium reports env(preferred-text-scale) — 153 only to a page that asks — and the device's 100 % follows it: 1.3 at the default, 1.69 at 130 %, the browser's own font size counted once", async () => {
   const said = async (a: AppContext) => String((await a.repl("ui()")).value);
   assert.match(await said(app), /100% here is 1\.3× a desktop's: a phone 1\.3, text size 1\.00 \(the system's font scale\)/);
   const scaled = await openApp({ device: "Pixel 7", args: ["--blink-settings=accessibilityFontScaleFactor=1.3"] });
   try {
+    // **Which page this Chromium tells** (bug 79). 141 told every page; 153
+    // tells only one carrying `<meta name="text-scale" content="scale">`,
+    // and the app's page, which has none, read 1.00 under a system scale of
+    // 1.3 — so this test failed on every run the day the browser under the
+    // suite became 153. Said first and by version, so that a browser which
+    // can be told no scale either way fails here, saying so, and not at a
+    // regular expression over `ui()` further down.
+    const version = scaled.browser.version();
+    const r = await textScaleReadings(scaled);
+    console.log(`  Chromium ${version}, system font scale 1.3: env(preferred-text-scale) reads ${r.plain} as the page stands, ${r.asked} with meta text-scale`);
+    assert.ok(Math.abs(r.plain - 1.3) < 1e-3 || Math.abs(r.asked - 1.3) < 1e-3,
+      `Chromium ${version} was started with --blink-settings=accessibilityFontScaleFactor=1.3 and reports it neither to a page as it stands (${r.plain}) nor to one that asks with meta text-scale (${r.asked}): this browser cannot be told a font scale, or says it another way now`);
     assert.match(await said(scaled), /100% here is 1\.69× a desktop's: a phone 1\.3, text size 1\.30 \(the system's font scale\)/);
     const [b0, b1] = await Promise.all([app, scaled].map((a) => a.page.$eval('#toolbar button[data-tool="line"]', (el) => el.getBoundingClientRect().width)));
     assert.ok(Math.abs(b1 / b0 - 1.3) < 0.08, `a tool button drawn 1.3 × larger: ${b0} → ${b1}`);
-    // And `font: medium` did not move, which is why it is not what is read.
-    assert.equal(await scaled.page.evaluate(() => {
-      const s = document.createElement("span");
-      s.style.cssText = "position:absolute;font-size:medium;text-size-adjust:auto;-webkit-text-size-adjust:auto";
-      document.body.append(s);
-      return getComputedStyle(s).fontSize;
-    }), "16px");
+    // And `font: medium` did not move, which is why it is not what is read —
+    // nor has the app's own asking left its meta behind, which would move it
+    // (21 px with the meta in, measured) and count the scale twice.
+    assert.equal(r.medium, "16px");
+    assert.equal(r.left, 0, "no meta text-scale left in the document");
     assert.deepEqual(scaled.pageErrors, []);
   } finally {
     await scaled.close();
+  }
+  // **The browser's own font size is counted once.** What 153 reports to a
+  // page that asks is the system's scale times the browser's default font
+  // size over 16 (1.15 and 20 px: 1.4375, measured), and the app's rule
+  // multiplies the system's scale by the browser's own as well: 1.15 × 1.25
+  // is 1.44, where counted twice it would be 1.80 and held to 1.50. On a
+  // Chromium that tells every page, the same figure the old way.
+  const both = await openApp({ device: "Pixel 7", args: ["--blink-settings=accessibilityFontScaleFactor=1.15,defaultFontSize=20"] });
+  try {
+    assert.match(await said(both), /100% here is 1\.87× a desktop's: a phone 1\.3, text size 1\.44 \(the system's font scale\)/);
+    assert.deepEqual(both.pageErrors, []);
+  } finally {
+    await both.close();
   }
 });
 

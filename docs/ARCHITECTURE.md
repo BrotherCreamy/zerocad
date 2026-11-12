@@ -2651,7 +2651,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-eight bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-nine bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -3075,6 +3075,18 @@ of running the app:
    pick was one line, since a chain runs past construction curves. The unit
    tests call `trim` and `offset` by name and passed. A pick's tie within
    half a pixel goes to the real curve now (`hitTest`).
+79. The interface size ignored Android's font scale on Chromium 153
+   (docs/plans/android.md). `env(preferred-text-scale)` was read off a
+   probe, and Chromium 141 reported the system's scale to every page; 153
+   reports it only to a page carrying `<meta name="text-scale"
+   content="scale">`, and tells every other page 1. The unit tests of
+   `textFactor` were handed the number and passed; the e2e, started with the
+   browser's own setting at 1.3, read *text size 1.00* on every run the day
+   the browser under the suite changed. The page now asks — the meta
+   appended, the variable read, the meta taken out in the same task, since
+   left in it scales `medium` as well and the factor would be counted twice
+   — and divides out the browser's own font size, which the asked reading
+   folds in (`systemTextScale`, uiscale.ts).
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

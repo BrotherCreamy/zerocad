@@ -127,6 +127,36 @@ export function textFactor(d: Device): number {
   return Math.min(TEXT_MAX, Math.max(TEXT_MIN, raw));
 }
 
+/**
+ * **The system's font scale from what the page read of
+ * `env(preferred-text-scale)`** — a `Device`'s `textScale`, or null where the
+ * browser has no such variable.
+ *
+ * Chromium changed which page it tells, so the variable is read twice
+ * (main.ts's `measureDevice`; docs/plans/android.md has the measurements):
+ *
+ * - `plain` is the variable as this page reads it. Chromium 141 reported the
+ *   system's scale there (1.3 for a person at 130 %), so anything but 1 is
+ *   the answer. Zero or less is the probe's fallback: no variable.
+ * - **Chromium 153 reports it only to a page that asks**, with
+ *   `<meta name="text-scale" content="scale">`; a page that does not reads 1
+ *   whatever the system says (bug 79: the e2e read *text size 1.00* under a
+ *   system scale of 1.3). `asked` is the variable read with that meta in the
+ *   document for the length of the reading, or null where that was not
+ *   tried. What 153 reports then is **the system's scale times the browser's
+ *   own default font size over 16** (1.3 with a 20 px default reads 1.625),
+ *   so the browser's own share — `defaultFont`, read *without* the meta — is
+ *   taken out again, and `textFactor`'s rule, the system's scale × the
+ *   browser's own, counts it once.
+ */
+export function systemTextScale(plain: number, asked: number | null, defaultFont: number): number | null {
+  if (!(plain > 0)) return null;
+  if (plain !== 1) return plain;
+  const own = defaultFont / DEFAULT_FONT_PX;
+  if (asked === null || !(asked > 0) || !(own > 0)) return plain;
+  return asked / own;
+}
+
 /** Where `textFactor` read the person's text size from, as `ui()` says it. */
 export function textSource(d: Device): "Dynamic Type" | "the system's font scale" | "the browser's font size" {
   if (d.coarse && d.appleBody !== null) return "Dynamic Type";

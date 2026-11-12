@@ -463,6 +463,7 @@ test("a conflict names exactly the relations that disagree: two distances on one
   const b = dist(m, "k0", "k1", 60);
   const report = m.solve();
   assert.equal(report.solved, false);
+  m.searchMs = Infinity; // what is named is asked of the trials, not of a loaded box's clock
   const c = m.conflicting(report);
   assert.deepEqual(c.relations.sort(), [a, b].sort());
   assert.deepEqual(c.unowned, []);

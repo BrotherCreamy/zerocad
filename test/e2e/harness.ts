@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Seventy-eight bugs so far were invisible to the unit tests and
+// once it is assembled. Seventy-nine bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
@@ -14,7 +14,7 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { chromium, devices, type Browser, type Page } from "playwright";
+import { chromium, devices, type Browser, type CDPSession, type Page } from "playwright";
 
 /**
  * Where the app under test lives. run.ts sets this to the private server it
@@ -63,6 +63,59 @@ export async function launchBrowser(extra: string[] = []): Promise<Browser> {
   }
 }
 
+/**
+ * **A crashed target fails its test; it never holds the suite.** Under
+ * load (four workers' suites on four cores, the container's memory cgroup
+ * killing renderers) a page's target crashed twice in one full run, and
+ * what followed was worse than the failure: a wait on the dead target that
+ * never returned — fits.e2e.ts sat 50 minutes on one CDP `send`, and the
+ * runner with it, until the process was killed by hand; overlaylock sat 38
+ * minutes in `browser.close()` with every test already reported. Playwright
+ * rejects most calls on a crashed page with "Target crashed", but a
+ * `CDPSession.send` has no timeout and the browser never answers for a
+ * target that is gone, and `browser.close()` can wait on it the same way.
+ *
+ * So: `bounded` races a promise with a clock and rejects naming what it was
+ * waiting for; `timedCdp` is a CDP session whose every `send` is bounded
+ * (30 s — a send is answered in milliseconds when the target is alive; a
+ * long-press is held by `waitForTimeout` between sends, never inside one);
+ * `closeBounded` is a browser close that gives up after 15 s and leaves the
+ * browser to Playwright's own exit hook, which kills what it launched once
+ * the test process is allowed to end. And run.ts gives every test a
+ * timeout, so whatever none of these covers still ends as a failure that
+ * says which test, not as a runner that waits forever.
+ */
+export function bounded<T>(p: Promise<T>, what: string, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what}: no answer in ${ms} ms — the target has crashed, most likely`)), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
+/** The session with every `send` bounded (see `bounded`). */
+export function timedCdp(session: CDPSession, ms = 30_000): CDPSession {
+  return new Proxy(session, {
+    get(target, key, receiver) {
+      if (key === "send") {
+        return (method: string, params?: object) => bounded((target.send as (m: string, p?: object) => Promise<unknown>)(method, params), `CDP ${method}`, ms);
+      }
+      const v = Reflect.get(target, key, receiver) as unknown;
+      return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+    },
+  });
+}
+
+/** `browser.close()`, bounded at 15 s (see `bounded`); a browser that is already gone, or null, is nothing to do. */
+export async function closeBounded(browser: Browser | null | undefined): Promise<void> {
+  if (!browser) return;
+  try {
+    await bounded(browser.close(), "browser.close()", 15_000);
+  } catch (e) {
+    console.error(`# ${e instanceof Error ? e.message : e}: the browser is left for Playwright's exit hook`);
+  }
+}
+
 function discoverChromium(): string[] {
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
   if (!root || !existsSync(root)) return [];
@@ -103,7 +156,8 @@ async function requireServer(): Promise<void> {
   if (await serverIsUp()) return;
   throw new Error(
     `no dev server at ${APP_URL}. Run the suite with \`npm run test:e2e\`, which starts its own ` +
-    "on a private port — or start one with `npm run dev` and point NEOCAD_E2E_URL at it.",
+    "on a private port — or start one with `npm run dev` and point NEOCAD_E2E_URL at it. " +
+    "In a run that had one, the server died: run.ts's banner (THE DEV SERVER DIED) says when and how, and this file is not a verdict on the app.",
   );
 }
 
@@ -568,9 +622,7 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
     renderer: () => page.evaluate(() => (window as never as PageGlobals).__neocad.faces),
     status: () => page.$eval("#status", (el) => el.textContent ?? ""),
     log: () => page.$eval("#log", (el) => el.textContent ?? ""),
-    async close() {
-      await browser.close();
-    },
+    close: () => closeBounded(browser),
   };
 }
 
