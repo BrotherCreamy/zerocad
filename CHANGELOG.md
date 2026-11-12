@@ -9,6 +9,15 @@ decisions.
 
 ## 2026-11-12 — through all is a relation: the far vertex on the cut's lid, and up to face is the same relation the other way
 
+*Merged into the working branch (`bcccf00`) on top of the tool-tips
+package; one conflict, this file, spliced newest-first. The gate on the
+merge: typecheck 0; unit 2119/2119 (load 14–23); the seven browser files
+the merge touches — throughall, tooloptions, toolhowto, solidtools,
+solidtoolsphone, depth, camera — 56/56. The full browser suite was run by
+the worker on the branch before the merge (804/818, every failure
+accounted for in its PR); the `fits.e2e.ts` hang after a browser crash
+that held both of its runs is passed to the gate-stability package.*
+
 Review item 8, which the owner passed: *"Through all should be a relation to
 the far face's defining geometry."* His principles: *"correct relationships
 BETWEEN entities … bidirectional relationships everywhere by default"*, *"I
