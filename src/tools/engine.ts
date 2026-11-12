@@ -611,8 +611,8 @@ export class ToolEngine {
    */
   /**
    * The relations the host has lit — selected, or named by the last solve's
-   * conflict — which `placeGlyphs` places at both ends of a linked pair rather
-   * than at the nearer one alone. Set by the host before each draw; the pick
+   * conflict — for which `placeGlyphs` places a linked pair's label at both
+   * ends rather than at the nearer one alone. Set by the host before each draw; the pick
    * path reads the last.
    */
   litRelations: ReadonlySet<string> = new Set();

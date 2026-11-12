@@ -723,20 +723,25 @@ test("a linked pair is drawn once, mark and dimension alike, on the end nearer t
   // once: eight ⊥ on a block in hidden-line view, a thicket on a phone
   // (docs/images/490, 500). A right angle is as true of the lid as of the
   // base; it is said at the end in view.
-  assert.deepEqual(of(marks, r[0]), [`${r[0]}_e1`], "from above, the lid's right angle alone");
-  assert.deepEqual(of(marks, w), [`${w}_e1`], "from above, the lid's dimension — never both, one over the other");
+  // A mark is placed at both ends still — picked and hovered as a quiet mark
+  // is — and the far one says so; the host draws a far mark only while lit.
+  const farOf = (gs: Glyph[], name: string) => gs.find((g) => g.relation === name)?.far;
+  assert.deepEqual(of(marks, r[0]).sort(), [r[0], `${r[0]}_e1`].sort(), "both corners placed");
+  assert.equal(farOf(marks, r[0]), true, "from above, the base's right angle is the far end");
+  assert.equal(farOf(marks, `${r[0]}_e1`), undefined, "and the lid's is drawn");
+  assert.deepEqual(of(marks, w), [`${w}_e1`], "from above, the lid's dimension alone — a far label is not placed");
   const { orbitBy } = await import("../src/view.ts");
   const below = orbitBy(above, 0, Math.PI);
   const under = placeGlyphs(m, below);
-  assert.deepEqual(of(under, r[0]), [r[0]], "from below, the base's mark");
+  assert.equal(farOf(under, r[0]), undefined, "from below, the base's mark is drawn");
+  assert.equal(farOf(under, `${r[0]}_e1`), true, "and the lid's is the far end");
   assert.deepEqual(of(under, w), [w], "from below, the base's dimension");
   // Lit — selected, or named by a conflict, which lights both ends — the far
-  // end is placed too, and says it is the far one.
-  const lit = placeGlyphs(m, above, null, new Set([r[0], `${r[0]}_e1`]));
-  assert.deepEqual(of(lit, r[0]).sort(), [r[0], `${r[0]}_e1`].sort(), "lit, both corners");
-  assert.equal(lit.find((g) => g.relation === r[0])?.far, true, "the base's is the far end");
-  assert.equal(lit.find((g) => g.relation === `${r[0]}_e1`)?.far, undefined, "the lid's is not");
-  assert.deepEqual(of(lit, w), [`${w}_e1`], "a pair that is not lit is still drawn once");
+  // label is placed too, and says it is the far one.
+  const lit = placeGlyphs(m, above, null, new Set([w, `${w}_e1`]));
+  assert.deepEqual(of(lit, w).sort(), [w, `${w}_e1`].sort(), "lit, both ends of the dimension");
+  assert.equal(farOf(lit, w), true, "the base's is the far end");
+  assert.equal(farOf(lit, `${w}_e1`), undefined, "the lid's is not");
 });
 
 test("in a 2D model nothing links and nothing follows: a relation is made as it always was", async () => {

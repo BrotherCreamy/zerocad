@@ -1541,10 +1541,15 @@ async function main() {
     // at all, so CONFLICT stood over a picture with nothing red in it (found
     // by reviewsolver.e2e.ts reading the inks over a lit face; bug 74).
     //
-    // And a linked pair's far end is placed only while lit the same way
-    // (glyphs.ts, `placeGlyphs`): the engine is told which before it places.
+    //
+    // **A linked pair's far end is drawn only while lit** the same way, or
+    // hovered, or with its geometry revealed under the hand (glyphs.ts,
+    // `placeGlyphs`): its mark is placed regardless, so it is picked as a
+    // quiet mark is; its label is placed only while lit, and the engine is
+    // told which before it places.
     engine.litRelations = new Set([...chosen, ...conflicted.keys()]);
-    const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || conflicted.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
+    const litFar = (m: Glyph) => chosen.has(m.relation) || conflicted.has(m.relation) || m.relation === hoveredRelation || m.about.some((e) => shown.has(e));
+    const marks = engine.glyphs().filter((m) => (chosen.has(m.relation) || conflicted.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation)) && (!m.far || litFar(m)));
     if (!marks.length) return;
     const k = uiOf(view);
     g.save();

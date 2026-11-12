@@ -239,13 +239,15 @@ otherwise.
     sight first); marks (`⊥`, `∥`) on both ends. In hidden-line and wire
     views that doubles the marks, which is crowded on a phone.
     **Changed 2026-11-12: a mark is drawn once too**, at the end nearer the
-    viewer (in sight first), and a pair is placed at both ends only while
-    lit — selected, or named by a conflict, which lights both ends
-    (`placeGlyphs`' `lit`, handed in by the host; docs/images/537–540). A
-    right angle is as true of the lid as of the base; it is said at the end
-    in view. The far end is not placed at all while not lit, so it is not
-    picked either; the near end stands for the pair, as `set` and `del` on
-    either already do.
+    viewer (in sight first), and the far end is drawn only while lit —
+    selected, named by a conflict (which lights both ends), hovered, or its
+    geometry revealed under the hand, as a quiet mark shows when its line
+    is hovered (docs/images/537–540). A right angle is as true of the lid
+    as of the base; it is said at the end in view. A far *mark* is still
+    placed (flagged `far`), so it is picked and hovered as a quiet mark is;
+    a far *label* is placed only while lit (`placeGlyphs`' `lit`, the
+    host's), since an invisible box a number wide over the base's edge
+    would take the edge's picks.
   - **`del("e1")` takes the record, its depth and `e1_perp`, and no entity**;
     the walls stay as four lines, the `extrusion` goes with the depth, every
     twin becomes ordinary.

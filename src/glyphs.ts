@@ -105,9 +105,10 @@ export interface Glyph {
   isLabel: boolean;
   /**
    * The far end of a linked pair (docs/plans/linked-profiles.md): the same
-   * relation is also placed at the end nearer the viewer, and this one is
-   * here only because it is lit — in a conflict, or selected. Absent
-   * otherwise, since the far end is not placed at all.
+   * relation is also placed at the end nearer the viewer. A far mark is
+   * placed — picked and hovered as a quiet mark is — but drawn only while
+   * lit: in a conflict, selected, hovered, or its geometry revealed under
+   * the hand. A far label is placed only while lit, so is `far` only then.
    */
   far?: boolean;
   /**
@@ -975,9 +976,14 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
   // phone was a thicket (docs/images/490, 500). A right angle is as true of
   // the far profile as of the near one; it is said at the end in view. Which
   // end is decided by the first anchor's depth, and by sight: an end a solid
-  // hides gives way. **The far end is still placed when it is lit** — in a
-  // conflict, or selected — since a conflict lights both ends and the drawing
-  // has to show both; `lit` is those names, handed in by the host.
+  // hides gives way. **The far end's mark is still placed, flagged `far`**,
+  // and the host draws it only while lit — in a conflict, selected, hovered,
+  // or with its geometry revealed under the hand — since a conflict lights
+  // both ends and a quiet mark shows when its line is hovered; placed, so it
+  // is picked and can be hovered at all, as a quiet mark is (quiet.ts). **The
+  // far end's label is placed only while lit** (`lit`, the host's names): an
+  // invisible box as wide as a number, over the base's edge, would take picks
+  // meant for the edge.
   const far = new Set<string>();
   const { toward } = viewAxes(view);
   const seen = new Set<string>();
@@ -1002,7 +1008,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
   }
 
   for (const r of model.relations.values()) {
-    if (!shownGlyph(model, r.name) || (far.has(r.name) && !lit.has(r.name))) continue;
+    if (!shownGlyph(model, r.name)) continue;
     let anchors: Anchor[];
     try {
       anchors = anchorsFor(model, view, r);
@@ -1015,6 +1021,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
     } catch {
       continue;
     }
+    if (far.has(r.name) && label !== null && !lit.has(r.name)) continue;
     const symbol = label ?? symbolOf(r);
     // Sized to the text, so the box a label is picked by is the box it is drawn
     // in. A generic mark keeps the square it always had.

@@ -17,14 +17,19 @@ and a fillet's five relations on top made the corner a thicket
 (docs/images/490, 500; the register filed it under linked profiles' *Left*).
 
 Now a mark is placed once too, by the same rule as the label: the end nearer
-the viewer, an end in sight before one a solid hides. **Both ends are placed
-while the pair is lit** — selected, or named by the last solve's conflict,
-which lights both ends — so a conflict still shows on whichever profile is
-being looked at: `placeGlyphs` takes the lit names from the host
-(`Engine.litRelations`, set before each draw) and a glyph so placed says
-`far: true`. The far end is not placed while not lit, so it is not picked
-either; the near end stands for the pair, as `set` and `del` on either
-already do.
+the viewer, an end in sight before one a solid hides. **The far end is
+drawn while the pair is lit** — selected, named by the last solve's
+conflict (which lights both ends), hovered, or with its own geometry
+revealed under the hand, as a quiet mark shows when its line is hovered —
+so a conflict still shows on whichever profile is being looked at, and
+hovering the base's edge still shows the base's right angle. A far *mark*
+is placed regardless and flagged `far`, so it is picked and can be hovered
+as a quiet mark is (quiet.ts's rule: quiet is not hidden); the host draws
+it only while lit. A far *label* is placed only while lit
+(`Engine.litRelations`, set before each draw): an invisible box as wide as a
+number over the base's edge would take picks meant for the edge. (The hover
+case was the browser suite's: quiet.e2e.ts hovers the base's edge, then the
+mark itself; a far mark not placed at all could not be reached by the hand.)
 
 | picture | what it shows |
 |---|---|

@@ -204,11 +204,7 @@ test("a glyph follows its anchor: quiet on a quiet edge or corner, drawn with it
   const held = fix(m, lone, [60, 60, 0], t.name);
   const view: View = orbitBy({ ox: 400, oy: 300, scale: 3 }, 0.6, 0.5);
   const quiet = quietEntities(m, { shaded: true, faced: new Set([f.name]) });
-  // Both ends of each linked pair placed (as when lit), since this test is
-  // about where a glyph is anchored, not which end of a pair is drawn — that
-  // is linkedprofiles.test.ts's.
-  const lit = new Set([par, coin, held].flatMap((r) => [r, ...m.linkedRelations(r)]));
-  const marks = placeGlyphs(m, view, null, lit);
+  const marks = placeGlyphs(m, view);
   const of = (r: string) => marks.filter((g) => g.relation === r);
   assert.deepEqual(of(par)[0].about, [lines[0]], "a par mark is about its line");
   assert.deepEqual(of(coin)[0].about, [points[2]], "a corner's mark is about its corner");
