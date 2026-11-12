@@ -226,7 +226,8 @@ async function contrast(app: AppContext, selector: string, fill: string, over: "
     // Said by `app.type`, the line is in the log once the entry has run —
     // and `solve()` over the plate and the bodies ran for seconds at load 40.
     await app.page.waitForSelector(selector, { timeout: 30_000 });
-    box = await boxOf();
+    // Drawn: a box, polled — at load 40 the line found was read 0×0 once.
+    box = await until(boxOf, (b) => b.w > 4 && b.h > 4);
     assert.ok(box.w > 4 && box.h > 4, `${selector} is drawn: ${JSON.stringify(box)}`);
     // What the text is over, polled until it is what the test drew there.
     const groundNow = async () => median((await shoot(FRESH + noFill + noHalo)).map(luminance));
@@ -632,8 +633,16 @@ test("mouse: the log's see-through lines fade with age and are gone after ten se
     const stamps = Array.from(document.querySelectorAll<HTMLElement>("#log > div")).slice(-ls.length).map((d) => Number(d.dataset.at));
     return ls.map((l, i) => ({ text: l.textContent, opacity: Number(getComputedStyle(l).opacity), age: Date.now() - stamps[i] }));
   });
+  // The fade is a CSS animation started at the line's age; its clock is the
+  // browser's frame clock, which under load runs behind the wall clock the
+  // age is read on (0.52 at 7043 ms, where the rule says 0.42: 700 ms
+  // behind, at load 40) and never ahead of it. So a line may be up to 3 s
+  // less faded than its age says, and never more.
   const byTheRule = (lines: { text: string | null; opacity: number; age: number }[], what: string) => {
-    for (const l of lines) assert.ok(Math.abs(l.opacity - tailOpacity(l.age)) < 0.1, `${what}: ${JSON.stringify(l)} — the rule says ${tailOpacity(l.age).toFixed(2)} at ${l.age} ms`);
+    for (const l of lines) {
+      const [least, most] = [tailOpacity(l.age) - 0.05, tailOpacity(Math.max(0, l.age - 3000)) + 0.05];
+      assert.ok(l.opacity >= least && l.opacity <= most, `${what}: ${JSON.stringify(l)} — the rule says ${tailOpacity(l.age).toFixed(2)} at ${l.age} ms, or up to ${most.toFixed(2)} with the frame clock behind`);
+    }
   };
   const now = await tail();
   assert.equal(now.length, 3, "three lines");
