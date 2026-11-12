@@ -24,7 +24,10 @@ etc).
   only (`addResidual`'s `turns`), and a solve that changed the length of
   one solves on with those lengths pulled back and released
   (`Model.keptSizes`) — the rows alone left `perp` at 169. A drag's frame is
-  not steered (3.1% where it was 47%). **A solve that fails is put back**
+  not steered (3.1% where it was 47%). A sketch is no longer stiffer than
+  a feature's rows by accident of scale, so `set` of a revolve's angle
+  seats its end face first (`seatTurned`), as a depth's lid is (bug 75:
+  the profile slid 6; on the base 0.2). **A solve that fails is put back**
   as a collapse is, and the part is left out of the drag frames that follow.
   **`Model.conflicting`** returns `conflicts`: a `culprit` — the one
   relation of the failed part that has not held in a solve (`settled`),

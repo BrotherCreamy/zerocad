@@ -70,7 +70,7 @@ docs/plans/review-solver.md, whose *As built* has every measurement.
   quieter ink (#b98a86, the red let down toward grey); in the status the
   culprit is on a red pill; the constraints palette lists the conflict
   first, whatever is selected, the culprit first, × on each.
-- **Bug 74** (seventy-four now): a conflict on a solid's edges drew nothing
+- **Bug 74** (seventy-five now, with 75 below): a conflict on a solid's edges drew nothing
   red — a glyph follows its anchor, and a solid's edges are quiet until
   hovered. A relation in a conflict is always drawn.
 - **What it costs** (best of three, on a box at a load of thirty): the same
@@ -100,10 +100,21 @@ docs/plans/review-solver.md, whose *As built* has every measurement.
   of the relations naming the fold, and the status named the two far perps
   where the corner's own would do. It is asked of the nearest dozen of all
   of them now.
-- **Tests**: unit 2050 on the merged branch (1923 on the base, 2011 before
+- **Bug 75, found by the full gate**: `set` of a revolve's angle slid its
+  profile six units. A quarter-turn swing left to the solve is shared
+  between the end face and the profile; it always had been (0.2, and an
+  edge 1% short), and was small only while a sketch's right angles were
+  twenty times stiffer than a feature's rows — the same products of
+  lengths. Giving the rows that stiffness back was measured and brings the
+  shrinking back with it (`perp` 74 and 64, a drag 47%). So `set` seats a
+  revolve's end face where the new angle puts it before the solve
+  (`seatTurned`), as it already seats an extrude's lid: 0 iterations, the
+  profile exactly where it was. Sixty-four dimension edits across the
+  fixtures move the drawing no further than they did, within 5%.
+- **Tests**: unit 2051 on the merged branch (1923 on the base, 2011 before
   the merge): `test/directionrows.test.ts` (77), `test/culprit.test.ts`
-  (23). E2E: `reviewsolver.e2e.ts` (10, mouse and iPhone 13), and
-  `conflicts.e2e.ts` in the new words.
+  (23), one in `test/revolve.test.ts`. E2E: `reviewsolver.e2e.ts` (10,
+  mouse and iPhone 13), and `conflicts.e2e.ts` in the new words.
 
 ## 2026-11-12 — many at once is one relation among equals, and a wall is named by the line it is swept from
 

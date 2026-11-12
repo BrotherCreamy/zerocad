@@ -107,8 +107,11 @@ machine's. Iterations and non-zeros do not depend on the load.
    thousand across, the model's scale made a direction row fifty times a
    `dist` row and the solve went from 8 iterations to 23. The row's own
    line, read from the snapshot `Model.solve` takes on beginning
-   (`Model.valueBefore`), is still no variable of the row, and is exactly
-   the size the row it replaces had.
+   (`Model.valueBefore`), is still no variable of the row. Against an axis
+   it is the size the raw row had; between two lines it is smaller by the
+   shorter line's length, which made a sketch less stiff than it was beside
+   a feature's rows and is what the gate found (*What the full gate found*,
+   below, with the product of both lengths measured and rejected).
 3. **The fallback floor is a thousandth of the drawing's size**, not the
    collapse threshold: a unit direction is one over the length stiff, and a
    triangle given two right angles crept toward its only answer (a side of
@@ -358,8 +361,55 @@ All solved, before and after; 4 to 7 iterations before, 11 as built.
 - **No format bump**: this package journals nothing new; the file's number
   is review-relations' 20.
 
+### What the full gate found: setting a revolve's angle moved its profile
+
+The first full run on the merged branch failed three e2e tests. Two are
+known on this container and fail on the base (below). The third was this
+package's, and fails three runs of three alone: `revolve.e2e.ts`, a profile
+drawn with the rectangle tool, a corner filleted, revolved 270°, then
+`set("d3.value", Math.PI)`. I had not had that file in the batch I ran
+while iterating.
+
+| the profile after the set (it was at 12 … 30 from the axis, its base edge 18 long) | inner corner | base edge | iterations |
+|---|---|---|---|
+| base, and review-relations alone | 11.98 (slid 0.2) | 17.81 | 8 |
+| this branch before the fix | 5.91 (slid 6.1) | 18.00 | 29 |
+| the rows times the product of both lengths, tried | 11.87 (slid 0.13) | 18.00 | 43 |
+| as built: the end face seated before the solve | 12.00 (did not move) | 18.00 | 0 |
+
+A quarter-turn swing is not a straight step, and a solve left to find it
+shares it between the end face and the profile. It always had: 0.2, and an
+edge 1% short, on the base — the owner's bug in small, asserted nowhere. It
+was small because the raw rows made the sketch's right angles about twenty
+times stiffer than the revolve's rows.
+
+- **Rejected: giving the rows that stiffness back.** With `rowLength` the
+  product of both lines' lengths as the solve began, the profile holds — and
+  the rest of this spec fails: `perp` between the two free lines leaves them
+  74.2 and 63.6 long, `ang` 87.3 and 27.4, `par` among four 49.8, 80.0,
+  61.4, 66.0, and a drag costs the untouched line 47% again. The stiffness
+  is what made the rows pay in length.
+- **Built: `seatTurned`** (relations/revolution.ts), called by `set` after it
+  rebuilds a `revolution`: each twin point at its base turned through the
+  new angle, each twin curve's normal at its base's turned. The precedent
+  is `reseatLid`, which `set` already calls for an extrude's depth, with
+  the same measurement in its comment. One call and one import in
+  operations.ts. `test/revolve.test.ts` has the drawing, fixed nowhere, both
+  ways round.
+- **Whether anything else leaned on a stiff sketch.** Every dimension of
+  every fixture, and of that drawing, set to 1.25 and to 0.6 of its value —
+  64 edits — and the sum of how far every point moved, against
+  review-relations alone: within 2% or smaller on 62 (as little as 0.48 of
+  it, an angle on the wedge), 4% and 5% larger on two (that drawing's fillet
+  radius: 11.33 → 11.80 and 18.05 → 18.91). All 64 solve on both. Iterations
+  in all, 306 → 403. Drags were not compared this way.
+- **Bug 75**: found in the browser and not by 2050 unit tests, whose own
+  "set … moves nothing else at all" fixes every corner of its profile.
+
 ### Tests
 
+- `test/revolve.test.ts` (24): a free profile's revolve set to a new angle
+  moves the end face alone.
 - `test/directionrows.test.ts` (77): the two free lines under nine
   relations, 2D and 3D; four free lines under one relation among them; the
   drag; where a sine or a cosine is flat; every
@@ -374,6 +424,34 @@ All solved, before and after; 4 to 7 iterations before, 11 as built.
   triangle and the lid against its base still collapse and are still found.
 - `test/e2e/reviewsolver.e2e.ts` (10, mouse and iPhone 13) and
   `test/e2e/conflicts.e2e.ts` in the new words.
+
+### The gate, on the final code
+
+`npm run test:all`, once, on the branch with review-relations and the
+working branch merged in, other packages' runs on the same cores (a load of
+eight to fifteen).
+
+| | the base this branch left from | this branch |
+|---|---|---|
+| typecheck | 0 errors | 0 errors |
+| unit | 1923 of 1923 | 2051 of 2051 |
+| kernel | 11 of 11 | 11 of 11 |
+| e2e | 789: 787 pass, 2 picture skips | 806: 803 pass, 1 fails, 2 picture skips |
+
+- **The one that fails**: `android.e2e.ts`, *Android's font scale,
+  measured* — the page reports a text size of 1.00 where the test starts
+  Chromium asking for 1.30. Alone, three times: fails three times. On
+  review-relations alone, which has none of this package: fails the same
+  way. Known on this container; nothing here touches it.
+- **One that failed under load and does not alone**: the run before this
+  one (a load of twenty-five to thirty-three, and before the revolve fix)
+  also failed `overlaylock.e2e.ts`, *Pixel 7 portrait: see-through from the
+  menu* — `.otail .tline:last-child: some ink to sample (0 pixels)`, which
+  review-relations' notes already list. Alone, three times: passes three
+  times; and it passed in the final run.
+- **And the one that was this package's**: `revolve.e2e.ts`, above. Alone
+  three times before the fix: failed three times. After: passes, alone and
+  in the final run.
 
 ### Pictures
 

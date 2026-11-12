@@ -46,7 +46,16 @@ otherwise.
   - **Each row is times the longer of its own lines as the solve began**,
     never under one unit — not the model's size, which the spec named: on
     forty rectangles two thousand across that took the solve from 8
-    iterations to 23.
+    iterations to 23. **Not the product of both lines either**, which is
+    the size the raw row had: measured, it brings the shrinking back
+    (`perp` 74 and 64 long, a drag 47%). So a sketch's right angles are no
+    longer some twenty times stiffer than a feature's rows, as they were by
+    accident of scale.
+  - **`set` of a revolve's angle seats its end face before the solve**
+    (`seatTurned`; one call in operations.ts, which was another package's
+    file this cycle), as `set` of a depth seats an extrude's lid. Left to
+    the solve the swing was shared with the profile: 0.2 on the base, 6
+    with the sketch no longer stiff (bug 75, found by `revolve.e2e.ts`).
   - **A line shorter than a thousandth of the drawing has no direction**
     (`DIRECTIONLESS`), and a row on it runs down to nothing with it — not
     the collapse threshold, which the spec named: a unit direction is one
@@ -2555,6 +2564,15 @@ are flagged as such.
   [`review-solver.md`](docs/plans/review-solver.md)). **Built** (2026-11-12,
   branch `claude/review-solver`); decisions in the register above,
   measurements in the spec's *As built*. Left, each measured or pinned:
+    - [ ] **A sketch no longer anchors what is built on it by being
+          stiff.** Any solve that has far to go and is not seated first may
+          share the move with the sketch. Found once (a revolve's angle,
+          fixed by seating); looked for across 64 dimension edits of the
+          fixtures and not found again (the sum of moves within 5% of what
+          it was, mostly equal or less). Not looked for: drags of a
+          feature's own geometry, patterns, a draft angle set far from
+          where it stands. If one turns up, the answer is to seat it, not
+          to stiffen the rows.
     - [ ] **A drag still costs a turned line a little length.** One end of a
           par pair dragged 20 in twelve frames: the line not touched ends
           3.1% shorter (it ended 47% shorter). The rows ask for none of it;

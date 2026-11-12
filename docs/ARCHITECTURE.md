@@ -386,8 +386,20 @@ and each was arrived at by measuring the simpler thing first.
   4e-9 off. Each row is multiplied by the longer of its own lines **as it
   was when the solve began** (`Model.valueBefore`, read from the snapshot
   `solve` already takes): a plain number, so the Jacobian stays exact, and
-  the row is as large as the one it replaces was at that moment, so the
-  solve is conditioned as it was. Under a thousandth of the drawing's size
+  the row is a length — how far the far end of the longer line is off. For
+  a line against an axis that is the size the raw row had. For two lines it
+  is smaller by the shorter line's length, and that is deliberate and has a
+  consequence: **a sketch is no longer stiffer than what is built on it.**
+  The raw rows made a 18 × 30 profile's right angles some twenty times
+  stiffer than a revolve's rows, so a solve that had far to go moved the
+  feature and hardly the sketch, by accident of scale. Giving the rows that
+  scale back was measured (the product of both lengths as the solve began):
+  the sketch anchors again, and `perp` between two free lines leaves them 74
+  and 64 long and a drag costs 47% — the stiffness is what made the rows pay
+  in length. So who gives way is said where it is known instead: an edit of
+  a feature's dimension seats the feature before the solve (`reseatLid` for
+  a depth, `seatTurned` for an angle), and the solve begins at a root.
+  Under a thousandth of the drawing's size
   a line has no direction to turn by and its rows run down to nothing with
   it, as the raw rows did — which is where a collapse is still found.
 - **And the solve keeps the length too.** Zero gradient is not enough: the
@@ -2482,7 +2494,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-four bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-five bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2864,6 +2876,19 @@ of running the app:
    `reviewsolver.e2e.ts` reading the two conflict inks off the drawing over
    a lid's lit face and getting the plain ink for all of them. A relation in
    a conflict is always drawn.
+75. Setting a revolve's angle slid its profile six units toward the axis.
+   The unit suite has "set swings the end face to exactly the new angle and
+   moves nothing else at all" — on a profile with every corner fixed, so
+   that "nothing else" would be exact; `revolve.e2e.ts` draws as a person
+   does, with the rectangle tool, fixed nowhere, and its sample points on
+   the start cap were no longer on the cap. A quarter-turn swing left to the
+   solve is shared between the end face and the profile; it always had been
+   (0.2, and an edge 1% short), and was small only while the sketch's rows
+   were products of its lines' lengths and so twenty times stiffer than the
+   feature's. With those rows at their proper size (*A direction relation
+   turns a line and never scales it*) it was six. `set` seats the end face
+   where the new angle puts it before the solve (`seatTurned`), as it seats
+   an extrude's lid, and the unit suite now has the drawing a person makes.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

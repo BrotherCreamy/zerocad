@@ -185,6 +185,29 @@ that ring. The answer — the two far corners' perps — is a true irreducible
 set and the wrong thing to read: the corner's own perp, alone, is outside
 the ring. The singles are asked of the nearest dozen of everything now.
 
+**The gate found what my batch had not.** While iterating I ran the unit
+files and fourteen e2e files I judged solver-sensitive; `revolve.e2e.ts` was
+not among them, and the full run failed it: a revolve's angle set from 270°
+to 180° slid its profile six units. The base slid it 0.2 and shrank an edge
+by 1% on the same edit, which nothing asserted. The reason it was small is
+the reason this package exists: the sketch's direction rows were products of
+lengths, so the sketch was twenty times stiffer than the revolve's rows and
+the feature gave way. I measured the obvious repair — the product of both
+lengths, frozen, as the multiplier, so every row is the size it was — and it
+restores the anchor and the bug together: `perp` 74 and 64, the drag 47%.
+The stiffness and the shrinking are one thing. So the row stays a length,
+and who gives way is said where it is known: `set` seats the revolve's end
+face before the solve, which is what `set` has done for an extrude's lid
+since someone measured "a free rectangle's base dropped 5.9" there. That
+put one call in operations.ts, another package's file this cycle; the
+function is in relations/revolution.ts.
+
+Then the question the failure raises: what else leaned on a stiff sketch.
+Every dimension of every fixture, set up and down, 64 edits, compared with
+review-relations alone by how far the whole drawing moves: nothing moves
+further by more than 5%, most the same or less. Drags were not compared
+that way and are filed.
+
 Not built: saying which member of a relation among many is the one that
 cannot hold. `r5 par l1 l2 m1 — against r1` fills three glyphs where one
 line is at fault. Filed.
