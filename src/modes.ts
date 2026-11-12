@@ -45,7 +45,7 @@ import { cross3, dot3, sub3, unit3 } from "./vec3.ts";
  */
 export function featureBuilds(f: FeatureEntry): string | null {
   if (f.unbuilt !== undefined) return f.unbuilt;
-  if (f.kind === "extrude" && f.open) return "it is open — an edge of its profile is gone; draw the edge again, on either profile, and it closes";
+  if (f.kind === "extrude" && f.open) return "it is open — its profile no longer closes; draw or extend the missing edge back, on either profile, and it is a solid again";
   return null;
 }
 

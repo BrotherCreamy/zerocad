@@ -10,6 +10,92 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-12 — linked profiles built: twins that hold nothing, an extrude that opens, a feature that owns nothing
+
+Built on `claude/linked-profiles` from docs/plans/linked-profiles.md, with
+review item 4. The register has every choice; this is why, and what was
+tried and dropped.
+
+**What a twin is.** The first design was one relation with two sets of
+blocks — the pair as one registry entry, so it could not be anything but
+one. It fails the owner's sentence: a twin has to be pickable on the lid,
+`set` from the lid, deleted from the lid and, when the extrude is deleted,
+left on the lid as an ordinary relation. So a twin is an entry of its own,
+and the *pair* is kept one by the operations (`set`, `deleteRelation`) and
+by a follower that runs after every relation, operation and placed entity.
+Its name is derived (`r3_e1`), the trick `e1_perp` used, for the same
+reason: an old file's later names must not shift.
+
+**A twin with rows, measured, and dropped.** The second design gave each
+twin its rows, since a relation that holds nothing looked like a lie. Two
+things happened. The diagnosis called every twin redundant, which it is; and
+`extrude.test.ts`'s frame-turn — a rectangle on a tilted frame, the frame's
+y-ref swung — stopped solving. The repeated rows re-weight the
+least-squares step, and the solve found the fold instead of the turn. A
+kernel change to skip twin rows in `analyse` hid the first and not the
+second, and was a special case in the layer that must not know what a twin
+is; it was reverted. What is true is simpler: across a standing extrusion
+the twin's statement *is* its partner's, exactly, so it holds no rows; when
+the extrusion goes it is no longer implied and is given its own. Nothing in
+the solver, the diagnosis or the conflict search knows a twin exists, and a
+solve takes the path it took before.
+
+**The link is the extrusion, not a new relation.** A `linked(profileA,
+profileB)` relation was considered and would have said nothing the
+extrusion does not: each point at its partner plus one chord. The cost of
+reusing it is that deleting the depth dimension unlinks the profiles — which
+is right: it is the relation that related them.
+
+**Which relations twin.** A translation keeps lengths, angles and
+directions, so shapes and directions twin, and a `par` to a frame's axis is
+a direction. `fix` and `onplane` say where, and do not. The rule that
+decides the rest is the spec's: a relation naming anything outside the
+profile would pin the lid where the base is. Each relation says which it is
+in its own module entry, so a relation someone defines later says so too.
+
+**Deleting.** The spec had the record survive a deleted line, open. Taking
+the record with its geometry was the old rule; taking the record and
+leaving the geometry would make a slip of the finger cost the feature.
+What stands: `del` of an entity takes its partner (the
+owner's "the other follows automatically") and journals an `unsweep` ahead
+of the deletions, so the record names none of what goes; a replay opens the
+record and then deletes. A record goes only when it cannot stand at all. I
+first had a record that went also take its dimension — tidy, and it broke
+the revolve's and the surfaces' tests, which leave a deleted record's angle
+or size as the orphan it always was; reverted, the inward rule kept.
+
+**Open walls are drawn, not built.** The spec allowed a fallback: no body,
+the row marked open, the geometry there. What was built is between the two:
+the surviving walls are drawn (they are quads between four model points,
+which the renderer already has) from both sides, and no kernel body is
+made. A sheet body per open extrude would need SMLib's sheet path and a
+second kind of body for every consumer of `chainsOf`; nothing can use an
+open extrude yet anyway.
+
+**Closing.** A follower may read names and joins, never positions — a
+replay runs it on seeds. So it closes what is closed by *structure*: a line
+joined to two open corners, by a shared point or by `coin` (the line tool
+joins by `coin`, found in the browser when a line drawn corner to corner
+did not close anything). Closure by position — an end extended onto an
+edge, an arc — is asked by the host after a person's edit and journalled as
+the `regen` it is.
+
+**Trim.** A trim on the lid is one trim, made on the base partner with each
+cut's place carried across the chord, and the lid regenerated or re-pointed
+— not a second operation beside the base's, so the journal's entry is the
+`trim` it always was and a replay needs nothing new. A cutter that lies on
+the lid only has no partner to cut the base with: the lid's new end is held
+on it, and the base's follows through the extrusion. A trim that takes the
+loop apart used to
+be refused ("leaves a feature nothing to stand on"); with open extrudes it
+is not, and the refusal went for extrudes. The trim tool then could not
+pick a lid's edge at all: it read every press on the sketch plane (bug 74).
+
+**What still tells the profiles apart** is listed in ARCHITECTURE and filed:
+the twin's name, the region, `fix`/`onplane`, a `coin`'d corner's single lid
+point, portions. None is hidden; each is a question of whether renaming or
+re-making old files' geometry is worth the symmetry.
+
 ## 2026-11-12 — the owner's answers: pull on anything, twins edit together, a fillet is one thing
 
 The owner answered the standing questions. The register has each; what is

@@ -7,6 +7,79 @@ decisions.
 
 ---
 
+## 2026-11-12 — an extrude's two profiles are peers: every relation has a twin, an edit to one is an edit to both, and nothing is owned
+
+The owner: *"i mean kind of like mirror relations"*; *"i don't like the idea
+of anything being 'consumed' as this implies unidirectional hierarchy"*;
+*"after extrude, it should be impossible to tell which was the original and
+which is the derivative"*; *"Deleting a line would break it obviously. The
+other side of an extrude profile is an identically linked profile/sketch
+entities. If you change one the other follows automatically."*; *"If they
+are truly twinned profiles, then reining in one side should trim on the
+other also."*; *"hierarchies do exist, but they are not timeline based"*
+(docs/plans/linked-profiles.md, with review item 4: features relate, they do
+not own).
+
+| | |
+|---|---|
+| ![Desktop, hidden-line view of a 50 × 30 × 10 block seen from above its front: a ⊥ pair at each of the eight corners, base and lid alike, the dimension 50 drawn once, along the lid's front edge, the depth 10 at the left](docs/images/443-a-dimension-on-the-base-drawn-once-on-the-lid.png) | ![set("d2_e1.value", 64) typed in the log: the label reads 64 and both front edges, the lid's and the base's, are longer; the block is still a right prism](docs/images/444-the-lids-dimension-set-the-base-follows.png) |
+| ![A back corner of the lid dragged away: the back edge of the lid and of the base have both moved, the block deeper, every ⊥ still in place](docs/images/445-a-lid-corner-dragged-the-base-corner-with-it.png) | ![The lid's right-hand edge deleted: three walls standing with no lid, no base face and no right wall; the organiser's row reads e1 extrude · open, the Bodies section is gone, and the log says e1 is left out because it is open](docs/images/446-a-lid-edge-deleted-both-edges-gone-the-body-open.png) |
+| ![The edge drawn back on the base with the line tool: a whole shaded block again, e1 back under Bodies, its row plain extrude](docs/images/447-the-edge-drawn-back-on-the-base-a-solid-again.png) | ![del("e1"): two blue rectangles one above the other joined by four chords, ⊥ marks on both, no feature in the organiser; the region rg1 still drawn on the lower one](docs/images/448-the-extrude-deleted-both-sketches-and-the-chords.png) |
+| ![A short line drawn on the lid's face across the middle of its front edge](docs/images/449-a-line-drawn-on-the-lid-across-an-edge.png) | ![The trim tool clicked on the right half of the lid's front edge: the front wall is half as long, ending at the line; the other three walls stand; no lid; the row reads extrude · open and the log shows trim("l5", …) and e1 is open now](docs/images/450-the-lids-edge-trimmed-and-the-bases-with-it.png) |
+| ![iPhone 13, shaded: the block with 50 along the lid's front edge and the depth 10](docs/images/451-iphone-a-dimension-on-the-base-drawn-once-on-the-lid.png) | ![iPhone 13: the label reads 64, the log's last line d2_e1, the block longer along both front edges](docs/images/452-iphone-the-lids-dimension-set-the-base-follows.png) |
+| ![iPhone 13: a back lid corner dragged by a finger, the block deeper, lid and base together](docs/images/453-iphone-a-lid-corner-dragged-the-base-corner-with-it.png) | ![iPhone 13: del of the lid's right edge answered r1, r1_e1, r2, r2_e1, l2, l6 in the log; three walls standing, open to the right, no caps](docs/images/454-iphone-a-lid-edge-deleted-the-body-open.png) |
+| ![iPhone 13: the edge drawn back by two taps with the line tool, a whole block, e1 under Bodies](docs/images/455-iphone-the-edge-drawn-back-a-solid-again.png) | ![iPhone 13: del("e1") in the log; two blue rectangles joined by four chords with their ⊥ marks, the region still drawn on the lower one](docs/images/456-iphone-the-extrude-deleted-both-sketches.png) |
+| ![iPhone 13: the short line on the lid across its front edge, typed with onplane on e1.lid](docs/images/457-iphone-a-line-drawn-on-the-lid-across-an-edge.png) | ![iPhone 13: the trim tool tapped on the lid's front edge; the front wall is half as long, the other three stand, no lid](docs/images/458-iphone-the-lids-edge-trimmed-and-the-bases-with-it.png) |
+
+- **Every relation within a profile has a twin on the other** (`src/twins.ts`):
+  the same relation over the partner entities, a registry entry of its own
+  under a name derived from its partner's (`r3_e1` — no counter claimed, so an
+  old file's later names stay theirs). Shapes twin (`dist`, `coin`, `tan`,
+  `eq`, `rad`, `sym`…), directions twin (`par`, `perp`, `ang`, which may name
+  a frame's axis); positions do not (`fix`, `onplane`), nor anything that
+  names an entity outside the profile. Each relation says which it is in its
+  own module entry (`RelationDecl.twin`). A relation typed later on either
+  profile gets its twin before the call returns; one that only repeats what
+  is there adopts it.
+- **The pair is one thing.** `set` either and both change; `del` either and
+  both go, one undo step; a conflict names the pair once and lights both
+  ends; the status counts nothing extra for a twin, free or agreeing. A
+  linked twin **holds no rows**: what it says is carried across by
+  the extrusion, and its rows in the problem were measured to change the
+  solver's path (CONVERSATION_LOG). A mark is drawn on both ends; a
+  dimension's label once, on the end nearer the viewer.
+- **Deleting the extrude leaves everything**: both profiles, the chords, and
+  each profile's relations, each an ordinary relation holding its own rows.
+  `del("e1")` answers `[e1, d1, e1_perp]` and takes no entity. The same for a
+  cut, an edge extrude (now linked the same way) and a revolve.
+- **Deleting an edge of either profile takes its partner and leaves the body
+  open**: the record stays, the surviving walls are drawn from both sides
+  with no cap, no kernel body is made and the status says why, the
+  organiser's row reads `extrude · open`. Draw the edge back on either
+  profile — corner to corner, as the line tool joins — and its partner is
+  made and the solid is back, with no step asked of the user.
+- **A trim on a lid's edge is a trim on the base's**, each cut carried
+  across the link; a trim that takes the loop apart leaves the extrude open
+  where it used to be refused. `extend` on either end seats the other. The
+  trim tool takes a lid's edge that something cuts (bug 74: it read every
+  press on the sketch plane, so a lid edge seen from the side was never
+  under it).
+- **A relation a feature made is deleted like any other**: `del("e1_perp")`
+  lets the chord lean; `del` of the depth leaves the record *unbuilt*
+  (`extrude · unbuilt`, "its depth d3 is deleted") and both profiles their
+  own relations. `onplane(p, "e1.m3")` outlives the extrude as `coplanar`
+  with three of the face's own points, under its own name (`rehold`).
+- **Format 20.** Nothing new is saved — twins are made again by replay from
+  the relation that made them — but a deletion means something else now, so
+  a pre-20 file's `deleteFeature` entries are marked on the way in and take
+  what they took. `test/fixtures/linked-v19.neocad.json`, saved by the build
+  before this one, opens to the model it was, every name kept, and is linked
+  from then on.
+- Unit: `test/linkedprofiles.test.ts` (27). E2E, mouse and iPhone 13:
+  `linkedprofiles.e2e.ts`. The per-feature table of what was owned and what
+  is now related is in the spec's *As built*; the decisions in TODO.md's
+  register; what was tried and dropped in CONVERSATION_LOG.md.
+
 ## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
 
 The owner: *"when i make a rectangular prism, i attempt to draw an e.g.

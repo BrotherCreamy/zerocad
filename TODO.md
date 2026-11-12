@@ -33,6 +33,114 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **An extrude's two profiles are peers; a feature relates, it does not own**
+  (the owner, 2026-11-09 and 2026-11-12: *"kind of like mirror relations"*,
+  *"i don't like the idea of anything being 'consumed'"*, *"If you change one
+  the other follows automatically"*; docs/plans/linked-profiles.md, built,
+  with review item 4). The owner decided the peers, that deleting the extrude
+  leaves both, that an edit to one is an edit to both, and that a trim lands
+  on both. These are the choices made building it, one line each. Each
+  vetoable:
+  - **A twin is a registry entry of its own, named for its partner**
+    (`r3_e1`): so it can be picked, set, deleted and listed like any
+    relation, and claims no name counter (old files' later names stay).
+  - **Its name says which was typed** — `r3` and `r3_e1` are told apart; the
+    geometry and the relations are not. A symmetric naming would have renamed
+    every old file's base relations.
+  - **The link is the `extrusion` relation**, no new one: it already holds
+    each point at its partner plus one chord, both ways. Delete it and the
+    profiles are unlinked.
+  - **A linked twin holds no rows**: its statement is carried by the
+    extrusion; its rows, tried, changed the solver's path (a frame-turn test
+    stopped solving). On unlink it is given its own rows.
+  - **What twins**: shapes (`dist`, `coin`, `mid`, `on`, `eq`, `sym`, `col`,
+    equal spacing, `coplanar`, `rad`, `dia`, on-circle, concentric, coradial,
+    equal radius, `tan`, arc ends, intersection, ellipse axes) and directions
+    (`par`, `perp`, `ang`, which may name a frame axis). A translation keeps
+    both.
+  - **What does not twin**: `fix`, `onplane`, `pierce`, `measure`, on-spline,
+    and the feature relations themselves (`extrusion`, `revolution`,
+    `translated`, `rotated`) — positions, or links; and any relation naming
+    an entity outside the profile, which would pin the lid where the base is.
+  - **A profile that is a piece of longer lines has no twins** (a region a
+    crossing split): the lid's edge is the piece, the base's line is longer,
+    and there is no partner edge for edge.
+  - **Two base corners joined by `coin` share one lid point**, so that
+    `coin` has no twin (it would relate a point to itself).
+  - **A relation typed on the lid that repeats the base's adopts it** as the
+    twin instead of making a third; nothing is said twice by this package.
+  - **A conflict names the pair once, by the relation that was typed, and
+    lights both ends** — not "whichever end is in view": the search has no
+    view, and lighting both needs none.
+  - **A dimension's label is drawn once, on the end nearer the viewer** (in
+    sight first); marks (`⊥`, `∥`) on both ends. In hidden-line and wire
+    views that doubles the marks, which is crowded on a phone.
+  - **`del("e1")` takes the record, its depth and `e1_perp`, and no entity**;
+    the walls stay as four lines, the `extrusion` goes with the depth, every
+    twin becomes ordinary.
+  - **The region stays on the profile the extrude was made from** (`rg1`):
+    after `del("e1")` one rectangle wears a region and the other does not,
+    which does say which was drawn. Regions are not twinned here.
+  - **Deleting an entity of a profile takes its partner and leaves the record
+    open** (`unsweep`, journalled ahead of the deletions), not deleted: a
+    slip of the finger should not cost the feature.
+  - **An open extrude's walls are drawn by the renderer, both sides, and no
+    kernel body is made** (the spec's fallback, in part): the walls are the
+    model's own quads; an SMLib sheet body per open extrude was not built.
+    Nothing can be cut from, filleted or measured on an open extrude.
+  - **Closing is by joins, for lines**: a line whose ends are joined (shared
+    point or `coin`) to two open corners gets its partner and the profile is
+    rebuilt (`relinkOpen`, in the follower, no journal entry). A fork (two
+    candidates) stays open.
+  - **Closing by position is the host's**, after a person's edit
+    (`closeOpen`, journalled as `regen`): an arc drawn back, an end extended
+    onto an edge. A script closes with `regen`.
+  - **A record goes only when it cannot stand** (every edge of a loop gone),
+    and then leaves its depth dimension as an orphan relation rather than
+    taking it — the inward rule as it was.
+  - **A feature-made relation is deletable; the depth leaves the record
+    *unbuilt***, drawn as nothing, with the reason in the organiser and the
+    status. `del("e1")` then takes the record.
+  - **Feature-made relations are still background to the conflict search
+    and the agreeing sets** (`removable` unchanged): naming them is review
+    item 3's package.
+  - **A trim that takes the loop apart opens the extrude**; it used to be
+    refused. A revolve's profile still refuses.
+  - **A trim on a lid's edge is journalled as the trim of its base partner**
+    with the cut's place carried across, so replay needs no new op; a cutter
+    that lies on the lid only holds the lid's end, its twin holding nothing.
+  - **A lid edge that nothing cuts is not the trim tool's**: the press falls
+    through to the sketch edge under it, as every solid edge did.
+  - **Power-trim's stroke does not take lid edges** (it reads the sketch
+    plane; a click does). The spec also names `split`: there is no split
+    operation in this build to carry across.
+  - **A lid's edge can now be offset, mirrored or patterned** (the refusal
+    "part of e1's solid" stands only for an edge with no partner, a wall):
+    the copy is related to the lid edge like any other.
+  - **`extend` on a lid's end moves the lid's point and seats the base's**;
+    walls at the end are not counted as "another curve's end".
+  - **`onplane(p, "e1.m3")` outlives the extrude as `coplanar`** over three
+    of the face's points, same name (`rehold`, journalled); `fdist`,
+    `par(c, "e1.m3")` and a hold on a round face go with the record — they
+    read the record.
+  - **Format 20, nothing new saved**: a pre-20 `deleteFeature` is marked
+    `"unlinked"` on the way in and takes what it took; every standing extrude
+    in an old file is linked from the moment it opens.
+  - **An edge extrude is linked the same way; a revolve's ends are not** (a
+    rotation turns directions, so `par`/`perp` to an axis would not carry;
+    its shape relations could twin and do not yet).
+  - **Regeneration (a sketch fillet, a region edit) makes the lid again by
+    the inward rule**, twins re-made by name; a relation typed on a lid edge
+    that survives keeps its name.
+  - **The follower also runs after an entity is placed outside an
+    operation**, so a line drawn by hand can close a profile; it is
+    idempotent and reads names and joins only, never positions.
+  - **A 3D fillet or chamfer outlives the extrude it rounds**, as a record
+    left out of every body and saying why ("it fillets edges of e1, which is
+    no longer there"); it is not deleted with the extrude.
+  - **Offset, mirror and the patterns were already only relations**: no
+    record, nothing owned; nothing changed there but the test that says so.
+
 - **A click on a face lands on that face, is held there, and says so before
   the click** (the owner, 2026-11-09: *"if i am hovering over a face without
   an active on-plane constraint, it should constrain to the plane i am
@@ -95,8 +203,9 @@ otherwise.
   - **An extrude's two profiles are peers, related "kind of like mirror
     relations"**; *"i don't like the idea of anything being 'consumed' as
     this implies unidirectional hierarchy"*. Spec:
-    [`linked-profiles.md`](docs/plans/linked-profiles.md), queued with four
-    questions for the owner (Q-A–Q-D there).
+    [`linked-profiles.md`](docs/plans/linked-profiles.md), **built**
+    (2026-11-12, `claude/linked-profiles`; the choices made building it are
+    the register's first entry).
   - **3D fillets keep the original geometry as construction, unmodified**,
     and a fillet on one end only is ordinary (same spec, Design 3).
   - **The constraint list is its own palette, installed as a workbench**,
@@ -212,9 +321,18 @@ otherwise.
          "already held";
   3. [ ] a conflict names the relation whose addition made it, with the set
          it disagrees with (replaces "two of a set");
-  4. [ ] features relate, they do not own: `deleteFeature`'s cascade, the
-         undeletable feature-held relations, `edgeExtrude` owning entities
-         (linked-profiles.md starts this for the extrude);
+  4. [x] features relate, they do not own: `deleteFeature`'s cascade, the
+         undeletable feature-held relations, `edgeExtrude` owning entities —
+         built with linked profiles (2026-11-12): deleting an extrude, a
+         cut, an edge extrude or a revolve leaves its geometry and its
+         relations; a feature-made relation is deleted like any other, the
+         record left *unbuilt* where the body needed it; `onplane` on a face
+         is re-pointed to the geometry that remains. Offset, mirror and the
+         patterns owned nothing. The per-feature table is in
+         linked-profiles.md's *As built*; what is left (`fdist` goes with the
+         record, a revolve's profile edit still takes the record, a 3D
+         fillet of a deleted extrude stays as a record with nothing to
+         round) is filed under Next up;
   5. [ ] many-at-once as one n-ary relation, not a star on the first pick;
   6. [ ] `fdist` and `ang3` name entities, lazily, not wall indices or
          points;
@@ -2321,6 +2439,75 @@ are flagged as such.
          **Built** (2026-10-22) — see Done.
 
 ## Next up
+
+- [x] **An extrude's two profiles are peers; features relate, they do not
+  own** (the owner, 2026-11-09 and 2026-11-12; spec
+  [`linked-profiles.md`](docs/plans/linked-profiles.md)). **Built**
+  (2026-11-12, branch `claude/linked-profiles`): twins across the
+  `extrusion`, a pair set and deleted as one, an extrude that opens rather
+  than dies and closes when its edge is drawn back, a trim and an extend on
+  either profile landing on both, a feature deleted leaving its geometry and
+  relations, format 20. Decisions in the register above. Left:
+    - [ ] **`fillets-one-thing.md`** is next and stands on this: a twin for
+          an entity added to a profile (`relinkOpen` does lines by their
+          joins; an arc needs `regen`/`closeOpen`), construction carried
+          through a twin (a pair flagged construction is still a pair and
+          keeps its twins — tested; the `construction` operation still
+          refuses an outline member and does not flag the partner, which is
+          the fillet package's to define), the body rebuilt from the
+          profiles' non-construction loops (`regen` walks past construction;
+          `rebuildOpen`/`regenerateGiven` take the loops as given).
+    - [ ] **The region still says which profile was drawn**: after
+          `del("e1")` the profile the extrude was made from wears `rg1` and
+          the other does not (docs/images/448). Either the region made for
+          an extrude goes with it, or the other profile gets one.
+    - [ ] **A twin's name says which was typed** (`r3` and `r3_e1`). A
+          neutral pair of names would rename old files' relations.
+    - [ ] **A profile that is a piece of longer lines has no twins** (a
+          region split by a crossing): the lid's relations are missing
+          there, and its shape follows through the extrusion alone, as every
+          lid did before this.
+    - [ ] **Two corners joined by `coin` share one lid point**, so the
+          `coin` has no twin and, the extrude deleted, the lid is the one
+          with a shared corner. An extrude that made a lid point per base
+          point would fix it; old files would need the points made.
+    - [ ] **An open extrude is the renderer's, not the kernel's**: no SMLib
+          sheet body, so nothing is cut from it, filleted on it or measured
+          on its faces; a 3D fillet already on a body that opens stays a
+          record and is left out with its body.
+    - [ ] **An arc or a spline drawn back does not close a profile by
+          itself** from the command line (`relinkOpen` pairs lines); the
+          host's `closeOpen` after a person's edit does, by `regen`.
+    - [ ] **A trim leaves the lid's far side untidied**: the piece trimmed
+          away takes its partner, but a cutter with no partner holds only
+          its own end (`on`), and a trim on the base by a base cutter gives
+          the lid's end no relation of its own until the link is deleted.
+    - [ ] **Power-trim's stroke on a lid**: the stroke is read on the sketch
+          plane; only a click takes a lid's edge.
+    - [ ] **`fdist` and `par(c, "e1.m3")` on a deleted extrude's faces go
+          with the record** where `onplane` is re-pointed (`rehold`); a face
+          distance over two `coplanar` point sets, and a `par` to the plane
+          of three points, would keep them. Review item 6 renames what
+          `fdist` names anyway.
+    - [ ] **A revolve's ends are not linked** and an edit to its profile
+          still takes the record (`del` of a profile line answers the
+          revolve); its shape relations could twin across the `revolution`
+          (a rotation keeps lengths and angles within the profile, not
+          directions to an axis).
+    - [ ] **Feature-made relations are still background to the conflict
+          search** (`removable`): with them deletable, a conflict that
+          `e1_perp` is part of could name it. Review item 3.
+    - [ ] **Marks are doubled in hidden-line and wire views**: eight `⊥`
+          pairs on a block (docs/images/443). On a phone that is crowded; a
+          mark could be drawn on the nearer end only, as a dimension is.
+    - [ ] **A `set` of a profile dimension on a block nothing holds tilts
+          it**: a free 40 × 25 × 10 block, `set` of the 40 to 55, leaves the
+          base corners at z = +4.2, −4.1, −4.1, +4.2. Measured the same on
+          the build before this one, so not this package's doing: the
+          rebuild's minimum-norm solve. review-solver.md's.
+    - [ ] **`extend`'s nearest reach on an open profile may be a wall**:
+          walls are lines in the model, and an end extended "to the next
+          thing" can stop on one. Name the target (`extend(l, end, "l3")`).
 
 - [x] **A click on a face draws on the ground; nothing says where a click
   will land** (the owner, 2026-11-09: *"when i make a rectangular prism, i

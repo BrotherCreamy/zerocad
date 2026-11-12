@@ -606,6 +606,35 @@ test("a sketch fillet on the base regenerates the lid, and its relations twin on
   assert.ok(Math.abs(m.radius(arc) - 7) < 1e-7 && Math.abs(m.radius(lidArc) - 7) < 1e-7, "the lid's radius drives the base's");
 });
 
+test("construction is carried through a twin: a pair flagged construction is still a pair — its relations still twinned, a new one twinned at once — and a construction line between corners pairs with the one between their partners", async () => {
+  const { m, P, L, r, w, lidOf, f } = await block();
+  const lid0 = f().twins[0][0];
+  // As a fillet that keeps its corner will leave them (docs/plans/fillets-one-thing.md): the edge on each profile, construction.
+  m.setConstruction(L[0], true);
+  m.setConstruction(lid0, true);
+  ok(m);
+  const link = linksOf(m).find((l) => l.record === "e1")!;
+  assert.equal(link.fwd.get(L[0]), lid0, "still partners");
+  assert.ok(m.relationOf(`${r[0]}_e1`).twin && m.relationOf(`${w}_e1`).twin, "the right angle and the width keep their twins");
+  const eq = equalLength(m, L[0], L[2]);
+  assert.deepEqual(m.relationOf(`${eq}_e1`).args, [lid0, f().twins[0][2]], "a relation on a construction edge is twinned like any other");
+  set(m, `${w}_e1.value`, 44);
+  ok(m);
+  assert.ok(Math.abs(len(sub(m.coords(P[1]), m.coords(P[0]))) - 44) < 1e-7, "and its dimension still drives both");
+  // A construction diagonal on each profile, corner to corner: partners by their points, with nothing said about either.
+  const d0 = m.addLine(P[0], P[2]).name;
+  const d1 = m.addLine(lidOf(P[0]), lidOf(P[2])).name;
+  m.setConstruction(d0, true);
+  m.setConstruction(d1, true);
+  assert.equal(linksOf(m).find((l) => l.record === "e1")!.fwd.get(d0), d1);
+  const a = angle(m, d0, L[1], Math.atan2(44, 25));
+  assert.deepEqual(m.relationOf(`${a}_e1`).args.slice(0, 2), [d1, f().twins[0][1]]);
+  ok(m);
+  // And neither joined the profile: the body is the four edges it was.
+  assert.equal(f().loops[0].length, 4);
+  assert.equal(f().open ?? false, false);
+});
+
 test("a lid that is another extrude's profile carries a relation on: a twin of a twin, set and deleted as one chain", async () => {
   const { m, L, w, f } = await block();
   const T = f().twins[0];

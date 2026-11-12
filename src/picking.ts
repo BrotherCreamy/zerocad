@@ -300,7 +300,7 @@ export function describeFeature(model: Model, f: FeatureEntry): string {
   // Why it makes no body, when it makes none (docs/plans/linked-profiles.md):
   // open — an edge of its profile gone — or unbuilt, its depth deleted.
   const state = f.unbuilt !== undefined ? ` — unbuilt: ${f.unbuilt}`
-    : f.open ? " — open: an edge of its profile is gone; draw it again, on either profile, and it closes" : "";
+    : f.open ? " — open: its profile no longer closes; draw or extend the missing edge back, on either profile, and it is a solid again" : "";
   // Only an old file's extrude has a lid frame to name (see `Expansion`).
   return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}${f.top === undefined ? "" : `, lid ${f.top}`}${state}`;
 }

@@ -10,6 +10,31 @@ etc).
 
 ## What's working right now
 
+- **An extrude's two profiles are peers, and a feature relates, it does not
+  own** (docs/plans/linked-profiles.md, built; review item 4). The owner:
+  *"i mean kind of like mirror relations"*, *"i don't like the idea of
+  anything being 'consumed'"*, *"If you change one the other follows
+  automatically."* The `extrusion` relation is the link (`twins.ts`,
+  `linksOf`); every relation within one profile has a **twin** on the other
+  — a registry entry named for its partner, `r3_e1`, which holds no rows
+  while the link stands and wakes with its own when the link is deleted.
+  Shapes and directions twin, positions (`fix`, `onplane`) and anything
+  reaching outside the profile do not; each relation's module entry says
+  which (`RelationDecl.twin`). `set` and `del` act on the pair; a relation
+  typed later on either profile is twinned at once by a follower `Model`
+  runs after every top-level relation, operation and placed entity
+  (`defineFollower`). **Deleting**: the extrude (a cut, an edge extrude, a
+  revolve) leaves all its geometry and every relation, each its own; an edge
+  of either profile takes its partner and leaves the extrude **open** — walls
+  drawn, no cap, no body, the row marked *open* — until the edge is drawn
+  back on either profile; a feature-made relation goes like any other, the
+  depth leaving the record *unbuilt*. **Trim** on a lid's edge lands on the
+  base's, and one that opens the loop opens the extrude rather than being
+  refused; `extend` seats both ends. Format 20 (a deletion's meaning; old
+  files' deletions marked on the way in). Not twinned, and said so: a profile
+  that is a piece of longer lines, two corners joined by `coin` sharing one
+  lid point, a revolve's end faces. Unit: `test/linkedprofiles.test.ts`;
+  e2e: `linkedprofiles.e2e.ts` (mouse and iPhone 13).
 - **A click on a face lands on that face, is held there, and says so before
   the click** (docs/plans/click-on-face.md, built). The owner: *"if i am
   hovering over a face without an active on-plane constraint, it should
