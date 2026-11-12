@@ -34,7 +34,7 @@
 // are drawing on" every Onshape point has without saying so. With none chosen,
 // a click on a solid's **face** lands on the face (the engine reads it there,
 // `PointerInfo.face`), and a point placed on a flat face is held to it with
-// `onPlane(p, "e1.m3")`, the face named as the kernel names it and read off
+// `onPlane(p, "e1:l2")`, the face named by the line it is swept from and read off
 // its feature's record (relations/solidref.ts) — docs/plans/click-on-face.md;
 // the owner: *"if i am hovering over a face without an active on-plane
 // constraint, it should constrain to the plane i am hovering over"*. Each
@@ -123,7 +123,7 @@ export function requirePlanar(model: Model, tool: string): void {
  *    drawn on its own plane, as in Onshape, whatever is under the cursor;
  * 2. else **the face of a solid the click landed on** (`PointerInfo.face`,
  *    read by the engine off the faces drawn this frame): the face's own
- *    plane, facing the viewer, named as the kernel names it (`e1.m3`);
+ *    plane, facing the viewer, named by what it is swept from (`e1:l2`);
  * 3. else the origin's x–y plane, where the click landed.
  *
  * Every later click of a *shape* gesture — a drag's rim, a slot's second
@@ -133,8 +133,8 @@ export function requirePlanar(model: Model, tool: string): void {
  * the curve where it lies with ordinary, visible, deletable relations: its
  * centre `onplane` (unless a snap already pinned it, or it was held as it was
  * placed) and its normal `par` to the plane's (`hold`) — on a chosen plane
- * (case 1), and on a flat face (case 2: `onplane(p, "e1.m3")`,
- * `par(c, "e1.m3")`, docs/plans/click-on-face.md). Delete the `par` and the
+ * (case 1), and on a flat face (case 2: `onplane(p, "e1:l2")`,
+ * `par(c, "e1:l2")`, docs/plans/click-on-face.md). Delete the `par` and the
  * circle is free to turn in space; constrain its normal to a line instead and
  * it follows the line. On the ground (case 3) nothing is held: the ground is
  * where the curve was drawn, not a relation (the owner: *"every sketch is a 3D
@@ -263,7 +263,7 @@ export class CurvePlane {
  * hold their construction circle and their arcs exactly as a circle drawn on
  * the plane is held.
  *
- * On a plane the user chose, or on a solid's flat face (`"e1.m3"`): the two
+ * On a plane the user chose, or on a solid's flat face (`"e1:l2"`): the two
  * places a curve is held (docs/plans/click-on-face.md). Nowhere else:
  * the owner's "every sketch is a 3D sketch, unless you enter into active
  * on-plane constraint" — the ground lays the curve out and seeds its normal;
@@ -315,7 +315,7 @@ export function asArmed(ctx: ToolContext, ...curves: string[]): void {
  * Holds a point on the plane it was placed on with `onPlane`, if this is a 3D
  * model and the point is on it. Returns the relation's name, or null when
  * nothing applied. The plane is `given` — a curve tool's gesture plane, which
- * may be a solid's flat face (`"e1.m3"`, docs/plans/click-on-face.md), a
+ * may be a solid's flat face (`"e1:l2"`, docs/plans/click-on-face.md), a
  * plane the user chose, or the ground — else the plane the user chose to
  * sketch on (the work plane or the default frame, `sketchPlaneRef`).
  *

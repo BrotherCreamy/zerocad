@@ -16,7 +16,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { DIMENSION_OPS, Model, parseValueRef, relationPrefix, valueArgIndex } from "../src/model.ts";
 import { coincident, dist, fix, midpoint, onPlane } from "../src/relations/basic.ts";
-import { angle3, arcLength, distAlong } from "../src/relations/smartdim.ts";
+import { angle3, arcLength, cornerAngle, distAlong } from "../src/relations/smartdim.ts";
 import { faceDistance } from "../src/relations/solidref.ts";
 import {
   angle, diameter, equalLength, equalRadius, majorAxis, minorAxis, onCircle, parallel, perpendicular, pointOnLine,
@@ -101,7 +101,7 @@ test("the three value-carrying relations are d-named and every other one is r-na
   // dimensions with no equation too: test/surfaces.test.ts sets one.
   // Smart dimension's (docs/plans/smart-dimension.md): a distance square to a
   // solid's face, along a direction, the angle at a vertex, an arc's length.
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "angle3", "arcLength", "chamferSetback", "diameter", "dist", "distAlong", "extrusion", "faceDistance", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution", "rotation", "surfaceAngle", "surfaceDepth", "surfaceDistance"]);
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "angle3", "arcLength", "chamferSetback", "cornerAngle", "diameter", "dist", "distAlong", "extrusion", "faceDistance", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution", "rotation", "surfaceAngle", "surfaceDepth", "surfaceDistance"]);
   // A driven dimension is a dimension to read and name, never to set.
   assert.equal(relationPrefix("measure"), "d");
   assert.equal(valueArgIndex("measure"), null);
@@ -319,6 +319,8 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     distAlong: (m) => distAlong(m, "a", "b", "f.x", 10),
     angle3: (m) => angle3(m, "a", "b", "c2", Math.PI / 3),
     arcLength: (m) => arcLength(m, "arc", 5),
+    // The corner two lines make (docs/plans/review-relations.md).
+    cornerAngle: (m) => cornerAngle(m, "l1", "l2", Math.PI / 3),
     // 3D only, on a block of its own (below): a point above its lid.
     faceDistance: (m) => faceDistance(m, "e1.lid", "a", 5),
   };
@@ -457,7 +459,7 @@ test("a version-3 file's deleteRelation is pointed at the name that relation has
   // finish. That is the same rule the hor/ver translation follows.
   assert.deepEqual(m.journal.at(-1), { op: "deleteRelation", args: ["d2"] });
   const saved = save(m);
-  assert.match(saved, /"version": 20/); // the current version, whatever later boundaries it crossed
+  assert.match(saved, /"version": 21/); // the current version, whatever later boundaries it crossed
   assert.equal(save(open(saved)), saved, "and the file is stable from here on");
 });
 

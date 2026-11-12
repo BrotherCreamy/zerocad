@@ -18,7 +18,7 @@
 // and typed as `deg(45)`, because `ang` stores radians and a thousandth of a
 // radian is a seventeenth of a degree.
 
-import { entityKind, parseAxisRef, parsePointTriple, type FeatureEntry, type Model } from "./model.ts";
+import { entityKind, parseAxisRef, parseFaceName, parsePointTriple, type FeatureEntry, type Model } from "./model.ts";
 import { dist, coincident, fix, midpoint, onPlane } from "./relations/basic.ts";
 import {
   angle, collinear, concentric, coradial, diameter, equalLength, equalSpacing, intersection, majorAxis, minorAxis,
@@ -27,11 +27,12 @@ import {
 import { onSpline, tangentSplineRefusal } from "./relations/spline.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { directionNow, measure, measured, solidGeometry } from "./relations/measure.ts";
-import { angle3, arcLength, distAlong } from "./relations/smartdim.ts";
-import { edgeSource, faceDistance, faceSource, planeNow } from "./relations/solidref.ts";
+import { angle3, arcLength, cornerAngle, distAlong } from "./relations/smartdim.ts";
+import { edgeSource, faceDistance, faceRef, faceSource, isPlanarFace, planeNow } from "./relations/solidref.ts";
 import { formatValue } from "./glyphs.ts";
 import { dot3 } from "./vec3.ts";
 import { loadedModules } from "./modules.ts";
+import { relate } from "./among.ts";
 
 const len3 = (v: number[]) => Math.hypot(...v);
 
@@ -73,16 +74,20 @@ type Ref =
  * extrude's faces to its entity (so its length is that line's). Null for a
  * name nothing knows.
  */
-function refOf(model: Model, name: string): Ref | null {
-  const k = kindOf(model, name);
-  if (k) return { kind: k, name };
+function refOf(model: Model, given: string): Ref | null {
+  const k = kindOf(model, given);
+  if (k) return { kind: k, name: given };
   let axis: ReturnType<typeof parseAxisRef> = null;
   try {
-    axis = parseAxisRef(name);
+    axis = parseAxisRef(given);
   } catch {
     axis = null;
   }
-  if (axis && model.isFrame(axis.frame)) return { kind: "axis", name, frame: axis.frame, axis: axis.axis };
+  if (axis && model.isFrame(axis.frame)) return { kind: "axis", name: given, frame: axis.frame, axis: axis.axis };
+  // A face is written, in everything typed from here, by what it is swept
+  // from: a wall given by its place (`e1.m3`) is the wall of the entity now
+  // there (`e1:l4`) — solidref.ts's `faceRef`, docs/plans/review-relations.md.
+  const name = faceRef(model, given);
   const s = faceSource(model, name);
   if (s?.kind === "cap" || (s?.kind === "wall" && s.shape === "plane")) return { kind: "face", name };
   if (s?.kind === "wall" && s.shape === "cylinder" && s.whole) return refOf(model, s.entity);
@@ -272,8 +277,10 @@ function anchorPoint(model: Model, r: Ref): string | null {
  * - two faces of a solid, a face and a point, a face and an edge: the
  *   distance square to the face (`fdist`) when they are parallel, else the
  *   angle — through the lines they were swept from where one extrude made
- *   both (`dist`, `ang` on its sketch), and an extrude's lid to its own base
- *   is its depth (`edits`);
+ *   both (`dist` between parallel walls, `corner` of two that meet), and an
+ *   extrude's lid to its own base is its depth (`edits`). A face is written
+ *   by what it is swept from (`fdist("e1:l2", "e2:l8", 40)`), whichever way
+ *   it was picked or typed;
  * - three points: the angle at the first (`ang3`); a point and two lines:
  *   their angle; an arc and its two ends: its length (`arclen`).
  *
@@ -393,6 +400,13 @@ function lineAngle(model: Model, a: string, b: string): Applicable {
   return driving("Angle", call("ang", [a, b, { raw: `deg(${d})` }]), (m) => angle(m, a, b, radiansOf(d)), `${formatValue(d)}°`, "angle", [a, b]);
 }
 
+/** The angle in the corner two lines make (`corner`, relations/smartdim.ts), holding what it reads now. */
+function cornerDimension(model: Model, a: string, b: string): Applicable {
+  const d = roundValue(deg(measured(model, ["corner", a, b])));
+  return driving("Angle between the walls", call("corner", [a, b, { raw: `deg(${d})` }]), (m) => cornerAngle(m, a, b, radiansOf(d)),
+    `${formatValue(d)}°`, "corner", [a, b]);
+}
+
 /** Below this |sin| two faces (or a face and an edge) are parallel, and what is between them is a distance. */
 const PARALLEL_FACE = 1e-6;
 
@@ -432,13 +446,14 @@ function faces(model: Model, a: Ref, b: Ref): Applicable | null {
     if (!parallelLines(model, la, lb)) {
       // Two walls meeting at an edge: the solid's angle there is the
       // profile's corner — a wedge's 30°, where the two lines' own
-      // directions could read 150° — so it is the angle at that corner.
+      // directions could read 150° — so it is `corner` of **the two lines
+      // the walls are swept from**, each read as it leaves the corner. It
+      // was `ang3` of the corner point and the two far ends: three points,
+      // which a fillet of that corner re-points out from under the dimension
+      // (docs/plans/review-relations.md). Lines that only cross in the
+      // profile's plane — two walls with others between them — keep `ang`.
       const [ra, rb] = [model.line(la).refs, model.line(lb).refs];
-      const corner = ra.find((p) => rb.includes(p));
-      if (corner && sa.feature === sb.feature) {
-        const [p, q] = [ra.find((x) => x !== corner)!, rb.find((x) => x !== corner)!];
-        return threeThings(model, [corner, p, q].map((n) => ({ kind: "point" as const, name: n })));
-      }
+      if (ra.some((p) => rb.includes(p)) && sa.feature === sb.feature) return cornerDimension(model, la, lb);
       return lineAngle(model, la, lb);
     }
   }
@@ -582,9 +597,13 @@ function classify(model: Model, n: string): PickClass | undefined {
   if (axis && model.isFrame(axis.frame)) return axis.axis !== "z" || model.dim === 3 ? "axis" : undefined;
   const triple = parsePointTriple(n);
   if (triple && triple.every((p) => model.entities.get(p)?.kind === "point")) return "face";
+  // A solid's flat face by its own name (`"e1.lid"`, `"e1:l2"` — solidref.ts)
+  // is a face too: `onplane`, `par` and `perp` take it as they take a triple.
+  if (isPlanarFace(model, n)) return "face";
   // A name may not hold a dot or a bar (`Model.claimName`), so one that does
-  // and is no reference is a pick of the kernel's.
-  return /[.|]/.test(n) ? "kernel" : undefined;
+  // and is no reference is a pick of the kernel's — as is a face by name that is
+  // not flat (a round wall, `"e1:c1"`), which has no dot to tell it by.
+  return /[.|]/.test(n) || parseFaceName(n) ? "kernel" : undefined;
 }
 
 /** The one greyed cell a pick of the kernel's own geometry gets, with why. */
@@ -658,15 +677,20 @@ function family(k: PickClass | undefined): string | undefined {
  * coordinates), and states a relation where it has none, which the solve then
  * makes true. Empty for a selection no relation takes.
  *
- * **Many at once** (n picks of one family): Equal, Parallel, Horizontal,
- * Vertical, Coincident, Concentric and Fix type one relation per pick against
- * the first — a star, not a chain, because a conflict among them then names
- * at most the two eqs that reach it, where a chain names every link between
- * (measured; the register) — as one line, which the command line makes one
- * undo step.
+ * **Many at once** (n picks of one family) is **one relation among them
+ * all** (docs/plans/review-relations.md): Equal, Parallel, Collinear,
+ * Coincident, Concentric, Coradial, and points Horizontal or Vertical with
+ * each other type one call — `par("l1", "l2", "l3", "l4")` — which is one
+ * entry, one name, a mark on each member, and nobody first: deleting any
+ * member leaves it over the rest. It was a star on the first pick, one
+ * relation a pair, which made the first pick the one the rest hung on. A pair
+ * typed here, like one typed anywhere, joins a relation of its kind that
+ * either pick is already in. Lines Horizontal or Vertical, and Fix, are each
+ * member's own relation to a datum, and stay one call a member on one line.
  */
 export function constraintsFor(model: Model, names: readonly string[]): Applicable[] {
-  const picked = [...new Set(names)].map((n) => ({ n, k: classify(model, n) })).filter((p) => p.k !== undefined);
+  // A wall given by its place is the wall of the entity now there, in everything typed (`faceRef`).
+  const picked = [...new Set(names.map((n) => faceRef(model, n)))].map((n) => ({ n, k: classify(model, n) })).filter((p) => p.k !== undefined);
   const kernel = picked.find((p) => p.k === "kernel");
   if (kernel) return [kernelCell(kernel.n)];
   const uniq = picked.map((p) => p.n);
@@ -703,9 +727,9 @@ export function constraintsFor(model: Model, names: readonly string[]): Applicab
   }
   if (n === 2 && count(isPoint) === 2) {
     const [a, b] = uniq;
-    add("Coincident", "coin", [a, b], (m) => coincident(m, a, b));
-    add("Horizontal", "horizontal", [a, b], (m) => parallel(m, a, b, m.axisRef("x")));
-    add("Vertical", "vertical", [a, b], (m) => parallel(m, a, b, m.axisRef("y")));
+    add("Coincident", "coin", [a, b], (m) => relate(m, "coincident", a, b));
+    add("Horizontal", "horizontal", [a, b], (m) => relate(m, "parallel", a, b, m.axisRef("x")));
+    add("Vertical", "vertical", [a, b], (m) => relate(m, "parallel", a, b, m.axisRef("y")));
   }
   if (n === 2 && count(isPoint) === 1 && count(isCurve) === 1) {
     const [p] = of(isPoint), [c] = of(isCurve);
@@ -726,10 +750,10 @@ export function constraintsFor(model: Model, names: readonly string[]): Applicab
   }
   if (n === 2 && count(isLine) === 2) {
     const [a, b] = uniq;
-    add("Parallel", "par", [a, b], (m) => parallel(m, a, b));
+    add("Parallel", "par", [a, b], (m) => relate(m, "parallel", a, b));
     add("Perpendicular", "perp", [a, b], (m) => perpendicular(m, a, b));
-    add("Equal", "eq", [a, b], (m) => equalLength(m, a, b));
-    add("Collinear", "col", [a, b], (m) => collinear(m, a, b));
+    add("Equal", "eq", [a, b], (m) => relate(m, "equalLength", a, b));
+    add("Collinear", "col", [a, b], (m) => relate(m, "collinear", a, b));
   }
   if (n === 2 && count(isLine) === 1 && (count(isAxis) === 1 || count(isFace) === 1)) {
     const [l] = of(isLine), [ref] = uniq.filter((x) => x !== l);
@@ -746,9 +770,9 @@ export function constraintsFor(model: Model, names: readonly string[]): Applicab
   }
   if (n === 2 && count(isCircular) === 2) {
     const [a, b] = uniq;
-    add("Concentric", "conc", [a, b], (m) => concentric(m, a, b));
-    add("Coradial", "corad", [a, b], (m) => coradial(m, a, b));
-    add("Equal", "eq", [a, b], (m) => equalLength(m, a, b));
+    add("Concentric", "conc", [a, b], (m) => relate(m, "concentric", a, b));
+    add("Coradial", "corad", [a, b], (m) => relate(m, "coradial", a, b));
+    add("Equal", "eq", [a, b], (m) => relate(m, "equalLength", a, b));
     for (const side of tangentSides(model, a, b)) {
       add(`Tangent (${side})`, "tan", [a, b, side], (m) => tangent(m, a, b, side));
     }
@@ -761,7 +785,7 @@ export function constraintsFor(model: Model, names: readonly string[]): Applicab
   }
   if (n === 2 && count(isCentred) === 2 && !(count(isCircular) === 2)) {
     const [a, b] = uniq;
-    add("Concentric", "conc", [a, b], (m) => concentric(m, a, b));
+    add("Concentric", "conc", [a, b], (m) => relate(m, "concentric", a, b));
   }
   if (n === 3 && count(isPoint) === 3) {
     const [mid, a, b] = uniq;
@@ -802,35 +826,43 @@ export function constraintsFor(model: Model, names: readonly string[]): Applicab
     add("Intersection", "intersection", [p, c1, c2], (m) => intersection(m, p, c1, c2));
   }
 
-  // --- many at once: one family, each against the first --------------------
+  // --- many at once: one family, one relation among them all ----------------
   const fam = n >= 1 && k.every((x) => family(x) === family(k[0])) && isEntity(k[0]) ? family(k[0]) : undefined;
   if (fam) {
-    const [first, ...rest] = uniq;
-    const star = (op: string, f: (m: Model, a: string, b: string) => string): [string, string[], (m: Model) => string][] =>
-      rest.map((b) => [op, [first, b], (m: Model) => f(m, first, b)]);
+    // One relation over every pick — `par("l1", "l2", "l3", "l4")` — in which
+    // no pick is first (relations/among.ts); joined to one a pick is already
+    // in, as a typed call is (`relate`).
+    const all = (label: string, word: string, op: string) =>
+      add(counted(label, n), word, [...uniq], (m) => relate(m, op, ...uniq));
+    // Points level or upright with each other: `horizontal("p1", "p2", "p3")`,
+    // which is `par` of them all against the default frame's axis.
+    const levelled = (label: string, word: string, axis: "x" | "y") =>
+      add(counted(label, n), word, [...uniq], (m) => relate(m, "parallel", ...uniq, m.axisRef(axis)));
+    // A line is level on its own account — against the axis, not against the
+    // other lines — so that stays one relation a line, as it was.
     const each = (op: string, f: (m: Model, a: string) => string): [string, string[], (m: Model) => string][] =>
       uniq.map((a) => [op, [a], (m: Model) => f(m, a)]);
-    const level = (axis: "x" | "y") => (m: Model, a: string, b?: string) => b === undefined ? parallel(m, a, m.axisRef(axis)) : parallel(m, a, b, m.axisRef(axis));
     if (fam === "line" && n >= 3) {
-      addMany(counted("Equal", n), star("eq", equalLength));
-      addMany(counted("Parallel", n), star("par", parallel));
+      all("Equal", "eq", "equalLength");
+      all("Parallel", "par", "parallel");
       if (sym) out.push(sym);
+      all("Collinear", "col", "collinear");
     }
     if (fam === "line" && n >= 2) {
-      addMany(counted("Horizontal", n), each("horizontal", level("x")));
-      addMany(counted("Vertical", n), each("vertical", level("y")));
+      addMany(counted("Horizontal", n), each("horizontal", (m, a) => parallel(m, a, m.axisRef("x"))));
+      addMany(counted("Vertical", n), each("vertical", (m, a) => parallel(m, a, m.axisRef("y"))));
     }
     if (fam === "point" && n >= 3) {
-      addMany(counted("Coincident", n), star("coin", coincident));
-      addMany(counted("Horizontal", n), star("horizontal", level("x")));
-      addMany(counted("Vertical", n), star("vertical", level("y")));
+      all("Coincident", "coin", "coincident");
+      levelled("Horizontal", "horizontal", "x");
+      levelled("Vertical", "vertical", "y");
     }
     if (fam === "circular" && n >= 3) {
-      addMany(counted("Concentric", n), star("conc", concentric));
-      addMany(counted("Coradial", n), star("corad", coradial));
-      addMany(counted("Equal", n), star("eq", equalLength));
+      all("Concentric", "conc", "concentric");
+      all("Coradial", "corad", "coradial");
+      all("Equal", "eq", "equalLength");
     }
-    if (fam === "ellipse" && n >= 3) addMany(counted("Concentric", n), star("conc", concentric));
+    if (fam === "ellipse" && n >= 3) all("Concentric", "conc", "concentric");
     out.push(...fixCells(model, uniq));
   }
   if (dimension) out.push(dimension);

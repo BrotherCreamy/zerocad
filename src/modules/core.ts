@@ -13,6 +13,7 @@ import * as basic from "../relations/basic.ts";
 import * as geom from "../relations/geometry.ts";
 import { measure } from "../relations/measure.ts";
 import { construction, set } from "../operations.ts";
+import { amongEntry, join, leave, relate } from "../among.ts";
 import { svg, dot } from "../tools/icons.ts";
 import { PointTool } from "../tools/point.ts";
 import { LineTool } from "../tools/line.ts";
@@ -39,15 +40,19 @@ export function lifted(model: Model, coords: number[]): number[] {
  * `horizontal("l1")` / `vertical("l1")`, and the two-point forms: `par`
  * against the default frame's x or y axis, resolved now (`axisRef`), so the
  * journal holds the `par` with the frame it meant. A line takes nothing more;
- * a point takes the second point.
+ * a point takes the second point — or more: `horizontal("p1", "p2", "p3")` is
+ * one relation among the three, `par("p1", "p2", "p3", "origin.x")`, and a
+ * point named with one already level with another joins that relation
+ * (docs/plans/review-relations.md).
  */
-function level(model: Model, axis: "x" | "y", word: string, a: string, b?: string | null): string {
+function level(model: Model, axis: "x" | "y", word: string, a: string, ...more: (string | null | undefined)[]): string {
   const ref = model.axisRef(axis);
+  const rest = more.filter((b): b is string => b != null);
   if (model.entities.get(a)?.kind === "point") {
-    if (b == null) throw new Error(`${word}("${a}") needs a second point — or give it a line`);
-    return geom.parallel(model, a, b, ref);
+    if (!rest.length) throw new Error(`${word}("${a}") needs a second point — or give it a line`);
+    return relate(model, "parallel", a, ...rest, ref);
   }
-  if (b != null) throw new Error(`${word} takes a line, or two points — "${a}" is not a point, so nothing more`);
+  if (rest.length) throw new Error(`${word} takes a line, or two points or more — "${a}" is not a point, so nothing more`);
   return geom.parallel(model, a, ref);
 }
 
@@ -111,29 +116,33 @@ defineModule("core", {
     // 3D only: the point in the plane of three others, all four moving — the
     // both-ways hold an offset keeps its copy in its chain's plane by (profiles-held.md).
     coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar, twin: "shape" },
-    coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), fn: basic.coincident, twin: "shape" },
+    // The relations that hold among many equals — `par("l1", "l2", "l3", "l4")`
+    // is one relation, not a star on the first (docs/plans/review-relations.md).
+    // A twin on a linked profile is the relation as written — the entry's `fn`,
+    // which never joins — over the partner members (docs/plans/linked-profiles.md).
+    coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), ...amongEntry("coincident"), twin: "shape" },
     midpoint: { names: ["mid", "midpoint"], slots: slots("midpoint", "a", "b"), fn: basic.midpoint, twin: "shape" },
     // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
     // frame-axis reference — `par("l1", yaxis())` is what `ver("l1")` was.
-    parallel: { names: ["par", "parallel"], slots: slots("a", "b", "c"), fn: geom.parallel, twin: "direction" },
+    parallel: { names: ["par", "parallel"], slots: slots("a", "b", "c"), ...amongEntry("parallel"), twin: "direction" },
     perpendicular: { names: ["perp", "perpendicular"], slots: slots("a", "b", "c"), fn: geom.perpendicular, twin: "direction" },
     angle: { names: ["ang", "angle"], slots: slots("a", "b", "#angle"), fn: geom.angle, twin: "direction" },
     pointOnLine: { names: ["on", "pointOnLine"], slots: slots("point", "line"), fn: geom.pointOnLine, twin: "shape" },
-    equalLength: { names: ["eq", "equalLength"], slots: slots("line", "line"), fn: geom.equalLength, twin: "shape" },
+    equalLength: { names: ["eq", "equalLength"], slots: slots("line", "line"), ...amongEntry("equalLength"), twin: "shape" },
     symmetric: { names: ["sym", "symmetric"], slots: slots("a", "b", "line"), fn: geom.symmetric, twin: "shape" },
     // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
     // `vertical` are the words an Onshape hand types, and they **expand to
     // par** against the default frame's axis — `par("l1", xaxis())` is what is
     // journalled and drawn (`—`), so there is still no hor/ver relation, only a
     // second spelling of the one that exists.
-    collinear: { names: ["col", "collinear"], slots: slots("line", "line"), fn: geom.collinear, twin: "shape" },
+    collinear: { names: ["col", "collinear"], slots: slots("line", "line"), ...amongEntry("collinear"), twin: "shape" },
     horizontal: {
       names: ["horizontal"], slots: slots("a", "b"), op: false,
-      fn: (model: Model, a: string, b?: string | null) => level(model, "x", "horizontal", a, b),
+      fn: (model: Model, a: string, ...more: (string | null)[]) => level(model, "x", "horizontal", a, ...more),
     },
     vertical: {
       names: ["vertical"], slots: slots("a", "b"), op: false,
-      fn: (model: Model, a: string, b?: string | null) => level(model, "y", "vertical", a, b),
+      fn: (model: Model, a: string, ...more: (string | null)[]) => level(model, "y", "vertical", a, ...more),
     },
     equalSpacing: { names: ["spacing", "equalSpacing"], slots: slots("point", "point", "point"), fn: geom.equalSpacing, twin: "shape" },
     measure: { names: ["measure"], slots: slots("#kind", "a", "b"), fn: measure },
@@ -146,6 +155,10 @@ defineModule("core", {
     // it changed resolved, never the group or feature typed, so a replay flags
     // exactly the entities the call did.
     construction,
+    // Who is in a relation among many (../among.ts): each journalled as the
+    // one edit it was, and written by a deletion that takes a member.
+    join,
+    leave,
   },
   menu: [
     { label: "Point", tool: "point" },
@@ -208,11 +221,16 @@ defineModule("core", {
     "           or on the face, with onplane. A point off that plane snaps at",
     "           its projection onto it (a dashed square) and infers nothing.",
     "           A face: each click decides its own — the face under the pointer",
-    "           is lit, named beside it (▱ e1.m3) and in the chip (on e1.m3)",
-    '           before the click; the point is held by onplane(p, "e1.m3"), the',
-    "           face named as the kernel names it (e1.base, e1.lid, e1.m3) and",
-    "           read off its feature, so it follows a set of the depth; a curve",
-    '           drawn wholly on one face gets par(c, "e1.m3") on its normal too.',
+    "           is lit, named beside it (▱ e1:l2) and in the chip (on e1:l2)",
+    '           before the click; the point is held by onplane(p, "e1:l2"). A',
+    "           face is named by what it is swept from: e1.base and e1.lid the",
+    "           caps, e1:l2 the wall of e1 swept from the line l2 — found again",
+    "           every time it is read, so it follows a set of the depth and a",
+    "           trim, split or fillet of the profile. Deleting l2 takes what is",
+    "           held to its wall, and the log says so. (e1.m3, the wall's place",
+    "           in the profile, still reads: it is written e1:l… the moment a",
+    "           relation is made or an old file opened.) A curve drawn wholly",
+    '           on one face gets par(c, "e1:l2") on its normal too.',
     "           A three-point circle may have a point on each of three faces.",
     "           Snaps on a face are the face's: its edges and corners, and what",
     "           lies in it. A round face places the point and holds nothing;",
@@ -237,6 +255,18 @@ defineModule("core", {
     '           — and |. tan at a shared end is a smooth join. deg(30) is radians.',
     '           measure("dist", a, b) — or "angle", "radius", "diameter" — is a',
     "           driven dimension: drawn in parentheses, live, holding nothing.",
+    "among many par eq col coin conc corad eqrad take any number: par(l1, l2,",
+    "           l3, l4) is one relation among the four — one name, a mark on",
+    "           each, and none of them first. Delete one, whichever, and the",
+    "           relation stays over the rest (down to two; one left, it goes).",
+    "           Type one naming a member and the other joins: par(l2, l9) adds",
+    "           l9 to the relation l2 is in, and merges two it bridges. Points",
+    '           level with each other: horizontal("p1", "p2", "p3"), which is',
+    '           par("p1", "p2", "p3", "origin.x"). join("r3", "l9") and',
+    '           leave("r3", "l2") change who is in one by name (a line\'s menu:',
+    "           Leave r3). A line level with an axis, or held to a face, is its",
+    "           own relation and joins nothing. A file's relations replay as",
+    "           written: pairs made before this stay pairs until one is joined.",
     "diagnosis  After each solve: free entities are drawn blue (Onshape's), held",
     "           ones in the sketch's ink, and the status says SOLVED · 3 free —",
     "           how many ways the drawing can still move. A point on the drawing",
@@ -263,9 +293,10 @@ defineModule("core", {
     "           It takes every standard one (docs/plans/relations-complete.md):",
     "           a frame's arm is its axis (in 3D the z arm its plane: On plane,",
     "           Normal to plane); a solid's flat face is On face / Normal to",
-    "           face; five lines picked take Equal, Parallel, Horizontal for",
-    "           all five, each against the first, one undo step; Fix pins what",
-    "           is picked where it stands, drawn as a padlock. A relation that",
+    "           face; five lines picked take Equal, Parallel or Collinear as",
+    "           one relation among the five (see among many), Horizontal for",
+    "           each, one undo step; Fix pins what is picked where it stands,",
+    "           drawn as a padlock. A relation that",
     "           cannot apply here is greyed with why — a spline end that meets",
     "           nothing, a face the solid kernel made — and a press says it.",
     "clauses    _ is the thing being made. A relation given _ does not apply:",

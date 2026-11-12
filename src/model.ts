@@ -470,6 +470,10 @@ export function parseValueRef(ref: string): { name: string; property: string } {
  */
 export function referentOf(arg: unknown): string | null {
   if (typeof arg !== "string") return null;
+  // A wall named by what it is swept from (`"e1:l2"`, `parseFaceName`) is its
+  // feature's, as `"e1.lid"` is; the entity behind it is `referentsOf`'s.
+  const wall = WALL_NAME.exec(arg);
+  if (wall) return wall[1];
   const dot = arg.indexOf(".");
   return dot < 0 ? arg : arg.slice(0, dot);
 }
@@ -483,6 +487,10 @@ export function referentOf(arg: unknown): string | null {
 export function referentsOf(arg: unknown): string[] {
   const pts = typeof arg === "string" ? parsePointTriple(arg) : null;
   if (pts) return pts;
+  // A wall by name is about two things — its feature, and the profile entity
+  // it is swept from — and goes with either (docs/plans/review-relations.md).
+  const wall = typeof arg === "string" ? WALL_NAME.exec(arg) : null;
+  if (wall) return [wall[1], wall[2]];
   const one = referentOf(arg);
   return one === null ? [] : [one];
 }
@@ -492,31 +500,60 @@ export function argRefersTo(arg: unknown, name: string): boolean {
   return referentsOf(arg).includes(name);
 }
 
-/** A face's name, parsed: whose feature, and which face — a cap, or the wall one member swept (`member`, loop by loop; -1 for a cap). */
+/**
+ * A face's name, parsed: whose feature, and which face — a cap, or a wall. A
+ * wall is named by **what it is swept from** (`entity`, `"e1:l2"`), which is
+ * what a relation journals; or by its place in the profile, loop by loop
+ * (`member`, `"e1.m3"`), which is how the solid kernel tags the faces of one
+ * build and what a file from before format 20 wrote. `member` is -1 for a cap
+ * and for a wall named by its entity.
+ */
 export interface FaceName {
   feature: string;
   role: "base" | "lid" | "member";
   member: number;
+  entity?: string;
 }
 
 /**
- * The shape of a solid's face's name, as the solid kernel names one
- * (src/solids/naming.ts): `e1.base`, `e1.lid`, `e1.m3` for the wall the
- * profile's fourth member swept. Here, where the namespace is owned
- * (`claimName` refuses a dot in any name), so that `parseAxisRef` can tell a
- * face from a mistyped axis and `referentOf` reads the feature behind it; what
- * a face is *made of* is the relations layer's (relations/solidref.ts).
+ * The shape of a solid's face's name (docs/plans/review-relations.md):
+ *
+ * - `e1.base`, `e1.lid` — a cap;
+ * - **`e1:l2`** — the wall of `e1` swept from the profile entity `l2`. The
+ *   form a relation holds: it names the entity, so a trim, a split or a fillet
+ *   of the profile, each of which moves every later wall's *place*, leaves it
+ *   meaning the wall it meant. A colon, not a second dot, because what follows
+ *   a dot is a word this layer owns (`lid`, `base`, `x`, `value`) and what
+ *   follows the colon is a name the user owns: `e1.m3` and `e1:m3` — the wall
+ *   of an entity someone called `m3` — must not be one string;
+ * - `e1.m3` — the wall in place 3 of the profile, loop by loop: the solid
+ *   kernel's tag for a face of one build (src/solids/naming.ts), and the old
+ *   written form. Still read, and turned into the form above wherever a
+ *   relation is made or replayed (relations/solidref.ts's `faceRef`).
+ *
+ * Here, where the namespace is owned (`claimName` refuses a dot and a colon
+ * in any name), so that `parseAxisRef` can tell a face from a mistyped axis and
+ * `referentsOf` reads the feature and the entity behind it; what a face is
+ * *made of* is the relations layer's (relations/solidref.ts).
  */
 const FACE_NAME = /^(e\d+)\.(base|lid|m(\d+))$/;
+const WALL_NAME = /^(e\d+):([^.:|\s]+)$/;
 
-/** `e1.lid` → `{ feature: "e1", role: "lid" }`, `e1.m3` → the fourth member's wall, or null for anything else. */
+/** `e1.lid` → `{ feature: "e1", role: "lid" }`, `e1:l2` → the wall swept from `l2`, `e1.m3` → the wall in place 3, or null for anything else. */
 export function parseFaceName(name: unknown): FaceName | null {
   if (typeof name !== "string") return null;
+  const wall = WALL_NAME.exec(name);
+  if (wall) return { feature: wall[1], role: "member", member: -1, entity: wall[2] };
   const m = FACE_NAME.exec(name);
   if (!m) return null;
   return m[2] === "base" || m[2] === "lid"
     ? { feature: m[1], role: m[2], member: -1 }
     : { feature: m[1], role: "member", member: Number(m[3]) };
+}
+
+/** The written form of the wall of `feature` swept from `entity`: `"e1:l2"`. */
+export function wallName(feature: string, entity: string): string {
+  return `${feature}:${entity}`;
 }
 
 /**
@@ -1483,6 +1520,10 @@ export class Model {
     // would depend on the order the drawing happened to be built in.
     if (name.includes(".")) {
       throw new Error(`"${name}" cannot contain a dot — "f1.x" names a frame's axis`);
+    }
+    // And a colon is a solid's wall by the entity it is swept from (`parseFaceName`).
+    if (name.includes(":")) {
+      throw new Error(`"${name}" cannot contain a colon — "e1:l2" names the wall of e1 swept from l2`);
     }
     if (this.has(name)) throw new Error(`"${name}" already exists`);
     // An explicit name that looks like an auto-generated one moves the counter

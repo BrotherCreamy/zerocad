@@ -19,6 +19,7 @@ import { Model } from "../src/model.ts";
 import { dist, onPlane } from "../src/relations/basic.ts";
 import { arcEndpoints, coradial, equalLength, intersection, pierce, symmetric } from "../src/relations/geometry.ts";
 import { addSpline } from "../src/relations/spline.ts";
+import { among } from "../src/relations/among.ts";
 import { addEllipse, semiAxes } from "../src/kinds/ellipse.ts";
 import { open, save } from "../src/persist.ts";
 import { del } from "../src/operations.ts";
@@ -138,7 +139,7 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   [["p", "q", "r"], ["Midpoint", "Equal spacing", "Coincident (all 3)", "Horizontal (all 3)", "Vertical (all 3)", "Fix (all 3)", "Angle at a vertex"]],
   [["p", "q", "l3"], ["Symmetric"]],
   [["p", "q", "origin.y"], ["Symmetric"]],
-  [["l1", "l2", "l3"], ["Equal (all 3)", "Parallel (all 3)", "Symmetric", "Horizontal (all 3)", "Vertical (all 3)", "Fix (all 3)"]],
+  [["l1", "l2", "l3"], ["Equal (all 3)", "Parallel (all 3)", "Symmetric", "Collinear (all 3)", "Horizontal (all 3)", "Vertical (all 3)", "Fix (all 3)"]],
   [["l1", "l2", "origin.y"], ["Symmetric"]],
   [["c1", "c2", "l3"], ["Symmetric"]],
   [["a1", "a2", "l3"], ["Symmetric"]],
@@ -146,7 +147,7 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   [["p", "l1", "e1"], ["Intersection"]],
   [["c1", "c2", "c3"], ["Concentric (all 3)", "Coradial (all 3)", "Equal (all 3)", "Fix (all 3)"]],
   // many
-  [FIVE, ["Equal (all 5)", "Parallel (all 5)", "Horizontal (all 5)", "Vertical (all 5)", "Fix (all 5)"]],
+  [FIVE, ["Equal (all 5)", "Parallel (all 5)", "Collinear (all 5)", "Horizontal (all 5)", "Vertical (all 5)", "Fix (all 5)"]],
   [POINTS5, ["Equal spacing", "Coincident (all 5)", "Horizontal (all 5)", "Vertical (all 5)", "Fix (all 5)"]],
   // a solid's own geometry the kernel computed: greyed, with the reason
   [["e9.lid|e9.m0"], ["Relate!"]],
@@ -206,7 +207,9 @@ test("the texts the table types are the house's names", () => {
   assert.equal(text(["c1", "c2"], "Tangent (outside)"), 'tan("c1", "c2", "outside")');
   assert.equal(text(["l1", "s1"], "Tangent"), 'tan("l1", "s1")');
   assert.equal(text(["c1", "c2", "l3"], "Symmetric"), 'sym("c1", "c2", "l3")');
-  assert.equal(text(FIVE, "Equal (all 5)"), 'eq("l1", "l2"); eq("l1", "l3"); eq("l1", "l4"); eq("l1", "l5")');
+  // Many at once is one call, one relation among them all (docs/plans/review-relations.md).
+  assert.equal(text(FIVE, "Equal (all 5)"), 'eq("l1", "l2", "l3", "l4", "l5")');
+  assert.equal(text(POINTS5, "Horizontal (all 5)"), `horizontal(${POINTS5.map((p) => JSON.stringify(p)).join(", ")})`);
   assert.equal(text(["l1", "l2"], "Horizontal (both)"), 'horizontal("l1"); horizontal("l2")');
   assert.equal(text(["a1"], "Fix"), 'fix("a1c", [22, 0, 0]); fix("sp2", [18, 0, 0]); fix("a1e", [26, 0, 0])');
   assert.match(constraintsFor(m, ["l2", "s1"])[0].off!, /neither end of "s1" meets "l2"/);
@@ -215,28 +218,32 @@ test("the texts the table types are the house's names", () => {
 
 // --- many at once ------------------------------------------------------------
 
-test("many at once: five lines, Equal, is four relations against the first — one entry, so one undo step", async () => {
+test("many at once: five lines, Equal, is one relation among the five — one call, so one undo step", async () => {
+  // It was four relations, each against the first pick (#82). One relation
+  // among equals now (docs/plans/review-relations.md): test/reviewrelations.test.ts
+  // has what that means for a member deleted, a join and an old file.
   const m = fixture(2);
   const equal = constraintsFor(m, FIVE).find((a) => a.label === "Equal (all 5)")!;
-  assert.ok(!equal.text.includes("\n"), "one line, so the command line makes it one undo step");
+  assert.ok(!equal.text.includes("\n") && !equal.text.includes(";"), "one call on one line, so the command line makes it one undo step");
   const repl = new Repl(neocadScope({ model: m, arm: () => {}, view: { ox: 0, oy: 0, scale: 3 }, refresh: () => {} }));
   const before = m.relations.size;
   const r = await repl.eval(equal.text);
   assert.equal(r.ok, true, r.error?.message ?? "");
   const made = [...m.relations.values()].slice(before);
-  assert.equal(made.length, 4, "n − 1");
-  for (const rel of made) assert.equal(rel.args[0], "l1", "a star, each against the first pick");
+  assert.equal(made.length, 1, "one relation");
+  assert.deepEqual(made[0].args, FIVE, "naming every pick, none of them more than another");
   solved(m);
   const len = (l: string) => Math.hypot(...m.coords(`${l}b`).map((v, i) => v - m.coords(`${l}a`)[i]));
   for (const l of FIVE) close(len(l), len("l1"), 1e-6, l);
 });
 
-test("a star names fewer relations in a conflict than a chain would — measured with the conflict search", () => {
-  // The register's decision (TODO.md): many-at-once relates each pick to the
-  // first, not each to the one before. With two of eight lines dimensioned
-  // to different lengths, the star's conflict is the two dimensions and the
-  // two eqs that reach them, wherever they are; the chain's is every eq on
-  // the path between them — up to n − 1 of them.
+test("a star names fewer relations in a conflict than a chain would — and one relation among many names itself once", () => {
+  // The measurement #82 chose the star by, kept as the record of it: with two
+  // of eight lines dimensioned to different lengths, a star's conflict is the
+  // two dimensions and the two eqs that reach them, wherever they are; a
+  // chain's is every eq on the path between them — up to n − 1 of them. One
+  // relation among the eight (relations/among.ts) is named once whichever two
+  // disagree, which is fewer than either.
   const named = (shape: "star" | "chain", a: number, b: number) => {
     const m = new Model(2);
     for (let i = 0; i < 8; i++) {
@@ -254,6 +261,19 @@ test("a star names fewer relations in a conflict than a chain would — measured
   // The one case a chain wins: the two neighbours in it.
   assert.equal(named("star", 2, 3), 4);
   assert.equal(named("chain", 2, 3), 3);
+  const among8 = (a: number, b: number) => {
+    const m = new Model(2);
+    for (let i = 0; i < 8; i++) {
+      m.addPoint([0, i * 10], `a${i}`); m.addPoint([10 + i, i * 10], `b${i}`); m.addLine(`a${i}`, `b${i}`, `l${i}`);
+    }
+    const r = among(m, "equalLength", ...Array.from({ length: 8 }, (_, i) => `l${i}`));
+    dist(m, `a${a}`, `b${a}`, 10);
+    dist(m, `a${b}`, `b${b}`, 20);
+    const names = m.conflicting(m.solve()).relations;
+    assert.equal(names.filter((n) => n === r).length, 1, "named once");
+    return names.length;
+  };
+  for (const [a, b] of [[1, 7], [0, 7], [2, 3]]) assert.equal(among8(a, b), 3, `the relation and the two dimensions, for ${a} and ${b}`);
 });
 
 // --- the new relation, and the new forms of old ones ----------------------------

@@ -30,6 +30,7 @@ import {
 } from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
 import { ungroup } from "./groups.ts";
+import { leaveFor, shrinkFor } from "./among.ts";
 
 function unit(v: number[]): number[] {
   const len = Math.hypot(...v);
@@ -4238,9 +4239,40 @@ function cascade(model: Model, name: string, extra: readonly string[] = []): str
   // an axis (`par("l1","f.x")`) still takes that relation with it, and so
   // does a face's `"p1.p2.p3"` any of its three points — see
   // `Model.relationsNaming`.
-  const relations = [...model.relations.values()]
-    .filter((r) => asked.has(r.name) || r.args.some((a) => referentsOf(a).some((n) => doomed.has(n))))
-    .map((r) => r.name);
+  //
+  // **A relation among many loses a member and stays** (among.ts,
+  // docs/plans/review-relations.md): `par("l1", "l2", "l3", "l4")` with `l1`
+  // on its way out is `par("l2", "l3", "l4")` afterwards, under its name —
+  // whichever member it was, so the first one picked is no more load-bearing
+  // than the last. Down to two; with one left it goes like any other. Its
+  // twin on a linked profile loses the partner member in the same deletion
+  // (`linkedClosure` dooms both), by the same rule, and so is its twin still.
+  const shrinking = new Map<string, string[]>();
+  const relations: string[] = [];
+  for (const r of model.relations.values()) {
+    if (!asked.has(r.name) && !r.args.some((a) => referentsOf(a).some((n) => doomed.has(n)))) continue;
+    const leaving = asked.has(r.name) ? null : shrinkFor(model, r, doomed);
+    if (leaving) shrinking.set(r.name, leaving);
+    else relations.push(r.name);
+  }
+  // **A twin is its partner's to keep** (twins.ts). Where the relation it is
+  // the twin of stays — shrunk here, or untouched — the twin is neither
+  // shrunk nor deleted on its own account: it is forgotten, and the pass that
+  // follows the partner's `leave` makes it again from what the partner then
+  // says. So no `leave` is journalled for a twin, as no entry is for its
+  // making, and a replay — which makes the twin again after the partner's
+  // `leave`, before this deletion's entities go — reads the same. One a
+  // person made that was adopted as a twin is their relation, and is treated
+  // as any other.
+  const stale: string[] = [];
+  for (const r of model.relations.values()) {
+    if (!r.twin || r.twin.adopted || asked.has(r.name)) continue;
+    if (!shrinking.has(r.name) && !relations.includes(r.name)) continue;
+    if (relations.includes(r.twin.of) || !model.relations.has(r.twin.of)) continue; // the pair goes as one
+    shrinking.delete(r.name);
+    if (relations.includes(r.name)) relations.splice(relations.indexOf(r.name), 1);
+    stale.push(r.name);
+  }
   // Every record naming an **entity** on the way out — the inward rule — plus
   // the record asked for. Not a relation: one a record names going leaves the
   // record, unbuilt and saying why (`Model.deleteRelation`).
@@ -4298,6 +4330,12 @@ function cascade(model: Model, name: string, extra: readonly string[] = []): str
     model.deleteRelation(r);
     removed.push(...pair);
   }
+  // The members going leave the relations that stay — journalled as a `leave`
+  // each, ahead of the deletions, so a replay leaves them the same way. A
+  // twin of one is forgotten first and made again by the pass that follows
+  // its partner's `leave` (see `stale`).
+  for (const t of stale) if (model.relations.has(t)) model.forgetRelation(t);
+  for (const [r, leaving] of shrinking) if (model.relations.has(r)) leaveFor(model, r, leaving);
   // Then entities, dependents before the things they depend on. A pass at a
   // time rather than a hand-written order, so this stays right if an entity
   // kind that references another entity is ever added.

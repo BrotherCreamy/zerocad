@@ -77,14 +77,22 @@ const facePlane = (a: AppContext, name: string) => a.page.evaluate(async (name) 
  * The faces of e1 drawn this frame, each with the middle of the pixels it is
  * in front at and how many — walls first, as the owner aimed at one. Asked of
  * the app's own face pick (solidpick.ts), cell by cell, so the pixel a test
- * aims at is one the app itself says is that face.
+ * aims at is one the app itself says is that face. Named as the app writes a
+ * face — a wall by the line it is swept from, `e1:l2`, through solidref.ts's
+ * `faceRef` (docs/plans/review-relations.md) — where the drawn face carries
+ * the kernel's tag, its place in the profile.
  */
 interface Seen { name: string; at: [number, number]; area: number; box: [number, number, number, number] }
 async function facesInSight(a: AppContext): Promise<Seen[]> {
   const found = await a.page.evaluate(async () => {
-    const [solidpickPath] = ["/src/solidpick.ts"];
-    const { faceUnder } = await import(solidpickPath);
-    const { engine } = (window as never as Neo).__neocad;
+    const [solidpickPath, solidrefPath] = ["/src/solidpick.ts", "/src/relations/solidref.ts"];
+    const { faceUnder: tagUnder } = await import(solidpickPath);
+    const { faceRef } = await import(solidrefPath);
+    const { engine, model } = (window as never as Neo).__neocad;
+    const faceUnder = (drawn: unknown, x: number, y: number) => {
+      const f = tagUnder(drawn, x, y);
+      return f ? { ...f, name: faceRef(model, f.name) as string } : null;
+    };
     const cv = document.getElementById("cv") as HTMLCanvasElement;
     const step = 4;
     const sums: Record<string, { sx: number; sy: number; n: number; box: [number, number, number, number] }> = {};
@@ -100,16 +108,18 @@ async function facesInSight(a: AppContext): Promise<Seen[]> {
     }
     return Object.entries(sums).map(([name, s]) => ({ name, at: [Math.round(s.sx / s.n), Math.round(s.sy / s.n)] as [number, number], area: s.n * step * step, box: s.box }));
   });
-  const walls = found.filter((f) => f.name.includes(".m")).sort((p, q) => q.area - p.area);
-  return [...walls, ...found.filter((f) => !f.name.includes(".m"))];
+  const walls = found.filter((f) => f.name.includes(":")).sort((p, q) => q.area - p.area);
+  return [...walls, ...found.filter((f) => !f.name.includes(":"))];
 }
 
-/** The face the app says is drawn under a pixel, by name, or null. */
+/** The face the app says is drawn under a pixel, by its written name, or null. */
 const faceAt = (a: AppContext, at: [number, number]) => a.page.evaluate(async (at) => {
-  const [solidpickPath] = ["/src/solidpick.ts"];
+  const [solidpickPath, solidrefPath] = ["/src/solidpick.ts", "/src/relations/solidref.ts"];
   const { faceUnder } = await import(solidpickPath);
-  const { engine } = (window as never as Neo).__neocad;
-  return faceUnder(engine.drawnFaces, at[0], at[1])?.name ?? null;
+  const { faceRef } = await import(solidrefPath);
+  const { engine, model } = (window as never as Neo).__neocad;
+  const tag = faceUnder(engine.drawnFaces, at[0], at[1])?.name;
+  return tag ? faceRef(model, tag) as string : null;
 }, at);
 
 const relations = (a: AppContext) => a.page.evaluate(() =>
@@ -205,7 +215,7 @@ async function nearEdge(a: AppContext, wall: { name: string; at: [number, number
   const edges = await a.page.evaluate((name) => {
     const m = (window as never as Neo).__neocad.model;
     const f = m.features.get("e1")!;
-    const i = Number(name.split(".m")[1]);
+    const i = f.loops[0].indexOf(name.split(":")[1]); // a wall is written by its line (docs/plans/review-relations.md)
     const ends = m.line(f.loops[0][i]).refs;
     const lines = [f.loops[0][i], f.twins[0][i], ...f.walls.filter((w) => m.entities.get(w)?.kind === "line" && m.line(w).refs.some((p) => ends.includes(p)))];
     return lines.map((l) => m.line(l).refs.map((p) => m.coords(p)));
@@ -231,7 +241,7 @@ async function nearEdge(a: AppContext, wall: { name: string; at: [number, number
 test("bug 72 (a), by mouse: a prism, the view orbited, the circle tool's centre clicked on a wall — one circle, its centre on the wall, not swallowed", () => withApp({}, async (a) => {
   await prism(a);
   const [wall] = await facesInSight(a);
-  assert.ok(wall?.name.includes(".m"), `a wall of the prism in sight: ${JSON.stringify(await facesInSight(a))}`);
+  assert.ok(wall?.name.includes(":"), `a wall of the prism in sight: ${JSON.stringify(await facesInSight(a))}`);
   const face = await facePlane(a, wall.name);
   await type(a, 'arm("circle", { method: "centre" })');
   await click(a, wall.at);
@@ -416,7 +426,7 @@ async function lookWithFinger(a: AppContext, hand: Awaited<ReturnType<typeof fin
 test("on an iPhone 13, by finger: a tap on a wall lands and holds the circle's centre there, the face lit and named while the finger is down", () => withApp({ device: "iPhone 13" }, async (a) => {
   const hand = await fingerPrism(a);
   const [wall] = await facesInSight(a);
-  assert.ok(wall?.name.includes(".m"), `a wall in sight: ${JSON.stringify(await facesInSight(a))}`);
+  assert.ok(wall?.name.includes(":"), `a wall in sight: ${JSON.stringify(await facesInSight(a))}`);
   const face = await facePlane(a, wall.name);
   const arm = 'arm("circle", { method: "centre" })';
   await type(a, arm);
@@ -453,7 +463,7 @@ test("on an iPhone 13, by finger: three taps on three faces make a circle throug
   const hand = await fingerPrism(a);
   const faces = await facesInSight(a);
   const [wallA, wallB, lid] = [faces[0], faces[1], faces.find((f) => f.name === "e1.lid")!];
-  assert.ok(wallB?.name.includes(".m") && lid, `three faces in sight: ${JSON.stringify(faces)}`);
+  assert.ok(wallB?.name.includes(":") && lid, `three faces in sight: ${JSON.stringify(faces)}`);
   const arm = 'arm("circle", { method: "3pt" })';
   await type(a, arm);
   // The finger on the lid before anything is tapped: named in the chip; pictured; then the tool afresh and the three taps.

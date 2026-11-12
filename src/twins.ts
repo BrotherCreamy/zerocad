@@ -180,6 +180,8 @@ function carried(model: Model, kind: TwinKind, map: ReadonlyMap<string, string>,
       continue;
     }
     if (model.has(a)) return null;
+    // A solid's wall by the entity it is swept from (`"e1:l2"`): a face, which is outside any profile.
+    if (a.includes(":")) return null;
     if (a.includes(".")) {
       let axis = false;
       try { axis = parseAxisRef(a) !== null; } catch { axis = false; }

@@ -31,8 +31,8 @@ import type { Model } from "../model.ts";
 import { Dual } from "../kernel/dual.ts";
 import { semiAxes } from "../kinds/ellipse.ts";
 import { directionOf, frameBasis } from "./refs.ts";
-import { arcLengthNow } from "./smartdim.ts";
-import { edgeSource, faceDistanceNow, faceSource, isPlanarFace, planeNow, pointNow } from "./solidref.ts";
+import { arcLengthNow, cornerNow } from "./smartdim.ts";
+import { edgeSource, faceDistanceNow, faceKernelNames, faceRef, faceSource, isPlanarFace, planeNow, pointNow } from "./solidref.ts";
 
 /** What a driven dimension can measure, and how many names each takes. */
 export const MEASURE_KINDS: Readonly<Record<string, readonly number[]>> = {
@@ -42,6 +42,7 @@ export const MEASURE_KINDS: Readonly<Record<string, readonly number[]>> = {
   diameter: [1],
   along: [3],
   angle3: [3],
+  corner: [2],
   arclen: [1],
   major: [1],
   minor: [1],
@@ -89,7 +90,14 @@ export function solidGeometry(model: Model, name: string): SolidGeometry | null 
   }
   const edge = edgeSource(model, name);
   if (edge && model.entities.get(edge)?.kind === "line") return solidGeometry(model, edge);
-  return reader?.(name) ?? null;
+  // The kernel knows a face by its tag of this build — a wall by its place —
+  // so a wall named by its entity is asked for under each place it is now.
+  if (!reader) return null;
+  for (const tag of faceKernelNames(model, name)) {
+    const g = reader(tag);
+    if (g) return g;
+  }
+  return null;
 }
 
 /** A place on whatever a name is: a point, a line's middle, a curve's centre, a face's own point, an edge's middle. */
@@ -119,14 +127,17 @@ export function directionNow(model: Model, ref: string): number[] {
  * read later, so a mistyped one refuses where it was typed rather than drawing
  * `?` on the canvas.
  */
-export function measure(model: Model, kind: string, ...names: string[]): string {
+export function measure(model: Model, kind: string, ...given: string[]): string {
   const counts = MEASURE_KINDS[kind];
   if (!counts) {
     throw new Error(`measure takes what to measure first — ${Object.keys(MEASURE_KINDS).map((k) => JSON.stringify(k)).join(", ")} — not ${JSON.stringify(kind)}`);
   }
-  if (!counts.includes(names.length)) {
-    throw new Error(`measure("${kind}", …) takes ${counts.join(" or ")} name${counts.at(-1) === 1 ? "" : "s"}, not ${names.length}`);
+  if (!counts.includes(given.length)) {
+    throw new Error(`measure("${kind}", …) takes ${counts.join(" or ")} name${counts.at(-1) === 1 ? "" : "s"}, not ${given.length}`);
   }
+  // A wall given by its place is journalled as the wall of the entity now
+  // there (solidref.ts's `faceRef`), as every relation that takes a face does.
+  const names = given.map((n) => faceRef(model, n));
   // Read it once now: whatever the arguments are, the reading must work.
   const v = measured(model, [kind, ...names]);
   if (!Number.isFinite(v)) throw new Error(`measure("${kind}", ${names.map((n) => JSON.stringify(n)).join(", ")}) has nothing to measure`);
@@ -206,6 +217,7 @@ export function measured(model: Model, args: readonly unknown[]): number {
       const u = sub(model.coords(p), model.coords(v)), w = sub(model.coords(q), model.coords(v));
       return Math.acos(Math.max(-1, Math.min(1, dotN(u, w) / (len(u) * len(w)))));
     }
+    case "corner": return model.entities.get(a)?.kind === "line" && model.entities.get(b ?? "")?.kind === "line" ? cornerNow(model, a, b!).angle : NaN;
     case "arclen": return arcLengthNow(model, a);
     case "major": return semiAxes(model, a).a;
     case "minor": return Math.abs(semiAxes(model, a).b);

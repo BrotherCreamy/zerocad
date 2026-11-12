@@ -799,7 +799,7 @@ export function extendReach(model: Model, curve: string, end: unknown, to?: stri
   const shared = model.dependents(point).filter((d) => d.name !== curve && !walls.has(d.name)).map((d) => d.name);
   if (shared.length) throw new Error(`${point} is also ${shared.join(" and ")}'s — extend lengthens a free end, and this one is a corner`);
   const joined = [...model.relations.values()].find((r) => r.op === "coincident" && r.args.includes(point));
-  if (joined) throw new Error(`${point} is held to ${joined.args.find((a) => a !== point)} by ${joined.name} — extend lengthens a free end; del("${joined.name}") frees it`);
+  if (joined) throw new Error(`${point} is held to ${joined.args.filter((a) => a !== point).join(" and ")} by ${joined.name} — extend lengthens a free end; del("${joined.name}") frees it`);
   if (to != null && !model.entities.has(to)) throw new Error(`extend: "${to}" is not there to reach`);
   const reach = reachOf(model, curve, which, to ?? null);
   if (!reach) {

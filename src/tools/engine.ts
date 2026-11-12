@@ -70,7 +70,7 @@
 
 import { spanOf, valueArgIndex, type Model } from "../model.ts";
 import { faceShade, faceUnder, pickSolid, SHADE_PX, type DrawnFaces } from "../solidpick.ts";
-import { describeFace, isPlanarFace, planeNow } from "../relations/solidref.ts";
+import { describeFace, faceKernelNames, faceRef, isPlanarFace, planeNow } from "../relations/solidref.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
   HAND, SELECT, engineNext, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Hand, type Tool, type ToolContext,
@@ -357,7 +357,7 @@ export class ToolEngine {
    * sketch plane chosen, null otherwise — the ground, a chosen plane, nothing
    * armed, the pointer off the canvas or the finger lifted. What the overlay
    * lights and names before the click (`renderLanding`), and what the host's
-   * chip says `on e1.m3` of.
+   * chip says `on e1:l2` of.
    */
   landing: { face: string; flat: boolean; plane: Plane; at: [number, number] } | null = null;
   /**
@@ -882,9 +882,12 @@ export class ToolEngine {
       },
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach),
       // A vertex before an edge before a face (docs/plans/smart-dimension.md).
-      pickSolid: ([sx, sy]) => pickSolid(this.geometryAt(sx, sy), this.drawnFaces, sx, sy, (f) => describeFace(this.model, f)),
+      // The face is handed on by its written name — a wall by the entity it is
+      // swept from (`e1:l2`), never its place (docs/plans/review-relations.md).
+      pickSolid: ([sx, sy]) => pickSolid(this.geometryAt(sx, sy), this.drawnFaces, sx, sy,
+        (f) => describeFace(this.model, f), (tag) => faceRef(this.model, tag)),
       ...(this.onEditDimension ? { editDimension: (name: string) => this.editSoon(name) } : {}),
-      faceShade: (name) => faceShade(this.drawnFaces, name, this.view),
+      faceShade: (name) => faceShade(this.drawnFaces, faceKernelNames(this.model, name), this.view),
       toScreen: (world) => worldToScreen(this.view, world),
       regionAt: ([sx, sy]) => this.regionAt(sx, sy),
       log: this.onLog,
@@ -1326,7 +1329,8 @@ export class ToolEngine {
     const n = facing(now ? now.n : under.normal);
     const origin = now ? now.p : under.at;
     const [u, v] = spanOf(n);
-    return { face: under.name, flat: now !== null, plane: { origin, u, v } };
+    // Named as a relation will hold it: a wall by the entity it is swept from.
+    return { face: faceRef(this.model, under.name), flat: now !== null, plane: { origin, u, v } };
   }
 
   /**
@@ -1795,7 +1799,7 @@ export class ToolEngine {
   private renderLandingFace(r: RenderContext): void {
     const land = this.landing;
     if (!land || !this.active) return;
-    const { cells, runs } = faceShade(this.drawnFaces, land.face, this.view);
+    const { cells, runs } = faceShade(this.drawnFaces, faceKernelNames(this.model, land.face), this.view);
     if (!cells.length && !runs.length) return;
     const g = this.g;
     const k = r.ui ?? 1;
@@ -1815,7 +1819,7 @@ export class ToolEngine {
   }
 
   /**
-   * **The on-plane mark and the face's name beside the hand** — `▱ e1.m3`,
+   * **The on-plane mark and the face's name beside the hand** — `▱ e1:l2`,
    * the glyph the relation the click makes will wear (glyphs.ts), so what is
    * about to be held is said in the drawing's own sign; a round face is named
    * without the mark, since nothing holds a point to it, and says so. Above

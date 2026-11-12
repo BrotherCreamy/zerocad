@@ -23,6 +23,7 @@ import { framePlaneAxes } from "./curveplane.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { measure } from "./relations/measure.ts";
+import { faceRef } from "./relations/solidref.ts";
 import { isFullTurn } from "./relations/revolution.ts";
 import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve, set, unhole } from "./operations.ts";
 import * as grouping from "./groups.ts";
@@ -300,8 +301,8 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 20;
-// 20 (docs/plans/linked-profiles.md): **an extrude's two profiles are linked,
+export const VERSION = 21;
+// 21 (docs/plans/linked-profiles.md): **an extrude's two profiles are linked,
 // and a feature owns nothing**. No entry changed shape, and none is added for
 // a twin: the relations within a profile each gain a twin on the other
 // profile when the entry that made them — or the extrude — is replayed, under
@@ -313,22 +314,57 @@ export const VERSION = 20;
 // profile is preceded by `unsweep` (a new op: the extrude stops sweeping it,
 // and stays, open) and its partner's `deleteEntity` follows its own; a point
 // held on a face of a record going is preceded by `rehold` (a new op). A
-// version-19 build replaying a 20 file would refuse `unsweep` by name, which
+// version-20 build replaying a 21 file would refuse `unsweep` by name, which
 // alone would not bump it; but it would also replay `deleteRelation("r3_e1")`
 // or `set("d2_e1.value", …)` against a model with no such name, and read a
 // deleted extrude's journal as one that left its lid behind by accident —
 // the misreading a version is for.
 //
-// Going the other way **a version-19 file opens to the model it was, and is
-// linked from then on**: every extrude that still stands replays into linked
-// profiles (its relations twinned, names kept — `test/linkedprofiles.test.ts`
-// opens a fixture the build before wrote). Its *deletions* mean what they
-// meant: a `deleteFeature` from before 20 was followed by the lid's own
-// deletions, or left the lid standing with no relations of its own, so
-// `translate` writes `"unlinked"` into it — the twins this build made across
-// that extrude go with the record, and its extrusion, where the file left it
-// standing, links nothing again (`Model.deleteFeature`). The mark stays in
-// the entry when the file is saved again, so it keeps meaning that.
+// Going the other way **a file of 20 or before opens to the model it was, and
+// is linked from then on**: every extrude that still stands replays into
+// linked profiles (its relations twinned, names kept —
+// `test/linkedprofiles.test.ts` opens a fixture a build before wrote). Its
+// *deletions* mean what they meant: a `deleteFeature` from before 21 was
+// followed by the lid's own deletions, or left the lid standing with no
+// relations of its own, so `translate` writes `"unlinked"` into it — the twins
+// this build made across that extrude go with the record, and its extrusion,
+// where the file left it standing, links nothing again
+// (`Model.deleteFeature`). The mark stays in the entry when the file is saved
+// again, so it keeps meaning that.
+// 20 (docs/plans/review-relations.md): **a relation may hold among many, and
+// a solid's wall is written by the entity it is swept from.** Two changes to
+// what an existing op's arguments are, which is what a version is for:
+//
+// - `parallel`, `equalLength`, `collinear`, `coincident`, `concentric`,
+//   `coradial` and `equalRadius` may carry more than two members —
+//   `parallel ["l1", "l2", "l3", "l4"]`, one relation among the four
+//   (relations/among.ts); points level with each other end in the direction,
+//   `parallel ["p1", "p2", "p3", "origin.x"]`. Two ops are new: `join` and
+//   `leave` (among.ts), a relation's members changed in place — a deletion's
+//   expansion writes a `leave` ahead of the `deleteEntity` of a member whose
+//   relation stays over the rest. A version-19 build would refuse such a file
+//   at its first set, by arity ("this takes two references, not three"), which
+//   is a riddle where "this file is version 20" says what is wrong.
+// - a wall in `onPlane`, `faceDistance`, `parallel`, `perpendicular` and
+//   `measure` is `"e1:l2"`, the wall of `e1` swept from `l2`, where it was
+//   `"e1.m3"`, the wall in place 3 of the profile. A version-19 build reads
+//   `"e1:l2"` as an entity's name and says there is no such thing.
+//
+// Going the other way **a file of 19 or before opens to the relations it
+// had**, name for name. Its many-at-once stars — `parallel ["l1", "l2"]`,
+// `["l1", "l3"]`, `["l1", "l4"]` — replay as the separate relations they were:
+// a replay never joins (only a typed relation does, and it journals the
+// `join`), so nothing is migrated and the entries re-save as they are. Its
+// walls are **rewritten at their own step** (`writtenFaces`): `"e1.m3"`
+// becomes the entity in place 3 of the profile as it stood when the relation
+// was made, which is the wall the relation was put on; a file in which a later
+// fillet had moved every wall up a place — and with it what the old build
+// held the relation to — therefore reopens holding the wall it was made on.
+// That is a deliberate change of what such a file means, to what its author
+// meant, and test/reviewrelations.test.ts holds a file of each kind, saved by
+// the build before. Caps, kernel-only faces (`e3.f0`) and the kernel's edge
+// names (`e1.lid|e1.m0`, a blend's edges and a driven `length`) are as they
+// were. One relation is new without changing any, `cornerAngle`.
 // 19 (docs/plans/profiles-held.md): **an offset's copy is held in its chain's
 // plane, both ways**. In 3D, where no sketch plane holds the chain, `offset`'s
 // resolved part carries `flat` — three of the chain's points, or none — and
@@ -571,9 +607,9 @@ function relationRenamer(model: Model, version: number) {
  * y-ref" — rather than be guessed at.
  */
 function translate(model: Model, entry: JournalEntry, version: number): JournalEntry {
-  // A record deleted before linked profiles (see `VERSION`, 20): its lid had
+  // A record deleted before linked profiles (see `VERSION`, 21): its lid had
   // no relations of its own, and the entries after it are written for that.
-  if (entry.op === "deleteFeature" && version < 20 && entry.args.length === 1) {
+  if (entry.op === "deleteFeature" && version < 21 && entry.args.length === 1) {
     return { op: "deleteFeature", args: [entry.args[0], "unlinked"] };
   }
   if (entry.op === "fillet" && version < 9 && entry.args.length <= 4) {
@@ -674,6 +710,26 @@ function lift2D(model: Model, entry: JournalEntry, names: Set<string>, lifted: M
     default:
       return [entry];
   }
+}
+
+/** The relations that take a solid's face by name — the ops a file from before version 20 may hold a wall's *place* in. */
+const FACE_OPS: ReadonlySet<string> = new Set(["onPlane", "faceDistance", "parallel", "perpendicular", "measure"]);
+
+/**
+ * **A wall written by its place, before version 20** (`"e1.m3"`), rewritten
+ * to the entity in that place **at this step** (`"e1:l4"`) — in place, in the
+ * entry the journal installs, so the file re-saves in today's form
+ * (docs/plans/review-relations.md; see `VERSION`). At this step and not
+ * later: the profile is as it was when the relation was made, so the wall
+ * found is the one the relation was put on, whatever a later fillet did to
+ * the order. Caps (`e1.lid`), kernel-only faces (`e3.f0`) and an edge's two
+ * faces (`e1.lid|e1.m0`) are themselves and pass through.
+ */
+function writtenFaces(model: Model, step: JournalEntry, version: number): void {
+  if (version >= 20 || !FACE_OPS.has(step.op)) return;
+  step.args.forEach((a, i) => {
+    if (typeof a === "string") step.args[i] = faceRef(model, a);
+  });
 }
 
 /**
@@ -1072,6 +1128,7 @@ export function fromSaved(saved: SavedModel, dim?: number, how: { regions?: bool
           let out: unknown;
           try {
             frameless.give(step);
+            writtenFaces(model, step, saved.version);
             out = fn(...step.args);
             frameless.made(step, out);
           } catch (e) {

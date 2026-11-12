@@ -4,8 +4,10 @@
 // am hovering over. like i should be able to do a 3 point circle with each
 // point on a different face of the rect prism, by just orbiting around."*
 //
-// Headless, 3D: the relation — `onplane(p, "e1.m3")`, the face named as the
-// kernel names it and read off its feature's record — follows a `set` of the
+// Headless, 3D: the relation — `onplane(p, "e1:l2")`, the face named by the
+// line it is swept from (docs/plans/review-relations.md; it was the kernel's
+// place for it, `e1.m1`, which a fillet of the profile renumbered) and read
+// off its feature's record — follows a `set` of the
 // depth and a save/open, goes with the feature, refuses a round face; `par`
 // to a face holds a curve's normal; snaps on a face are the face's; the tools
 // driven by hand with clicks that landed on faces; and the engine landing a
@@ -80,17 +82,21 @@ function block(held = false) {
   return { m, e, pts, ls };
 }
 
-/** The wall of `e` swept from `line`: its face name. */
+/**
+ * The wall of `e` swept from `line`: its face name, as a relation holds it and
+ * a tool is handed it — by the line (`e1:l2`), not by the line's place in the
+ * profile (docs/plans/review-relations.md).
+ */
 function wallOf(m: Model, e: string, line: string): string {
   const f = m.features.get(e)!;
   const i = f.loops[0].findIndex((member) => member === line);
   assert.ok(i >= 0, `${line} is a member of ${e}`);
-  return `${e}.m${i}`;
+  return `${e}:${line}`;
 }
 
 // --- the relation ------------------------------------------------------------------
 
-test("onplane(p, \"e1.m3\") holds a point on a wall by the face's name: the same op and glyph as any onplane, journalled with the face", () => {
+test("onplane(p, \"e1:l2\") holds a point on a wall by the face's name: the same op and glyph as any onplane, journalled with the face", () => {
   const { m, e, ls } = block(true);
   const wall = wallOf(m, e, ls[1]); // the +x wall, x = 60
   const p = m.addPoint([65, 20, 10]).name;
@@ -212,7 +218,7 @@ test("a round face holds nothing: onplane refuses it with the reason, and a poin
   assert.match(said.join("\n"), /round face, or one only the kernel knows: nothing holds it/);
 });
 
-test("par(c, \"e1.m3\") holds a circle's normal to a wall's; par to a cap is a datum, two datums refused", () => {
+test("par(c, \"e1:l2\") holds a circle's normal to a wall's; par to a cap is a datum, two datums refused", () => {
   const { m, e, ls } = block();
   const wall = wallOf(m, e, ls[1]);
   const c = m.addCircle(m.addPoint([60, 20, 10]).name, 5, [0.2, 1, 0.3]).name;
@@ -381,7 +387,8 @@ test("the engine lands a drawing tool's click on the face drawn under the pixel,
   engine.drawnFaces = { faces, occ: occlusion(faces, view) };
   const wall = wallOf(m, e, ls[1]);
   const [sx, sy] = worldToScreen(view, [60, 20, 10]);
-  assert.equal(faceUnder(engine.drawnFaces, sx, sy)?.name, wall, "the wall is drawn under the pixel");
+  // A drawn face carries the kernel's tag, its place in the profile; the engine hands it on by the line it is swept from.
+  assert.equal(faceUnder(engine.drawnFaces, sx, sy)?.name, `${e}.m${m.features.get(e)!.loops[0].indexOf(ls[1])}`, "the wall is drawn under the pixel");
   engine.arm("point");
   fire("pointermove", { clientX: sx, clientY: sy, button: -1, buttons: 0 });
   assert.equal(engine.landing?.face, wall);

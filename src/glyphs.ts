@@ -757,7 +757,8 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     case "dist":
       return [atDistance(model, view, str(args[0]), str(args[1]))];
     case "collinear":
-      return [atLineMid(model, view, str(args[0])), atLineMid(model, view, str(args[1]))];
+      // A mark on each line — two, or every member of one relation among many (relations/among.ts).
+      return args.map((a) => atLineMid(model, view, str(a)));
     case "intersection":
     case "pierce":
       return [atPoint(model, str(args[0]))];
@@ -791,14 +792,24 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       // be a mark sitting on geometry the relation does not constrain. The
       // frame's own marker is already on the canvas saying where the direction
       // comes from, and hovering the mark on the line highlights it.
-      const pointForm = args.length === 3;
-      const first = pointForm
-        ? [atSegmentMid(model, view, str(args[0]), str(args[1]))]
-        : anchorIfGeometry(model, view, args[0]);
-      return [...first, ...anchorIfGeometry(model, view, args[pointForm ? 2 : 1])];
+      //
+      // **One relation among many wears a mark on each member**
+      // (relations/among.ts, docs/plans/review-relations.md): every line of
+      // `par("l1", "l2", "l3", "l4")` its own `//`, none of them the one the
+      // others are parallel *to*; points level with each other, a mark on
+      // each segment between neighbours.
+      const points = model.entities.get(str(args[0]))?.kind === "point";
+      if (points && r.op === "parallel" && args.length > 3) {
+        const pts = args.slice(0, -1).map(str);
+        return pts.slice(1).map((p, i) => atSegmentMid(model, view, pts[i], p));
+      }
+      const pointForm = args.length === 3 && (points || r.op === "perpendicular");
+      if (pointForm) return [atSegmentMid(model, view, str(args[0]), str(args[1])), ...anchorIfGeometry(model, view, args[2])];
+      return args.flatMap((a) => anchorIfGeometry(model, view, a));
     }
     case "equalLength":
-      return [atLineMid(model, view, str(args[0])), atLineMid(model, view, str(args[1]))];
+      // Each thing said to be equal, wherever it is: a line's middle, a circle's rim.
+      return args.flatMap((a) => anchorIfGeometry(model, view, a));
     // One label, not two. `∥` is drawn twice because a single mark would leave
     // "parallel to *what*" unanswered; `45°` written twice is just the same
     // number in two places, and Onshape writes it once, at the corner.
@@ -811,7 +822,7 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       return anchorIfGeometry(model, view, isGeometry(model, args[0]) ? args[0] : args[1]);
     }
     case "equalRadius":
-      return [atRim(model, view, str(args[0]), Math.PI / 4), atRim(model, view, str(args[1]), Math.PI / 4)];
+      return args.map((a) => atRim(model, view, str(a), Math.PI / 4));
     case "concentric":
     case "coradial":
       return [atPoint(model, model.oriented(str(args[0])).center)];

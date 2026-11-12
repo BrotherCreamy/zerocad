@@ -33,6 +33,7 @@ import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { angle, equalLength, parallel, perpendicular, radius, tangent } from "../src/relations/geometry.ts";
 import { open, save, VERSION } from "../src/persist.ts";
 import { linksOf, twinKind } from "../src/twins.ts";
+import { join, leave, relate } from "../src/among.ts";
 import { featureFaces } from "../src/faces.ts";
 import { chainsOf } from "../src/modes.ts";
 import { organiserSections } from "../src/organiser.ts";
@@ -633,6 +634,67 @@ test("construction is carried through a twin: a pair flagged construction is sti
   // And neither joined the profile: the body is the four edges it was.
   assert.equal(f().loops[0].length, 4);
   assert.equal(f().open ?? false, false);
+});
+
+// A relation may hold among many (docs/plans/review-relations.md), and a wall
+// is written by the line it is swept from. Both met twins here.
+test("a relation among many has one twin among the partners: joined or left from either profile, and a member deleted from either leaves both over the rest", async () => {
+  const { m, L, h, f } = await block();
+  const lid = [...f().twins[0]];
+  // The height's dimension goes (and its twin): every side is about to be equal.
+  assert.deepEqual(del(m, h), [h, `${h}_e1`]);
+  // Equal, among two of the base's lines: one relation, one twin.
+  const eq = relate(m, "equalLength", L[0], L[2]);
+  assert.deepEqual(m.relationOf(`${eq}_e1`).args, [lid[0], lid[2]]);
+  // A third joins on the base: the relation grows under its name, and its twin with it.
+  assert.equal(relate(m, "equalLength", L[1], L[0]), eq, "joined, not a second relation");
+  assert.deepEqual(m.relationOf(eq).args, [L[0], L[2], L[1]]);
+  assert.deepEqual(m.relationOf(`${eq}_e1`).args, [lid[0], lid[2], lid[1]]);
+  assert.equal(m.relationOf(`${eq}_e1`).blocks.length, 0, "still a twin, holding nothing of its own");
+  // A fourth typed on the lid, where only the twin holds its members: it joins the pair, through the base's.
+  const count = m.relations.size;
+  relate(m, "equalLength", lid[3], lid[0]);
+  assert.equal(m.relations.size, count, "no third relation");
+  assert.deepEqual(m.relationOf(eq).args, [L[0], L[2], L[1], L[3]]);
+  assert.deepEqual(m.relationOf(`${eq}_e1`).args, [lid[0], lid[2], lid[1], lid[3]]);
+  assert.deepEqual(m.journal.at(-1), { op: "join", args: [eq, L[3]] }, "journalled as the join of the relation that was made");
+  ok(m);
+  // Left, by the twin's name: the partner leaves the base's.
+  leave(m, `${eq}_e1`, lid[3]);
+  assert.deepEqual(m.relationOf(eq).args, [L[0], L[2], L[1]]);
+  assert.deepEqual(m.relationOf(`${eq}_e1`).args, [lid[0], lid[2], lid[1]]);
+  // A name with no partner cannot join a twin, and says where to say it.
+  const stray = m.addLine(m.addPoint([60, 0, 10]).name, m.addPoint([60, 9, 10]).name).name;
+  assert.throws(() => join(m, `${eq}_e1`, stray), /is the twin of .* join .* itself/);
+  // A lid line deleted: its base line goes with it, and both relations stay over the rest — one `leave` in the journal, the base's.
+  const before = m.journal.length;
+  del(m, lid[1]);
+  assert.ok(!m.entities.has(L[1]) && !m.entities.has(lid[1]));
+  assert.deepEqual(m.relationOf(eq).args, [L[0], L[2]]);
+  assert.deepEqual(m.relationOf(`${eq}_e1`).args, [lid[0], lid[2]]);
+  assert.ok(m.relationOf(`${eq}_e1`).twin, "the twin is its twin still");
+  assert.deepEqual(m.journal.slice(before).filter((j) => j.op === "leave"), [{ op: "leave", args: [eq, L[1]] }]);
+  ok(m);
+  // And a replay reads the same: every relation, name for name, saying what it says here.
+  const back = open(save(m, false));
+  assert.deepEqual([...back.relations.values()].map((r) => [r.name, r.op, r.args]), [...m.relations.values()].map((r) => [r.name, r.op, r.args]));
+  assert.equal(save(back, false), save(m, false));
+});
+
+test("a relation to a solid's wall — written by the line it is swept from — reaches outside the profile, and has no twin", async () => {
+  const { m, L, r } = await block();
+  const wall = `e1:${L[1]}`;
+  // The first edge runs along that wall's normal: parallel to the face, as `par` reads one.
+  const p = parallel(m, L[0], wall);
+  assert.deepEqual(m.relationOf(p).args.slice(0, 2), [L[0], wall]);
+  assert.equal(m.relations.has(`${p}_e1`), false, "a face is no part of either profile");
+  // The profile's own right angle, made beside it, has its twin as ever.
+  assert.ok(m.relationOf(`${r[0]}_e1`).twin);
+  ok(m);
+  // The extrude deleted: the relation that read the wall goes with it, and the lid keeps its own.
+  const gone = del(m, "e1");
+  assert.ok(gone.includes(p));
+  assert.ok(m.relationOf(`${r[0]}_e1`).blocks.length > 0);
 });
 
 test("a lid that is another extrude's profile carries a relation on: a twin of a twin, set and deleted as one chain", async () => {

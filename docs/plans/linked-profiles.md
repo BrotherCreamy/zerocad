@@ -204,7 +204,7 @@ Each relation's module entry says which it is (`RelationDecl.twin`:
 | **Offset** | Owned nothing: copies held by `par`, `dist` and the like. | Unchanged; each relation is deleted alone and takes nothing. A lid's edge can now be offset (it was refused as "part of e1's solid"). |
 | **Mirror** | Owned nothing: a `sym` per point pair. | Unchanged. |
 | **Linear and circular pattern** | Owned nothing: `translated`, `rotated`, `rotation`. | Unchanged. |
-| **Relations naming a face** | `onplane(p, "e1.m3")`, `par(c, "e1.m3")` and `fdist` went with the feature. | `onplane` on a flat face is re-pointed to `coplanar` over three of the face's own points, under the same name (`rehold`, journalled ahead of the deletion). `fdist`, `par(c, "e1.m3")` and anything on a round face still go with the record: they read the record. |
+| **Relations naming a face** | `onplane(p, "e1:l2")`, `par(c, "e1:l2")` and `fdist` went with the feature. | `onplane` on a flat face is re-pointed to `coplanar` over three of the face's own points, under the same name (`rehold`, journalled ahead of the deletion). `fdist`, `par(c, "e1:l2")` and anything on a round face still go with the record: they read the record. |
 
 ### Deviations from the design
 
@@ -233,9 +233,31 @@ Each relation's module entry says which it is (`RelationDecl.twin`:
   longer lines having no twins. Each is filed in TODO.md.
 - **Revolve** is in item 4's table for deletion only; its ends are not
   linked.
-- **Format 20** adds nothing to a file. It exists because `deleteFeature`
-  means something else: a pre-20 entry is marked `"unlinked"` on the way in
+- **Format 21** adds nothing to a file. It exists because `deleteFeature`
+  means something else: a pre-21 entry is marked `"unlinked"` on the way in
   and takes what it took.
+
+### Met on the way in: relations among many, and walls by their lines
+
+`review-relations.md` (format 20) was merged under this before it went up.
+Where the two meet:
+
+- **A relation among many has one twin among the partners.**
+  `eq("l1", "l3", "l2")` on one profile is twinned as the relation as
+  written over the three partners (the module entry's `fn`, which never
+  joins). `join` and `leave` re-form the twin in the pass that follows them.
+- **A name typed with a member that only a twin holds joins the relation the
+  twin is the twin of**, by its partner on the other profile (among.ts's
+  `relate`, and `join`/`leave` given a twin's name): one relation and its
+  twin, never a third; the journal's entry is the made relation's `join`. A
+  name with no partner there cannot join a twin — `join` says so, and a typed
+  relation is made as its own.
+- **A member deleted journals one `leave`**, the made relation's. The twin is
+  forgotten and made again over the rest by the pass that follows that
+  `leave` — live and on replay alike — because a twin has no entries.
+- **`"e1:l2"` in a relation is a face**, outside any profile: no twin, as
+  with `"e1.lid"`. `rehold` reads a wall through `faceSource` whichever way
+  it is written.
 
 ### What `fillets-one-thing.md` stands on
 
@@ -259,13 +281,14 @@ Each relation's module entry says which it is (`RelationDecl.twin`:
 
 ### Tests
 
-`test/linkedprofiles.test.ts` (27 tests: twins, the table above, set and
+`test/linkedprofiles.test.ts` (29 tests: twins, the table above, set and
 drag both ways, nothing agreeing or redundant added, a conflict named once,
 pairs deleted, the extrude deleted, an edge deleted from either end and
 drawn back, a corner, a wall, trim and extend from either end, the
 format-19 fixture, every feature of item 4, a feature-made relation, a free
-body pulled, a sketch fillet's twins, construction through a twin, a twin
-of a twin, marks, 2D,
+body pulled, a sketch fillet's twins, construction through a twin, a
+relation among many joined, left and shrunk from either profile, a wall by
+its line, a twin of a twin, marks, 2D,
 `ls()`/`rels()`). `test/fixtures/linked-v19.neocad.json` was written by the
 build before this one, with the geometry it solved to beside it.
 `test/e2e/linkedprofiles.e2e.ts`, mouse and iPhone 13.

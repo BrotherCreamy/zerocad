@@ -67,18 +67,126 @@ not own).
 - **A relation a feature made is deleted like any other**: `del("e1_perp")`
   lets the chord lean; `del` of the depth leaves the record *unbuilt*
   (`extrude · unbuilt`, "its depth d3 is deleted") and both profiles their
-  own relations. `onplane(p, "e1.m3")` outlives the extrude as `coplanar`
+  own relations. `onplane(p, "e1:l2")` outlives the extrude as `coplanar`
   with three of the face's own points, under its own name (`rehold`).
-- **Format 20.** Nothing new is saved — twins are made again by replay from
+- **Format 21.** Nothing new is saved — twins are made again by replay from
   the relation that made them — but a deletion means something else now, so
-  a pre-20 file's `deleteFeature` entries are marked on the way in and take
+  a pre-21 file's `deleteFeature` entries are marked on the way in and take
   what they took. `test/fixtures/linked-v19.neocad.json`, saved by the build
   before this one, opens to the model it was, every name kept, and is linked
   from then on.
-- Unit: `test/linkedprofiles.test.ts` (27). E2E, mouse and iPhone 13:
+- **With the entry below** (relations among many, merged first): a relation
+  among many has one twin among the partners; a name typed with a member
+  only a twin holds joins the relation it is the twin of, by its partner on
+  the other profile; a member deleted journals the one `leave`; a wall
+  written `e1:l2` is a face, and a relation to one has no twin.
+- Unit: `test/linkedprofiles.test.ts` (29). E2E, mouse and iPhone 13:
   `linkedprofiles.e2e.ts`. The per-feature table of what was owned and what
   is now related is in the spec's *As built*; the decisions in TODO.md's
   register; what was tried and dropped in CONVERSATION_LOG.md.
+
+## 2026-11-12 — many at once is one relation among equals, and a wall is named by the line it is swept from
+
+Review items 5 and 6 of the register (docs/plans/review-relations.md), read
+against the owner's principle: *"correct relationships BETWEEN entities …
+bidirectional relationships everywhere by default"* — nothing privileged,
+nothing consumed. The owner, of the review: *"All good."*
+
+| | |
+|---|---|
+| ![Four lines picked with the constrain tool and Parallel (all 4) pressed: one relation, r5, typed as par("l1", "l2", "l3", "l4"); each line wears one // beside its length, and none of them wears three](docs/images/470-four-lines-parallel-one-relation-a-mark-on-each.png) | ![The first line picked deleted by hand, its two points left; the log says r5 par l2 l3 l4 — l1 left it, and it holds among the rest; one line's end dragged round and the other two turned with it](docs/images/471-the-first-pick-deleted-the-other-three-turn-together.png) |
+| ![Two blocks, the dimension tool armed, the +x wall of each lit green as picked, the 50 it will read beside the cursor](docs/images/472-two-walls-of-two-blocks-picked-each-named-by-its-line.png) | ![The near block's corner cut off with a line and two trims, a narrow new wall where the corner was; the mouse on the dimension's label, the two lines its walls are swept from lit amber, the tag reading d3 faceDistance e1:l2 e2:l14 50](docs/images/473-the-corner-trimmed-off-the-dimension-still-on-its-walls.png) |
+| ![iPhone 13: the four lines parallel, a // on each](docs/images/474-iphone-four-lines-parallel-one-relation.png) | ![iPhone 13: the first line deleted from the menu a held finger opens, the other three turned together by a finger's drag](docs/images/475-iphone-the-first-pick-deleted-the-rest-turn-together.png) |
+| ![iPhone 13: the two walls tapped with the dimension tool, both lit, 50 by the finger](docs/images/476-iphone-two-walls-of-two-blocks-picked.png) | ![iPhone 13: the corner trimmed off, the dimension's 50 tapped and selected, still drawn](docs/images/477-iphone-the-corner-trimmed-off-the-dimension-still-on-its-walls.png) |
+| ![The constraints palette listing eleven relations, the five lines' parallel among them once — // r5 par l1 l2 l3 l4 l5 — and a line's menu offering Leave r5 (// with l1, l2, l3, l5)](docs/images/478-the-palette-lists-the-relation-once-a-line-may-leave-it.png) | ![A block seen from behind with the point tool armed: the wall under the mouse lit amber, ▱ e1:l4 beside the ghost, the chip reading on e1:l4 · point · click where the point goes](docs/images/479-a-wall-under-the-hand-named-by-the-line-it-is-swept-from.png) |
+
+**What was true, found before anything changed.** Four lines picked and
+Parallel pressed made `par(l1, l2)`, `par(l1, l3)`, `par(l1, l4)`: delete
+`l1` and the other three were related by nothing. And `e1.m3` meant *the wall
+in place 3 of e1's profile*, counted loop by loop and read again at every
+evaluation — so a fillet of the profile's first corner, whose arc joins at
+place 1, moved every later wall up one: a point put on `l4`'s wall (x = 0) by
+`onplane(p, "e1.m3")` was taken to `l3`'s (y = 40). A chamfer's new line and
+a trim that re-finds the region did the same. Part of item 6 was already true
+and is left alone: two parallel walls of one extrude were already `dist` of
+their lines, and a round wall its circle.
+
+- **One relation among many** (`src/relations/among.ts`): `par`, `eq`, `col`,
+  `coin`, `conc`, `corad` and `eqrad` take any number of members —
+  `par("l1", "l2", "l3", "l4")` — and make one relation: one name, one
+  journal entry, a mark on each member. Points level or upright with each
+  other are `horizontal("p1", "p2", "p3")`, journalled `par("p1", "p2",
+  "p3", "origin.x")`. Its rows are the pair relation's own function, called
+  n − 1 times inside the one `model.relation`: no new equations. The
+  constrain list's many-at-once rows type one call each, and gained
+  **Collinear (all n)**.
+- **Nobody is first.** Deleting a member — the first as much as any — leaves
+  the relation over the rest, under its name, down to two; with one left it
+  goes. The log says which member left. A conflict names the relation once
+  (three names where a star gave four and a chain up to nine), an agreeing
+  set counts it once.
+- **A typed relation joins** (`src/among.ts`, `relate`): `par("l2", "l9")`
+  where `l2` is already in a `par` adds `l9` to that relation — one relation,
+  not two — and merges two relations it bridges, pairs included. `join("r3",
+  "l9")` and `leave("r3", "l2")` change who is in one by name; a line's menu
+  offers **Leave r3**. Each rebuilds the relation in place (as `set` does)
+  and is journalled as itself.
+- **A file replays as written**: a replay never joins, so an old file's star
+  reopens as the separate relations it was, re-saves the same, and is only
+  gathered into one relation when someone relates one of its members again.
+- **A wall is `e1:l2`**: the wall of `e1` swept from the line `l2`; the caps
+  stay `e1.lid` and `e1.base`. Resolved when read, in one file
+  (`src/relations/solidref.ts`: `faceSource`, `faceRef`, `faceKernelNames`),
+  so `onplane`, `fdist`, `par` and `perp` to a face, a driven `fangle`, the
+  dimension tool's picks, the name beside the hand and the chip all stay on
+  their wall through a trim, a split and a fillet of the profile. `e1.m3`
+  still reads, typed and in a file, as the wall then in place 3, and is
+  journalled by its line. Deleting the line takes what was held to its wall,
+  and the log says so: `r9 went with l4: it was held to e1:l4, the wall of e1
+  that l4 sweeps`.
+- **Two meeting walls are `corner(l1, l2, θ)`** — a new dimension: the angle
+  in the corner two lines make, each read out of the corner, so a wedge's
+  sharp edge reads 30° whichever way round its lines were drawn, and a fillet
+  of that corner leaves the dimension on its walls. It was `ang3` of three
+  points, which stays for three points a user picks.
+- **Format 20.** A file of 19 or before opens to the relations it had, name
+  for name; its walls are rewritten at their own step, so one in which a
+  fillet had renumbered them reopens holding the wall each relation was made
+  on (`test/reviewrelations.test.ts`, three fixtures saved by the build
+  before).
+
+Measured: three lines collinear in 3D from loose seeds solve by the star's
+rows and, by a chain's, fold the first line to a point — so the spanning set
+is each member with the one listed first, which nothing above the solver can
+tell. Free lines made parallel are still met by shortening as well as by
+turning (the first palette picture showed it); that is review item 1, another
+package's, and its fix lands under these rows.
+
+Tests, one full run of the four steps of `npm run test:all` on the final
+code, with three other packages' suites running on the same four cores (load
+average 17–28): typecheck 0 · unit 1923 → 1950 (+27, the new file), 1948
+passed · kernel 11/11 · e2e 789 → 796 (+7, the new file), 790 passed, 2
+picture skips as before. What did not pass, each run again alone:
+
+- unit, *the cost: the check on every solve…* (conflicts.test.ts): a
+  2000 ms wall-clock budget, measured at 2255 ms under that load. Alone, three
+  times: passed, passed, failed (still under load); and three times more:
+  passed, failed, passed.
+- unit, *a conflict on an extruded drawing names the user's relations…*
+  (profilesheld.test.ts): alone 3 of 3.
+- e2e, two files that asserted the format's number, 19 (camera.e2e.ts,
+  lidframe.e2e.ts): the number is 20 now; they and the six others that said
+  19 were corrected and run again, 56 of 56.
+- e2e, *Pixel 7 portrait: see-through from the menu* (overlaylock.e2e.ts):
+  `some ink to sample (0 pixels)`. Alone 1 of 3 here — and 2 of 4 on a fresh
+  clone of the base branch, with none of this work in it: the same message.
+  A flake under load that was there before; filed.
+- e2e, *Android's font scale, measured* (android.e2e.ts): fails alone 3 of 3
+  — and fails the same on a fresh clone of the base branch. The browser on
+  this machine reads `env(preferred-text-scale)` as 1 when launched with
+  `--blink-settings=accessibilityFontScaleFactor=1.3`, on an empty page with
+  no app at all (three launches). Nothing in this change is near it; filed
+  for whoever knows what changed under the suite since the baseline.
 
 ## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
 

@@ -30,11 +30,42 @@ etc).
   back on either profile; a feature-made relation goes like any other, the
   depth leaving the record *unbuilt*. **Trim** on a lid's edge lands on the
   base's, and one that opens the loop opens the extrude rather than being
-  refused; `extend` seats both ends. Format 20 (a deletion's meaning; old
+  refused; `extend` seats both ends. Format 21 (a deletion's meaning; old
   files' deletions marked on the way in). Not twinned, and said so: a profile
   that is a piece of longer lines, two corners joined by `coin` sharing one
   lid point, a revolve's end faces. Unit: `test/linkedprofiles.test.ts`;
   e2e: `linkedprofiles.e2e.ts` (mouse and iPhone 13).
+- **Many at once is one relation among equals, and a wall is named by the
+  line it is swept from** (docs/plans/review-relations.md, built; review
+  items 5 and 6 of TODO.md's register, against the owner's *"correct
+  relationships BETWEEN entities … bidirectional relationships everywhere by
+  default"*).
+  - `par`, `eq`, `col`, `coin`, `conc`, `corad` and `eqrad` take any number
+    of members (`par("l1", "l2", "l3", "l4")`; points level with each other,
+    `horizontal("p1", "p2", "p3")`): one relation, one name, one journal
+    entry, a mark on each member, its rows the pair relation's own
+    (`src/relations/among.ts`). Deleting any member leaves it over the rest,
+    down to two. A typed relation naming a member **joins** the relation it
+    is in, and merges two it bridges; `join("r3", "l9")`, `leave("r3", "l2")`
+    and a line's menu (*Leave r3*) change who is in one (`src/among.ts`). A
+    file replays as written, so an old star stays the pairs it was until one
+    of its members is related again. The constrain list types one call for
+    many at once, and offers Collinear (all n).
+  - A solid's wall is **`e1:l2`**, the wall of `e1` swept from `l2`; caps are
+    `e1.lid` and `e1.base`. Resolved when read (`src/relations/solidref.ts`),
+    so `onplane`, `fdist`, `par`/`perp` to a face, a driven `fangle`, the
+    dimension tool's picks, the name by the hand and the chip stay on their
+    wall through a trim, a split and a fillet of the profile. `e1.m3` — the
+    wall's place, the solid kernel's own tag — still reads, and is written by
+    its line where a relation is made or an older file opened. Deleting the
+    line takes what was held to its wall, and the log says so.
+  - Two meeting walls are dimensioned by **`corner(l1, l2, θ)`** of their
+    lines (a wedge's sharp edge reads 30° however its lines were drawn; the
+    dimension outlives a fillet of that corner); `ang3` stays for three
+    points picked.
+  - **Format 20**; files of 19 and before open to the relations they had.
+  Unit: `test/reviewrelations.test.ts` (with three fixtures the format-19
+  build saved); e2e: `reviewrelations.e2e.ts` (mouse and iPhone 13).
 - **A click on a face lands on that face, is held there, and says so before
   the click** (docs/plans/click-on-face.md, built). The owner: *"if i am
   hovering over a face without an active on-plane constraint, it should
@@ -43,13 +74,15 @@ etc).
   hovering over)"*. With no sketch plane chosen, every pointer event of a
   tool that places points is read on the solid's face drawn under the pixel
   (`PointerInfo.face`, the engine), the snap restricted to that face; a point
-  placed on a flat face is held by `onplane(p, "e1.m3")` — the face named as
-  the kernel names it and read off its feature's record (solidref.ts), so it
-  follows a `set` of the depth and goes with the feature — and a curve drawn
-  wholly on one face gets `par(c, "e1.m3")` too. Each click its own face: a
-  three-point circle through three faces, a line from a wall onto the lid.
-  Before the click the face is lit amber, `▱ e1.m3` sits by the cursor (by
-  the lifted mark under a finger) and the chip says `on e1.m3`. A round face
+  placed on a flat face is held by `onplane(p, "e1:l2")` — the face named by
+  the line it is swept from (since review-relations.md; it was the kernel's
+  place for it, `e1.m3`) and read off its feature's record (solidref.ts), so
+  it follows a `set` of the depth and goes with the feature — and a curve
+  drawn wholly on one face gets `par(c, "e1:l2")` too. Each click its own
+  face: a three-point circle through three faces, a line from a wall onto
+  the lid. Before the click the face is lit amber, `▱ e1:l2` sits by the
+  cursor (by the lifted mark under a finger) and the chip says `on e1:l2`. A
+  round face
   places and holds nothing, and says so. Bug 72: a click on a face was
   swallowed as a zero-length drag, and a snapped press never asked its face.
   Unit: `test/clickonface.test.ts`; e2e: `clickonface.e2e.ts` (mouse and
@@ -87,9 +120,9 @@ etc).
   circle's ⌀ and an arc's R by default (`radial`), centres for circles,
   three points' angle (`ang3`), an arc's length (`arclen`), an ellipse's
   axes, a point's distance from a frame's axis, horizontal or vertical by
-  where the label goes (`along`). A face is named as the kernel names it
-  (`e1.lid`, `e1.m3`) and held by what made it (relations/solidref.ts): two
-  walls of one extrude are their lines (`dist`, or the corner's `ang3`), a
+  where the label goes (`along`). A face is named by what it is swept from
+  (`e1.lid`, `e1:l2`; review-relations.md) and held by what made it (relations/solidref.ts): two
+  walls of one extrude are their lines (`dist`, or `corner` of the two that meet), a
   round wall its circle, an edge its entity, and anything else flat
   `fdist(face, b, d)`. An extrude's lid and its base are its depth, opened
   to set. A dimension that would be redundant or a conflict is made driven
@@ -367,7 +400,7 @@ etc).
   two lines, circles or arcs about a line or an axis; `intersection` and
   `pierce` on an ellipse or a spline. Fix (one `fix` per point, drawn as a
   padlock), many at once (Equal, Parallel, Horizontal, Vertical, Coincident,
-  Concentric, Coradial, Fix for n of one family — each against the first,
+  Concentric, Coradial, Collinear, Fix for n of one family — one relation among them all since review-relations.md, where it was each against the first;
   one line, one undo step), and cells greyed with the relation's own reason
   (`Applicable.off`: shown under the label, logged whole when pressed). A
   pick of the solid kernel's own edge or face greys the list with why. The

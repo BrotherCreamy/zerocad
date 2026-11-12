@@ -21,6 +21,7 @@ import * as geom from "../relations/geometry.ts";
 import { add, deleteRegionSteps, fillet, hole, intersect, region, subtract, unhole } from "../operations.ts";
 import { chamfer, circular, extend, linear, mirror, offset, trim } from "../sketchedit.ts";
 import * as pattern from "../relations/pattern.ts";
+import { amongEntry } from "../among.ts";
 import * as shapes from "../tools/shapes.ts";
 import { svg } from "../tools/icons.ts";
 import { RectangleTool } from "../tools/rectangle.ts";
@@ -273,10 +274,10 @@ defineModule("sketch", {
   relations: {
     radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius, twin: "shape" },
     onCircle: { names: ["oncircle", "onCircle"], slots: slots("point", "circle"), fn: geom.onCircle, twin: "shape" },
-    concentric: { names: ["conc", "concentric"], slots: slots("circle", "circle"), fn: geom.concentric, twin: "shape" },
+    concentric: { names: ["conc", "concentric"], slots: slots("circle", "circle"), ...amongEntry("concentric"), twin: "shape" },
     // One circle: concentric and equal, one relation (docs/plans/relations-complete.md).
-    coradial: { names: ["corad", "coradial"], slots: slots("circle", "circle"), fn: geom.coradial, twin: "shape" },
-    equalRadius: { names: ["eqrad", "equalRadius"], slots: slots("circle", "circle"), fn: geom.equalRadius, twin: "shape" },
+    coradial: { names: ["corad", "coradial"], slots: slots("circle", "circle"), ...amongEntry("coradial"), twin: "shape" },
+    equalRadius: { names: ["eqrad", "equalRadius"], slots: slots("circle", "circle"), ...amongEntry("equalRadius"), twin: "shape" },
     tangent: { names: ["tan", "tangent"], slots: slots("line", "circle"), fn: geom.tangent, twin: "shape" },
     arcEndpoints: { names: ["arcends", "arcEndpoints"], slots: slots("arc"), fn: geom.arcEndpoints, twin: "shape" },
     intersection: { names: ["intersection"], slots: slots("point", "curve", "curve"), fn: geom.intersection, twin: "shape" },
@@ -477,7 +478,7 @@ defineModule("sketch", {
     "           where you click — on the plane you sketch on, else a solid's face",
     "           under the cursor (lit and named before the click), else the",
     "           ground — and on a plane or a flat face hold what they draw with",
-    '           onplane on its centre and par on its normal (par("c1", "e1.m3")),',
+    '           onplane on its centre and par on its normal (par("c1", "e1:l2")),',
     "           both deletable; a round face and the ground hold nothing.",
     "           One circle tool and one arc tool; the gesture says how. Circle:",
     "           drag out from the centre (a click, then a drag: the click is the",
