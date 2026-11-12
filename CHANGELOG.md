@@ -96,6 +96,12 @@ with review item 7; format 22).
   `filletsonething.e2e.ts`. Decisions in TODO.md's register; what was tried
   and dropped in CONVERSATION_LOG.md.
 
+Measured on the merge with tool-howto: typecheck 0; unit 2112 of 2112;
+kernel 11 of 11; browser 833 tests, 828 passed, 2 picture skips, 3 failed —
+the known Android font-scale measurement (fails on this container's browser
+regardless of the code, 3 of 3 alone) and the two overlaylock see-through
+tests, which pass alone (3 of 3) and fail only under four workers' load.
+
 ## 2026-11-12 — a tool says how to use it: on a hover, and on a phone as it is chosen
 
 The owner, asked to try adding a parallel relation: *"I don't even know how
