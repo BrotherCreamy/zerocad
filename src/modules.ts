@@ -33,6 +33,7 @@ import { defineTool, getToolCtor, listTools, undefineTool, defineGroup, ungroupT
 import { defineIcon, undefineIcon, hasIcon } from "./tools/icons.ts";
 import { defineDimension, defineEntityKind, undefineEntityKind, entityKind, type EntityKindSpec } from "./model.ts";
 import { defineRebuild } from "./operations.ts";
+import { defineTwin, type TwinKind } from "./twins.ts";
 import { defineCurveFrame, undefineCurveFrame, defineCurvePath, undefineCurvePath, type CurveFrameFn, type CurvePathFn } from "./curveplane.ts";
 import { defineDescriber, undefineDescriber, type Describer } from "./picking.ts";
 import { defineStepCurve, undefineStepCurve, type StepCurveWriter } from "./step.ts";
@@ -62,6 +63,15 @@ export interface RelationDecl {
    * `d`-named, `set` re-runs it with the new value, and its label is a number.
    */
   dimension?: number;
+  /**
+   * Whether it has a **twin across a link** (docs/plans/linked-profiles.md,
+   * twins.ts): `"shape"` for a relation between entities that holds wherever
+   * they are moved together (`dist`, `tan`, `eq`), `"direction"` for one that
+   * may also name a frame's axis (`par`, `perp`, `ang`). Left out for a
+   * relation that says *where* (`fix`, `onplane`) — twinned, it would pin an
+   * extrude's lid where its base is.
+   */
+  twin?: TwinKind;
 }
 
 /** A command a module adds to the command line, built when a scope is (see `ModuleKit`). */
@@ -271,6 +281,7 @@ export function defineModule(name: string, spec: ModuleSpec, origin: LoadedModul
     if (e.samples) defineSampler(e.kind, e.samples, e.closed === true);
   }
   for (const [op, decl] of Object.entries(spec.relations ?? {})) {
+    if (decl.twin && decl.op !== false) defineTwin(op, decl.fn, decl.twin);
     if (decl.dimension === undefined || decl.op === false) continue;
     defineDimension(op, decl.dimension);
     const fn = decl.fn as (model: Model, ...args: unknown[]) => unknown;

@@ -448,8 +448,13 @@ export class Problem {
    * Point-blind like the rest of this file: columns are variables and rows
    * residuals. What a variable *is* is the caller's to say.
    */
-  analyse(opts: { vars?: number[]; gauge?: GaugeRow[]; agreeing?: boolean } = {}): Analysis {
-    const { rows, cols, vals, storedRows, owners } = this.evaluate();
+  analyse(opts: { vars?: number[]; gauge?: GaugeRow[]; agreeing?: boolean; skip?: ReadonlySet<BlockHandle> } = {}): Analysis {
+    // `skip`: stored blocks left out of the question, as `solve`'s `only`
+    // leaves blocks out of a solve — rows the caller knows repeat others by
+    // construction, which would otherwise each be found implied and searched.
+    const skip = opts.skip;
+    const only = skip?.size ? new Set(this.blocks.filter((b) => !skip.has(b.id)).map((b) => b.id)) : undefined;
+    const { rows, cols, vals, storedRows, owners } = this.evaluate([], only);
     const all = this.values.length;
     const live = opts.vars
       ? [...new Set(opts.vars)].filter((i) => i >= 0 && i < all).sort((a, b) => a - b)
