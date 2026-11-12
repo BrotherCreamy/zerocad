@@ -82,8 +82,17 @@ const endLabelOf = (a: AppContext, feature: string) => a.page.evaluate(async (fe
   return endLabel(m, m.features.get(feature)) as string | null;
 }, feature);
 
-async function bodies(a: AppContext) {
-  await a.page.waitForFunction(() => (window as never as Neo).__neocad.bodies.settled, undefined, { timeout: 30_000 });
+/**
+ * The bodies as the kernel last answered — once it has answered for
+ * `feature`, where one is named: `settled` is still true from the body
+ * before while the new program is on its way (seen under load: the plate's
+ * body with no cut in it, read a moment after ✓).
+ */
+async function bodies(a: AppContext, feature?: string) {
+  await a.page.waitForFunction((f) => {
+    const b = (window as never as Neo).__neocad.bodies;
+    return b.settled && (f === undefined || b.views().some((v) => v.features.includes(f)));
+  }, feature, { timeout: 60_000 });
   return a.page.evaluate(() => (window as never as Neo).__neocad.bodies.views().map((v) => ({
     features: v.features, volume: v.result.solid?.volume ?? null,
     valid: !!v.result.solid && v.result.solid.validity.manifold && v.result.solid.validity.failures === 0,
@@ -204,7 +213,7 @@ async function throughCut(a: AppContext, hand: Hand, pictures: { made: string; d
   assert.ok(marks.some((g) => g.highlights.includes(far)), "the mark on the far vertex");
   // The depth's label says how it ends, and the body is a hole right through.
   assert.equal(await endLabelOf(a, cut), "through all");
-  let [b] = await bodies(a);
+  let [b] = await bodies(a, cut);
   assert.ok(b.valid && b.faces.includes(`${cut}.m0`) && !b.faces.includes(`${cut}.lid`), `a hole right through: ${b.faces}`);
   assert.match(await a.status(), /SOLVED/);
   await shot(a, pictures.made);
@@ -285,7 +294,7 @@ async function upToFace(a: AppContext, hand: Hand, pictures: { held: string }): 
   const t = await state(a);
   assert.ok(Math.abs(t.points[t.features[boss].lidPoint!][2] - 36) < 1e-6, `the boss up to the taller block: ${t.points[t.features[boss].lidPoint!]}`);
   assert.match(await a.status(), /SOLVED/);
-  const [plateBody] = await bodies(a);
+  const [plateBody] = await bodies(a, boss);
   assert.ok(plateBody.valid && plateBody.features.includes(boss), `the boss added to the plate's body: ${JSON.stringify(plateBody)}`);
   await shot(a, pictures.held);
   assert.deepEqual(a.pageErrors, []);
@@ -315,7 +324,7 @@ async function throughRevolve(a: AppContext, hand: Hand, pictures: { placed: str
   assert.match(await a.log(), /through e1 as it stands — a round far side is not held; set the end again after changing it/);
   assert.match(await a.status(), /SOLVED/);
   // And the kernel cuts it: a hole down through the rod, no cap.
-  const [b] = await bodies(a);
+  const [b] = await bodies(a, cut);
   assert.ok(b.valid && b.faces.includes(`${cut}.m0`) && !b.faces.includes(`${cut}.lid`), `a hole through the rod: ${b.faces}`);
   await shot(a, pictures.placed);
   assert.deepEqual(a.pageErrors, []);
