@@ -16,7 +16,7 @@ import {
 } from "../src/panels.ts";
 import {
   FORM_FACTOR, TABLET_SHORT_SIDE, TEXT_MAX, TEXT_MIN, UI_MAX, UI_MIN, UI_SCALE_KEY, clampScale, deviceScale, formFactor,
-  formatScale, recallScale, rememberScale, stepScale, textFactor, textSource, type Device,
+  formatScale, recallScale, rememberScale, stepScale, systemTextScale, textFactor, textSource, type Device,
 } from "../src/uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, statusFade, type TextLike } from "../src/statusline.ts";
 import { UNTITLED, fileItemOff, paneCommand, scaleCommand, spinCommands } from "../src/appmenu.ts";
@@ -133,6 +133,37 @@ test("Android's text size: the system's font scale as Chrome reports it (env(pre
   // Dynamic Type, where Safari has it, still wins on an iPhone.
   assert.equal(textSource({ ...pixel, appleBody: 19 }), "Dynamic Type");
   assert.equal(textFactor({ ...pixel, appleBody: 19, textScale: 1.5 }), 19 / 17);
+});
+
+test("the system's font scale from the two readings of env(preferred-text-scale): as the page stands (Chromium 141), and asked for with meta text-scale (153, bug 77)", () => {
+  // Every figure here was read off Chromium 153 under Pixel 7 emulation
+  // (docs/plans/android.md's table), or is 141's as that plan recorded it.
+  // 141: the page as it stands is told; nothing more is asked.
+  assert.equal(systemTextScale(1.3, null, 16), 1.3);
+  assert.equal(systemTextScale(0.85, null, 16), 0.85);
+  // 153: the page as it stands reads 1 whatever the system says; asked, 1.3.
+  assert.equal(systemTextScale(1, 1.3, 16), 1.3);
+  // Asked, 153 reports the system's scale times the browser's own font size
+  // over 16 — 1.3 with a 20 px default reads 1.625 — and the browser's own is
+  // taken out, since `textFactor` multiplies by it: counted once, not twice.
+  assert.equal(systemTextScale(1, 1.625, 20), 1.3);
+  const pixel: Device = { coarse: true, shortSide: 412, appleBody: null, defaultFont: 20, textScale: systemTextScale(1, 1.4375, 20) };
+  assert.ok(Math.abs(textFactor(pixel) - 1.4375) < 1e-12, "1.15 × 1.25, as the e2e reads it");
+  // The same when the browser's own size is under 16: 1.3 at 13 px reads 1.05625.
+  assert.ok(Math.abs(systemTextScale(1, 1.05625, 13)! - 1.3) < 1e-12);
+  // A browser font size alone, no system scale: 153 reports 1.25 when asked, and the system's share of it is 1.
+  assert.equal(systemTextScale(1, 1.25, 20), 1);
+  // At the system's default both readings are 1.
+  assert.equal(systemTextScale(1, 1, 16), 1);
+  // A smaller system size comes through when asked for, too.
+  assert.equal(systemTextScale(1, 0.85, 16), 0.85);
+  // Not asked (not Android, or under a mouse), or the asking read nothing: the page's own reading stands.
+  assert.equal(systemTextScale(1, null, 16), 1);
+  assert.equal(systemTextScale(1, 0, 16), 1);
+  assert.equal(systemTextScale(1, Number.NaN, 16), 1);
+  assert.equal(systemTextScale(1, 1.3, 0), 1, "no font size measured: nothing to take out, so nothing asked is believed");
+  // No variable at all (Chrome before 138, Firefox): the probe's fallback of 0.
+  for (const none of [0, -1, Number.NaN]) assert.equal(systemTextScale(none, null, 16), null, String(none));
 });
 
 test("the viewer's multiplier: its ladder, and how it reads", () => {

@@ -37,7 +37,7 @@ import {
 } from "./panels.ts";
 import { Tooltips } from "./tooltip.ts";
 import {
-  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, textSource, type Device,
+  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, systemTextScale, textFactor, textSource, type Device,
 } from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
@@ -157,8 +157,28 @@ function measureDevice(): Device {
   // size: Chrome applies the system scale to type only by text autosizing,
   // which never acts on a probe (uiscale.ts's `textFactor` has the measurement).
   probe.style.cssText = "position:absolute;visibility:hidden;height:0;width:calc(100px * env(preferred-text-scale, 0))";
-  const reported = probe.getBoundingClientRect().width / 100;
-  const textScale = reported > 0 ? reported : null;
+  const reported = () => probe.getBoundingClientRect().width / 100;
+  const plain = reported();
+  // **Chromium 153 tells only a page that asks** (bug 77; measured, android.md):
+  // without `<meta name="text-scale" content="scale">` the variable reads 1
+  // whatever the system's scale is, where Chromium 141 reported it unasked.
+  // So where it reads exactly 1 on Android, it is read once more with the
+  // meta in the document, and the meta is taken out again in the same task,
+  // before anything is drawn: left in, it scales `font-size: medium` and
+  // every em under it as well, and the scale would be counted twice
+  // (measured: 16 px again, and the variable 1 again, once it is out).
+  // Android only: it is Android's rule, and on a touch Windows machine Chrome
+  // may already apply the system's scale as zoom.
+  let asked: number | null = null;
+  if (coarse && appleBody === null && plain === 1 && /Android/.test(navigator.userAgent)) {
+    const meta = document.createElement("meta");
+    meta.name = "text-scale";
+    meta.content = "scale";
+    document.head.appendChild(meta);
+    asked = reported();
+    meta.remove();
+  }
+  const textScale = systemTextScale(plain, asked, defaultFont);
   probe.remove();
   const shortSide = Math.min(screen.width, screen.height) || Math.min(innerWidth, innerHeight);
   return { coarse, shortSide, appleBody, defaultFont, textScale };

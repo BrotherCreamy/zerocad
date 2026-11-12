@@ -324,7 +324,9 @@ etc).
   Pro sizes, Galaxy S23/S24, a Fold 7's two screens, two tablets — each
   installed with the gesture bar, with three buttons and in a Chrome tab;
   everything fits on all 66, with the keyboard up. The interface size reads
-  Android's font scale from `env(preferred-text-scale)` (`uiscale.ts`).
+  Android's font scale from `env(preferred-text-scale)` (`uiscale.ts`) —
+  asked for with a momentary `<meta name="text-scale">` where the browser
+  tells only a page that asks (Chromium 153; docs/plans/android.md).
   Android's **back** (not iOS's: there the page keeps one history entry, so
   the edge swipe has nowhere to go) closes what is open, and at rest does nothing
   (`backstack.ts`; one seam with Escape). The panel being typed into rides
