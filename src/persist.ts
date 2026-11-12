@@ -25,7 +25,7 @@ import * as geom from "./relations/geometry.ts";
 import { measure } from "./relations/measure.ts";
 import { faceRef } from "./relations/solidref.ts";
 import { isFullTurn } from "./relations/revolution.ts";
-import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve, set, unhole } from "./operations.ts";
+import { REPOINTED, construction, extrude, featuresOnProfile, fillet, hole, regen, revolve, set, unhole } from "./operations.ts";
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
@@ -301,7 +301,27 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 21;
+export const VERSION = 22;
+// 22 (docs/plans/fillets-one-thing.md): **a cut corner is kept, and anything
+// can be construction.** What three existing entries *mean* changed, which is
+// what a version is for:
+//
+// - `fillet(l1, l2, r)` and `chamfer(l1, l2, d)` no longer re-point their
+//   legs: the two lines and their corner stay, flagged construction, and the
+//   shorter lines, the new ends and the arc (or the chamfer's line) are new —
+//   so every name a later entry holds is handed out differently. A 21 build
+//   replaying a 22 fillet would re-point `l2` and name what follows one off.
+// - `construction(...)` takes a point, a frame and a feature (its body) as
+//   well as a curve, and a curve of a linked profile is flagged with its
+//   partner — the entry lists both, resolved. A 21 build would refuse the
+//   point by name, which alone would not bump it.
+//
+// Going the other way **a file of 21 or before opens to the model it was**:
+// `translate` marks every older `fillet` and `chamfer` `"repointed"` — cut as
+// that build cut it — and every older `construction` `{ alone: true }`, so it
+// flags exactly the curves it names and no partner. The marks stay in the
+// entries when the file is saved again, so they keep meaning that
+// (`test/filletsonething.test.ts` opens a fixture the build before wrote).
 // 21 (docs/plans/linked-profiles.md): **an extrude's two profiles are linked,
 // and a feature owns nothing**. No entry changed shape, and none is added for
 // a twin: the relations within a profile each gain a twin on the other
@@ -612,10 +632,24 @@ function translate(model: Model, entry: JournalEntry, version: number): JournalE
   if (entry.op === "deleteFeature" && version < 21 && entry.args.length === 1) {
     return { op: "deleteFeature", args: [entry.args[0], "unlinked"] };
   }
-  if (entry.op === "fillet" && version < 9 && entry.args.length <= 4) {
-    const [l1, l2, r, plane] = entry.args;
+  // A corner cut before format 22 re-pointed its legs and set nothing aside
+  // (see `VERSION`): marked, so it is cut again exactly as it was. A fillet
+  // from before 9 regenerated nothing, so one whose leg a feature's profile
+  // names is also given the empty list of regenerated features.
+  if (entry.op === "fillet" && version < 22 && entry.args.length <= 5) {
+    const [l1, l2, r, plane, regenerated] = entry.args;
     const legs = [l1, l2].filter((n): n is string => typeof n === "string");
-    if (featuresOnProfile(model, legs).length) return { op: "fillet", args: [l1, l2, r, plane ?? null, []] };
+    const none = version < 9 && entry.args.length <= 4 && featuresOnProfile(model, legs).length > 0;
+    return { op: "fillet", args: [l1, l2, r, plane ?? null, none ? [] : regenerated ?? null, REPOINTED] };
+  }
+  if (entry.op === "chamfer" && version < 22 && entry.args.length <= 5) {
+    const [l1, l2, d1, d2, regenerated] = entry.args;
+    return { op: "chamfer", args: [l1, l2, d1, d2 ?? null, regenerated ?? null, REPOINTED] };
+  }
+  // A construction flag from before 22 was set on exactly the curves it
+  // names — never on a partner across a link — and stays that.
+  if (entry.op === "construction" && version < 22 && !entry.args.some((a) => a !== null && typeof a === "object")) {
+    return { op: "construction", args: [...entry.args, { alone: true }] };
   }
   if ((entry.op === "extrude" || entry.op === "revolve") && version < 8) {
     const loops = entry.args[entry.op === "extrude" ? 3 : 4];

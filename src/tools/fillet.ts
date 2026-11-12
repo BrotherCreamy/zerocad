@@ -36,10 +36,19 @@ function sharesCorner(model: Model, a: string, b: string): boolean {
   return la.refs.some((p) => lb.refs.includes(p));
 }
 
-/** The two lines that end at `point`, when exactly two do — a corner a click on its point takes whole. */
+/**
+ * The two lines that end at `point`, when exactly two do — a corner a click on
+ * its point takes whole. **The two that bound there**: a corner already cut
+ * at its far end has the line set aside (construction) and its shorter line
+ * both ending here, and the one drawn in ink is the one meant
+ * (docs/plans/fillets-one-thing.md); with no real line there, the two
+ * construction ones.
+ */
 export function cornerAt(model: Model, point: string): [string, string] | null {
   const lines = [...model.entities.values()].filter((e) => e.kind === "line" && e.refs.includes(point)).map((e) => e.name);
-  return lines.length === 2 ? [lines[0], lines[1]] : null;
+  const real = lines.filter((n) => !model.isConstruction(n));
+  const two = real.length === 2 ? real : real.length === 0 && lines.length === 2 ? lines : null;
+  return two ? [two[0], two[1]] : null;
 }
 
 /** The step that rounds the corner of `a` and `b` at `radius`: the typed call. */

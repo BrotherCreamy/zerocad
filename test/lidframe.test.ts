@@ -32,7 +32,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model, type ExtrudeFeature, type RevolveFeature } from "../src/model.ts";
 import { dist, fix, onPlane } from "../src/relations/basic.ts";
 import { parallel, pointOnLine } from "../src/relations/geometry.ts";
-import { del, extrude, fillet, regen, revolve, set } from "../src/operations.ts";
+import { REPOINTED, del, extrude, fillet, regen, revolve, set } from "../src/operations.ts";
 import { VERSION, open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Repl } from "../src/repl.ts";
@@ -501,12 +501,14 @@ test("a version-9 regeneration replays the old way too: a fillet after an old ex
   await loadKernel();
   const { m, ps, lines, own } = heldRectangle();
   extrude(m, lines[0], 20, own, null, 9);
-  fillet(m, lines[0], lines[1], 8);
+  // As a version-9 build cut it: the legs re-pointed, nothing set aside (format 22 marks every older fillet so).
+  fillet(m, lines[0], lines[1], 8, null, null, REPOINTED);
   const later = m.addPoint([70, 70, 0]).name;
   assert.equal(m.solve().solved, true);
   assert.equal(coincident(m).length, 3, "the old lid frame over three corners, regenerated as the old build did");
   const saved = JSON.parse(save(m));
   for (const e of saved.journal) if (e.op === "extrude") e.args = e.args.slice(0, 4);
+  for (const e of saved.journal) if (e.op === "fillet") e.args = e.args.slice(0, 5);
   saved.version = 9;
   const opened = open(JSON.stringify(saved));
   assert.deepEqual(allNames(opened), allNames(m));

@@ -28,7 +28,7 @@ import { isBlendFeature, type BlendFeature, type FeatureEntry, type Model } from
 import { describeSurface, surfaceChains, surfaceDetail, surfaceNameOf } from "./surfaces.ts";
 import { memberName } from "./model.ts";
 import { regionText } from "./operations.ts";
-import { chainsOf, modeOf } from "./modes.ts";
+import { bodyNameOf, chainsOf, modeOf } from "./modes.ts";
 import type { Menu, MenuItem } from "./menu.ts";
 import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
@@ -117,7 +117,9 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // (docs/plans/linked-profiles.md): *open* — an edge of its profile gone,
     // its surviving walls drawn as surfaces — or *unbuilt*, its depth or
     // angle deleted. Said in a word after the kind; `ls()` gives the reason.
-    const state = f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : "";
+    // And *construction*, on the feature a construction body's flag is on (docs/plans/fillets-one-thing.md).
+    const state = (f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : "")
+      + (f.construction ? " · construction" : "");
     return {
       name: f.name, detail: (mode === "new" ? f.kind : `${f.kind} · ${mode}`) + state, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
@@ -319,12 +321,19 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
   if (model.surfaces.has(name)) return surfaceMenu(model, name);
   const f = model.features.get(name) ?? model.blends.get(name);
   if (f) {
+    // The one construction row every kind has (docs/plans/fillets-one-thing.md): a feature's is its body's.
+    const body = bodyNameOf(model, name) ?? name;
+    const reference = model.isConstruction(body);
     return {
       header: f.kind === "fillet" || f.kind === "chamfer"
         ? `${name}  ${f.kind} of ${f.edges.length} edge${f.edges.length === 1 ? "" : "s"} of ${f.into}`
-        : `${name}  ${f.kind}, ${f.owns.length} made`,
+        : `${name}  ${f.kind}, ${f.owns.length} made${reference ? "  ·  construction" : ""}`,
       items: [
         { label: `Edit ${name}`, action: { do: "run", command: `edit(${quoted(name)})` } },
+        ...(model.features.has(body) ? [{
+          label: reference ? "Not construction" : "Construction",
+          action: { do: "run", command: `construction(${quoted(body)}${reference ? ", false" : ""})` },
+        } as MenuItem] : []),
         { label: "Delete", action: { do: "run", command: `del(${quoted(name)})` } },
       ],
     };

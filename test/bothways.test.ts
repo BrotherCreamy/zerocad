@@ -186,8 +186,9 @@ const ROWS: Record<string, Row> = {
         check() {
           const ctr = C(m, e.center), n = unit(m.normalOf(arc));
           let tan = 0, inplane = 0;
+          // Each leg is kept, construction, with the arc's end held on it (docs/plans/fillets-one-thing.md).
           for (const l of [L[0], L[1]]) {
-            const end = [e.start, e.end].find((p) => m.line(l).refs.includes(p))!;
+            const end = [e.start, e.end].find((p) => [...m.relations.values()].some((r) => r.op === "pointOnLine" && r.args[0] === p && r.args[1] === l))!;
             const [a, b] = ends(m, l);
             const u = unit(sub(b, a));
             tan = Math.max(tan, Math.abs(dot(unit(sub(C(m, end), ctr)), u)));

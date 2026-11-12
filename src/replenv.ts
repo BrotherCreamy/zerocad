@@ -1374,23 +1374,13 @@ export function neocadScope(h: EnvHandles): Bag {
     hide: (...names: unknown[]) => hide(model, ...names),
     show: (...names: unknown[]) => show(model, ...names),
     /**
-     * Construction geometry (operations.ts): `construction(...names)` sets the
-     * flag, `construction(...names, false)` clears it. A point or a frame
-     * named outright is passed over and the log says so; one a group brought
-     * in is passed over quietly, since a group's corners are not a mistake.
+     * Construction (operations.ts): `construction(...names)` sets the flag,
+     * `construction(...names, false)` clears it — on a curve, a point, a
+     * plane, a body (by any feature of it), or each member of a group. What
+     * comes back is every name whose flag changed, a linked profile's partner
+     * among them.
      */
-    construction: (...args: unknown[]) => {
-      const changed = construction(model, ...args);
-      const named = args.filter((a): a is string => typeof a === "string" && model.entities.has(a));
-      const over = named.filter((n) => {
-        const k = model.entities.get(n)!.kind;
-        return k !== "line" && k !== "arc" && k !== "circle";
-      });
-      if (over.length) {
-        h.log?.(`${over.join(" ")} passed over — only lines, arcs and circles bound regions, so only they take the flag`);
-      }
-      return changed;
-    },
+    construction: (...args: unknown[]) => construction(model, ...args),
   };
 
   /**

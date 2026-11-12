@@ -61,7 +61,7 @@ import { Model, ORIGIN, type JournalEntry } from "./model.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { arcNormal } from "./arcgeom.ts";
 import { framePlaneAxes } from "./curveplane.ts";
-import { IN_PLANE_SINE } from "./operations.ts";
+import { IN_PLANE_SINE, REPOINTED } from "./operations.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
 import { liesOn } from "./view.ts";
 
@@ -267,18 +267,22 @@ export function planeTranslation(model: Model, journal: JournalEntry[], version:
         if (typeof name === "string") arcs.push({ entry, name, candidates: candidates().concat(entries.length ? [plane] : []) });
         return [...entries, entry];
       }
-      if (step.op === "fillet" && three && a.length === 3) {
+      // A version-6 fillet's three arguments — marked `"repointed"` on the way
+      // in by persist.ts, as every fillet from before format 22 is, so the
+      // mark rides along after the plane this gives it.
+      if (step.op === "fillet" && three && (a.length === 3 || (a.length === 6 && a[3] == null && a[5] === REPOINTED))) {
         const [l1, l2, r] = a;
+        const tail = a.length === 6 ? [a[4] ?? null, REPOINTED] : [];
         const corner = cornerNormal(l1, l2);
         const fits = corner ? nearest(corner.n, candidates()) : null;
         if (fits || !corner) {
           // No corner to read is a step that will fail on its own terms; it is
           // handed the default (or nothing) and left to say why.
-          return [{ op: "fillet", args: [l1, l2, r, fits ?? model.defaultFrame ?? null] }];
+          return [{ op: "fillet", args: [l1, l2, r, fits ?? model.defaultFrame ?? null, ...tail] }];
         }
         const [u, v] = spanOf(corner.n);
         const made = makeFrame(corner.at, u, v, null);
-        return [...made.entries, { op: "fillet", args: [l1, l2, r, made.name] }];
+        return [...made.entries, { op: "fillet", args: [l1, l2, r, made.name, ...tail] }];
       }
       return [step];
     },

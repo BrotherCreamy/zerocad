@@ -136,7 +136,9 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   // 18 brought the spline (docs/plans/spline.md), which a file with none of
   // its own writes nothing for.
   const want = JSON.parse(text);
-  want.version = 21;
+  want.version = 22;
+  // 22 marks a construction flag from before it `{ alone: true }`: the curves it names, and no partner.
+  for (const e of want.journal) if (e.op === "construction") e.args = [...e.args, { alone: true }];
   const at = want.journal.findIndex((e: { op: string }) => e.op === "extrude");
   const [member, , frame, loops] = want.journal[at].args;
   want.journal.splice(at, 1, { op: "region", args: [member, frame, loops[0]] },

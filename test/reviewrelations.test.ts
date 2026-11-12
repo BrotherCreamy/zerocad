@@ -431,10 +431,13 @@ test("faceRef writes a wall by the line now in its place; faceKernelNames finds 
   const s = faceSource(m, `${e}:${ls[3]}`);
   assert.ok(s?.kind === "wall" && s.entity === ls[3] && s.index === 3 && s.shape === "plane" && s.whole);
   assert.equal(faceSource(m, `${e}:nosuch`), null);
-  // After a fillet of the first corner an arc stands in place 1, and every wall after it has moved up.
-  fillet(m, ls[0], ls[1], 5);
-  assert.deepEqual(faceKernelNames(m, `${e}:${ls[3]}`), [`${e}.m4`], "the same wall, another place");
-  assert.equal(faceRef(m, `${e}.m3`), `${e}:${ls[2]}`, "and the place is another wall's now");
+  // After a fillet of the first corner the profile is walked from the first
+  // edge the record kept — l3, l4, then the shorter lines either side of the
+  // arc — so every wall has another place.
+  const arc = fillet(m, ls[0], ls[1], 5);
+  assert.deepEqual(faceKernelNames(m, `${e}:${ls[3]}`), [`${e}.m1`], "the same wall, another place");
+  assert.equal(faceRef(m, `${e}.m3`), `${e}:${arc}`, "and the place is another wall's now");
+  assert.deepEqual(faceKernelNames(m, `${e}:${ls[0]}`), [], "the line set aside sweeps no wall");
 });
 
 test("every relation that takes a face journals a wall by its line, however it was given", () => {
@@ -672,7 +675,7 @@ test("a format-19 file's stars reopen as the separate relations they were, and i
   const text = await fixture("review-relations-v19.neocad.json");
   const was = JSON.parse(await fixture("review-relations-v19.geometry.json")) as Geometry;
   assert.equal(JSON.parse(text).version, 19);
-  assert.equal(VERSION, 21);
+  assert.equal(VERSION, 22);
   const m = open(text);
   // Every point where that build had it, before and after a solve.
   const worst = () => Math.max(...Object.entries(was.points).map(([p, at]) => len(sub(m.coords(p), at))));
@@ -714,7 +717,7 @@ test("a format-19 file's stars reopen as the separate relations they were, and i
   assert.equal(gone.filter((n) => copy.relations.has(n) === false && /^r/.test(n)).length, 6, "three pars and three eqs went with the first line");
   // Re-saved: the current version, no place left in it, and the same again from there.
   const saved = save(m);
-  assert.equal(JSON.parse(saved).version, 21);
+  assert.equal(JSON.parse(saved).version, 22);
   assert.ok(!/"e\d+\.m\d+"/.test(saved), "no wall is written by its place");
   assert.equal(save(open(saved)), saved, "stable");
   const twice = open(saved);

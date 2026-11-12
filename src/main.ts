@@ -1131,8 +1131,19 @@ async function main() {
       }
       // A point keeps its sketch colour on a solid: it is a target, not an
       // outline, and its casing carries it over a light face.
-      g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION : staged(e.name) ?? focused(e.name, inkOf(e.name));
-      g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
+      // **A construction point** is a ring in the construction ink, not a
+      // dot: reference, as a construction line is thin — and still lit and
+      // selected as any point is (docs/plans/fillets-one-thing.md).
+      const reference = model.isConstruction(e.name);
+      g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION
+        : staged(e.name) ?? focused(e.name, reference ? CONSTRUCTION : inkOf(e.name));
+      if (reference && !lit.has(e.name) && !chosen.has(e.name)) {
+        g.strokeStyle = g.fillStyle;
+        g.lineWidth = 1.1 * k;
+        g.beginPath(); g.arc(sx, sy, r - 0.6 * k, 0, Math.PI * 2); g.stroke();
+      } else {
+        g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
+      }
       label(e.name, sx + 6 * k, sy - 6 * k);
     }
   }
@@ -1397,7 +1408,8 @@ async function main() {
     const arms: [[number, number], "x" | "y" | "z", number[]][] = [[marker.x, "x", basis.ux], [marker.y, "y", basis.uy]];
     if (marker.z && basis.uz) arms.push([marker.z, "z", basis.uz]);
     for (const [tip, letter, axis] of arms) {
-      const colour = state ?? AXIS_INKS[letter];
+      // A construction frame is drawn in the construction ink, arms and name: a reference plane.
+      const colour = state ?? (model.isConstruction(name) ? CONSTRUCTION : AXIS_INKS[letter]);
       g.strokeStyle = colour;
       g.fillStyle = colour;
       const [dx, dy] = [tip[0] - marker.origin[0], tip[1] - marker.origin[1]];
@@ -1439,7 +1451,7 @@ async function main() {
       label(letter, tip[0] + (ux * 8 - 3) * k, tip[1] + (uy * 8 + 3.5) * k);
     }
     // The name in the old frame ink, one for every frame — the default's in bold.
-    g.fillStyle = state ?? FRAME_NAME_INK;
+    g.fillStyle = state ?? (model.isConstruction(name) ? CONSTRUCTION : FRAME_NAME_INK);
     g.font = `${weight}${11 * k}px monospace`;
     // Away from both arms, not at a fixed corner: the arms turn with the frame,
     // and a label pinned below-right would sit on top of one of them as soon as

@@ -44,7 +44,8 @@
 // painter's draws into a canvas whose listeners ask the entities, not this.
 
 import type { Model } from "./model.ts";
-import { SOLID_EDGE, SOLID_EDGE_PX, faceColour, faceRGB, facesToDraw, visibleFaces, type SolidFaces } from "./faces.ts";
+import { SOLID_EDGE, SOLID_EDGE_PX, faceColour, faceRGB, facesToDraw, referenceRGB, visibleFaces, type SolidFaces } from "./faces.ts";
+import { referenceFeatures } from "./modes.ts";
 import { clipMatrix, viewAxes, type View } from "./view.ts";
 import { cross3, dot3, sub3 } from "./vec3.ts";
 
@@ -57,6 +58,8 @@ export function paintFaces(g: CanvasRenderingContext2D, model: Model, view: View
                            skip: ReadonlySet<string> = new Set(), solid: SolidFaces | null = null): void {
   const faces = facesToDraw(model, view, skip, solid);
   if (!faces.length) return;
+  // A construction body's faces are drawn as reference (faces.ts).
+  const reference = referenceFeatures(model);
   g.save();
   g.lineJoin = "round";
   g.lineWidth = 0.75;
@@ -67,7 +70,7 @@ export function paintFaces(g: CanvasRenderingContext2D, model: Model, view: View
       for (const p of outline.slice(1)) g.lineTo(...p);
       g.closePath();
     }
-    const colour = faceColour(face.shade);
+    const colour = faceColour(face.shade, reference.has(face.feature));
     g.fillStyle = colour;
     g.fill("evenodd");
     g.strokeStyle = colour;
@@ -246,8 +249,10 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       };
       const batch: number[] = [];
       const caps: { data: number[] }[] = [];
+      // A construction body's faces are drawn as reference (faces.ts).
+      const reference = referenceFeatures(model);
       for (const f of faces) {
-        const rgb = faceRGB(f.shade).map((c) => c / 255);
+        const rgb = (reference.has(f.feature) ? referenceRGB(f.shade) : faceRGB(f.shade)).map((c) => c / 255);
         if (f.outlines.length === 1 && convex(f.outlines[0], f.normal)) fan(batch, f.outlines[0], rgb);
         else {
           const data: number[] = [];

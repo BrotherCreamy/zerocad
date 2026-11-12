@@ -300,7 +300,7 @@ test("an ellipse replays from its file: format 15, minors and normals saved, a v
   const text = save(m);
   const saved = JSON.parse(text);
   assert.equal(saved.version, VERSION);
-  assert.equal(VERSION, 21); // 15 brought the ellipse; 16 the head's workbench and modules; 17 regions; 18 the spline; 19 an offset held in its plane; 20 relations among many and a wall named by its line; 21 linked profiles
+  assert.equal(VERSION, 22); // 15 brought the ellipse; 16 the head's workbench and modules; 17 regions; 18 the spline; 19 an offset held in its plane; 20 relations among many and a wall named by its line; 21 linked profiles; 22 a cut corner kept, anything construction
   assert.ok(Math.abs(saved.values.minors[e] - 3) < 1e-9);
   assert.equal(saved.values.normals[e].length, 3);
   const back = open(text);

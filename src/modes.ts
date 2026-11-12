@@ -145,6 +145,20 @@ export function chainsOf(model: Model, opts: { hidden?: boolean } = {}): Chains 
   return out;
 }
 
+/**
+ * Every feature, fillet and chamfer of a **construction body**
+ * (`Model.isConstruction` on a body's first feature; docs/plans/
+ * fillets-one-thing.md) — what is drawn as reference and left out of an
+ * export. A flagged feature in no chain (an open extrude) is itself.
+ */
+export function referenceFeatures(model: Model): Set<string> {
+  const out = new Set<string>();
+  if (![...model.features.values()].some((f) => f.construction)) return out;
+  for (const f of model.features.values()) if (f.construction) out.add(f.name);
+  for (const c of chainsOf(model, { hidden: true }).bodies) if (model.isConstruction(c.name)) for (const s of c.steps) out.add(s.name);
+  return out;
+}
+
 /** The body a feature, a fillet or a chamfer is part of, by name — null for one left out. */
 export function bodyNameOf(model: Model, feature: string): string | null {
   for (const c of chainsOf(model, { hidden: true }).bodies) if (c.steps.some((f) => f.name === feature)) return c.name;
@@ -297,6 +311,8 @@ export function defaultMode(model: Model, f: FeatureEntry): ModeChoice {
   const order = [...model.features.keys()];
   const before = (g: FeatureEntry) => order.indexOf(g.name) < order.indexOf(f.name);
   for (const whole of chainsOf(model).bodies) {
+    // A construction body is reference: never joined or cut unless it is named (`into`).
+    if (model.isConstruction(whole.name)) continue;
     const chain = { ...whole, features: whole.features.filter(before) };
     if (!chain.features.length || !before(whole.features[0])) continue;
     const inside = insideBody(model, chain);

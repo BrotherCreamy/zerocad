@@ -22,7 +22,7 @@ import { Model } from "../src/model.ts";
 import { dist, fix } from "../src/relations/basic.ts";
 import { onCircle, parallel, pointOnLine } from "../src/relations/geometry.ts";
 import { rotated, rotation, translated } from "../src/relations/pattern.ts";
-import { del, extrude, revolve, set } from "../src/operations.ts";
+import { del, extrude, revolve, set, standsFor } from "../src/operations.ts";
 import { chamfer, circular, extend, linear, mirror, offset, patternNames, trim, walkChain } from "../src/sketchedit.ts";
 import { cutsOf } from "../src/sketchgeom.ts";
 import { open, save } from "../src/persist.ts";
@@ -403,7 +403,8 @@ test("offset of a filleted outline: arcs about the same centre, tangent to the l
   const fillet = scope.fillet as (a: string, b: string, r: number) => string;
   const arc = fillet(l[0], l[1], 8);
   solved(m);
-  const chain = [l[0], arc, l[1], l[2], l[3]];
+  // The outline as it stands: the shorter lines the fillet made, not the two it set aside.
+  const chain = [standsFor(m, l[0]), arc, standsFor(m, l[1]), l[2], l[3]];
   const { closed, walk } = walkChain(m, chain);
   assert.equal(closed, true);
   assert.equal(walk.length, 5);
@@ -510,7 +511,7 @@ test("mirror refuses an ellipse, a frame axis that is not one, and a line that i
 
 // --- chamfer -----------------------------------------------------------------------
 
-test("chamfer's dimensions: one setback is a dist and an equal spacing, two are two dists; the corner stays, held where the legs meet", () => {
+test("chamfer's dimensions: one setback is a dist and an equal spacing, two are two dists; the corner stays, construction, with its two lines", () => {
   const m = new Model(2);
   axisFrame(m);
   const { p, l } = rect(m, 0, 0, 40, 30);
@@ -524,8 +525,11 @@ test("chamfer's dimensions: one setback is a dist and an equal spacing, two are 
   const [t1, t2] = m.line(cut).refs;
   assert.ok(near(m.coords(t1), [35, 0]) && near(m.coords(t2), [40, 5]));
   assert.ok(near(m.coords(corner), [40, 0]), "the corner stays at the corner");
+  assert.ok([corner, l[0], l[1]].every((n) => m.isConstruction(n)), "the corner and its two lines, kept as construction");
+  assert.deepEqual(m.line(l[0]).refs, [p[0], p[1]], "the line set aside is not re-pointed");
+  assert.ok([...m.relations.values()].some((r) => r.op === "parallel" && r.args[0] === l[0]), "and keeps its relations");
   const ops = [...m.relations.values()].filter((r) => r.args.includes(corner)).map((r) => r.op);
-  assert.ok(ops.includes("intersection") && ops.includes("dist") && ops.includes("equalSpacing"), ops.join(","));
+  assert.ok(ops.includes("dist") && ops.includes("equalSpacing") && !ops.includes("intersection"), ops.join(","));
   const d = [...m.relations.values()].find((r) => r.op === "dist" && r.args[0] === corner && r.args[1] === t1)!;
   set(m, `${d.name}.value`, 8);
   solved(m);
@@ -540,7 +544,7 @@ test("chamfer's dimensions: one setback is a dist and an equal spacing, two are 
   replays(m);
 });
 
-test("chamfer on an extruded corner regenerates the lid: five twins, the corner's wall gone, the lid cut as the base is", () => {
+test("chamfer on an extruded corner regenerates the lid: five twins, the corner's wall set aside, the lid cut as the base is", () => {
   const m = new Model(3);
   const { p, l } = rect(m, 0, 0, 40, 30);
   const e1 = m.featureOf(extrude(m, l[0], 10), "extrude");
@@ -548,7 +552,7 @@ test("chamfer on an extruded corner regenerates the lid: five twins, the corner'
   const f = m.featureOf(e1.name, "extrude");
   assert.equal(f.loops[0].length, 5, "the outline has the chamfer in it");
   assert.ok(f.loops[0].some((x) => (typeof x === "string" ? x : x.name) === cut));
-  assert.ok(!f.names.includes(p[1]), "the old corner is no vertex of the profile now");
+  assert.ok(!f.loops[0].includes(l[0]) && f.aside!.includes(p[1]) && m.isConstruction(p[1]), "the old corner is no vertex of the profile now: set aside, construction");
   solved(m);
   const entry = m.journal.at(-1)!;
   assert.equal(entry.op, "chamfer");

@@ -22,7 +22,7 @@ import { Model } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { parallel, perpendicular } from "../src/relations/geometry.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
-import { DEFAULT_DEPTH, del, extrude, fillet, hole, set } from "../src/operations.ts";
+import { DEFAULT_DEPTH, del, extrude, fillet, hole, set, standsFor } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { findLoops } from "../src/loops.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -161,11 +161,13 @@ test("a filleted loop: the arc's twin faces as its base does, the same arc, the 
   const before = m.entities.size;
 
   const f = m.featureOf(extrude(m, lines[2], 15), "extrude");
-  assert.deepEqual(f.loops, [[lines[0], arc, lines[1], lines[2], lines[3]]]);
+  // The loop as it stands: the two lines the fillet set aside are construction, the shorter ones in their place bound it.
+  const members = f.loops[0] as string[];
+  assert.deepEqual([...members].sort(), [standsFor(m, lines[0]), arc, standsFor(m, lines[1]), lines[2], lines[3]].sort());
   // Five corners and the centre; four twin lines, the twin arc, five walls.
   assert.equal(m.entities.size - before, 6 + 4 + 1 + 5);
   assert.equal(f.walls.length, 5);
-  const twinArc = m.arc(f.twins[0][1]);
+  const twinArc = m.arc(f.twins[0][members.indexOf(arc)]);
   const base = m.arc(arc);
   // A translation turns nothing — so it is the same arc, about the same
   // normal, which the depth holds to its base's (`extrusion`'s .n block).
@@ -388,9 +390,11 @@ test('del("e1") takes the record and the relation that is the extrude — the li
   const f = m.featureOf(e, "extrude");
   const made = f.owns.filter((n) => m.entities.has(n));
   const lidAt = new Map(made.filter((n) => m.entities.get(n)!.kind === "point").map((n) => [n, m.coords(n)]));
-  // The fillet's and the circle's relations each have a twin on the lid.
+  // The fillet's radius and arc ends each have a twin on the lid (its
+  // tangencies and holds name the two lines it set aside, which a lid built
+  // after the cut has no partner for — docs/plans/fillets-one-thing.md).
   const twins = [...m.relations.values()].filter((r) => r.twin).map((r) => r.name);
-  assert.ok(twins.length >= 4, `twins: ${twins}`);
+  assert.ok(twins.length >= 2, `twins: ${twins}`);
   const journalAt = m.journal.length;
   const removed = del(m, e);
 

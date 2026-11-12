@@ -141,6 +141,12 @@ export class SketchTool extends Tool {
   onDown(p: PointerInfo): void {
     const under = this.at(p.screen);
     if (!under) {
+      // A chamfer's own face: refused, saying why and what does work.
+      const chamfer = this.chamferAt(p.screen);
+      if (chamfer) {
+        this.refuse(new Error(chamferFaceRefusal(chamfer)));
+        return;
+      }
       // In 3D the named planes are always there to take; a 2D drawing has only its loops.
       this.refuse(new Error(this.ctx.model.dim === 3
         ? "click inside a lit face, or a lit plane — or choose Top, Front or Right in the options"
@@ -181,11 +187,26 @@ export class SketchTool extends Tool {
     return !!s && hit.loops[hit.index].members.every((m) => s.skeleton(m.name));
   }
 
+  /**
+   * The chamfer whose own face is under the pixel — the kernel's cut of a
+   * body's edge (`BlendFeature`), by its record's name — or null. That face is
+   * **not sketched on** (the register's review item 7, docs/plans/
+   * fillets-one-thing.md): nothing in the model lies on it, so a plane made
+   * there was held by nothing and stayed behind when the solid moved. A
+   * chamfer of a profile's corner is the sketch's now, its face a wall swept
+   * from a line, and that is sketched on like any wall and follows.
+   */
+  private chamferAt(screen: [number, number]): string | null {
+    const hit = this.ctx.solids?.faceAt(screen) ?? null;
+    return hit ? chamferOfFace(this.ctx.model, hit.name) : null;
+  }
+
   /** A flat face of a body under the pixel, as the frame the tool would make there — or null. */
   private kernelAt(screen: [number, number]): Under | null {
     const s = this.ctx.solids;
     const hit = s?.faceAt(screen) ?? null;
     if (!s || !hit || !hit.planar) return null;
+    if (chamferOfFace(this.ctx.model, hit.name)) return null;
     const body = s.views().find((v) => v.name === hit.body);
     const plane = body ? kernelFacePlane(body, hit.face, hit.normal) : null;
     if (!body || !plane) return null;
@@ -316,6 +337,19 @@ export class SketchTool extends Tool {
       r.g.restore();
     }
   }
+}
+
+/** The chamfer record a kernel face's name is a face of (`e3.f0`), or null: a face the kernel cut along a body's edge. */
+export function chamferOfFace(model: Model, face: string): string | null {
+  const record = face.split(".")[0];
+  return model.blends.get(record)?.kind === "chamfer" ? record : null;
+}
+
+/** Why a chamfer's own face is not sketched on, and what is. */
+export function chamferFaceRefusal(chamfer: string): string {
+  return `that face is ${chamfer}'s — a chamfer the solid kernel cut along an edge. Nothing in the model lies on it, so a sketch there `
+    + "would be held by nothing and left behind when the solid moves. Sketch on a face beside it, or on a plane you make "
+    + "(three points on the solid: plane(p1, p2, p3)); a chamfer between two walls is the sketch's own, and its face is sketched on like any wall";
 }
 
 /** Whether a kernel face under the pixel lies in the plane of the loop a region hit found there. */

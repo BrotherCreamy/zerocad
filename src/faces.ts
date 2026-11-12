@@ -739,8 +739,24 @@ export function faceRGB(shade: number): number[] {
   return FACE_DARK.map((d, i) => Math.round(d + (FACE_LIGHT[i] - d) * t));
 }
 
+/** `faceRGB` for a face of a construction body. A function of its own, not a flag on `faceRGB`, which is mapped over shades. */
+export function referenceRGB(shade: number): number[] {
+  const t = Math.max(0, Math.min(1, shade));
+  return REFERENCE_DARK.map((d, i) => Math.round(d + (REFERENCE_LIGHT[i] - d) * t));
+}
+
+/**
+ * **A construction body's faces** (docs/plans/fillets-one-thing.md): the
+ * construction ink's teal, darker and over half the range a part's faces
+ * have — a body that is reference reads as one beside a part at any angle,
+ * and its planes still tell apart. Opaque, as every face is: the depth test
+ * that puts a part in front of it is the one that draws it.
+ */
+export const REFERENCE_DARK = [40, 66, 64];
+export const REFERENCE_LIGHT = [94, 140, 132];
+
 /** `faceRGB` as a canvas fill style. */
-export function faceColour(shade: number): string {
-  const [r, g, b] = faceRGB(shade);
+export function faceColour(shade: number, reference = false): string {
+  const [r, g, b] = reference ? referenceRGB(shade) : faceRGB(shade);
   return `rgb(${r}, ${g}, ${b})`;
 }
