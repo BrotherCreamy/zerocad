@@ -40,9 +40,11 @@ mark itself; a far mark not placed at all could not be reached by the hand.)
 
 Tests: `test/linkedprofiles.test.ts` ("a linked pair is drawn once, mark and
 dimension alike…") pins the rule from above, from below and lit;
-`test/quiet.test.ts`'s anchor test lights its pairs, since it is about where
-a glyph is anchored, not which end is drawn. Gate: unit and the browser
-files that read glyphs or conflict ink, recorded in the commit.
+`test/e2e/quiet.e2e.ts`'s hover test is unchanged and is what found the
+first form wanting. Gate on the final form (`1398167`): typecheck 0; unit
+2145/2145 (load 10–15); the seven browser files that read glyphs or
+conflict ink — quiet, linkedprofiles, reviewsolver, solidfillets,
+filletsonething, throughall, conflicts — 55/55.
 
 ## 2026-11-12 — there is no sketch: the Plane tool, Draw on this face, a group's definedness, and a tool's guidance in the hand's word
 
