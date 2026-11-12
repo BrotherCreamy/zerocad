@@ -7,6 +7,38 @@ decisions.
 
 ---
 
+## 2026-11-12 — a linked pair's mark is drawn once, at the end nearer the viewer; both ends while lit
+
+The linked-profiles package drew a pair's *dimension* once, on whichever
+profile is nearer the viewer, and its *marks* on both ends — "a right angle
+is true of each profile and says so at each". In hidden-line and wire views,
+and on a phone in any view, that doubled every `⊥`, `∥` and `—` on a block,
+and a fillet's five relations on top made the corner a thicket
+(docs/images/490, 500; the register filed it under linked profiles' *Left*).
+
+Now a mark is placed once too, by the same rule as the label: the end nearer
+the viewer, an end in sight before one a solid hides. **Both ends are placed
+while the pair is lit** — selected, or named by the last solve's conflict,
+which lights both ends — so a conflict still shows on whichever profile is
+being looked at: `placeGlyphs` takes the lit names from the host
+(`Engine.litRelations`, set before each draw) and a glyph so placed says
+`far: true`. The far end is not placed while not lit, so it is not picked
+either; the near end stands for the pair, as `set` and `del` on either
+already do.
+
+| picture | what it shows |
+|---|---|
+| 537 | Desktop, hidden-line: a block held to the axes, its width 60 — each `—` and `\|` once, on the lid, the `⊥` and `20` on the near wall. |
+| 538 | The lid's width dimensioned 45 against the base's 60: CONFLICT, and both ends of both pairs lit — 60 and 45 on the lid and on the base. |
+| 539 | iPhone, shaded: the same block, the 60 once. |
+| 540 | iPhone, the conflict: both ends lit. |
+
+Tests: `test/linkedprofiles.test.ts` ("a linked pair is drawn once, mark and
+dimension alike…") pins the rule from above, from below and lit;
+`test/quiet.test.ts`'s anchor test lights its pairs, since it is about where
+a glyph is anchored, not which end is drawn. Gate: unit and the browser
+files that read glyphs or conflict ink, recorded in the commit.
+
 ## 2026-11-12 — there is no sketch: the Plane tool, Draw on this face, a group's definedness, and a tool's guidance in the hand's word
 
 *Merged into the working branch (`3fc5372`), a clean merge. The gate on

@@ -104,6 +104,13 @@ export interface Glyph {
   /** True for the dimensioned relations, which draw their value, not a mark. */
   isLabel: boolean;
   /**
+   * The far end of a linked pair (docs/plans/linked-profiles.md): the same
+   * relation is also placed at the end nearer the viewer, and this one is
+   * here only because it is lit — in a conflict, or selected. Absent
+   * otherwise, since the far end is not placed at all.
+   */
+  far?: boolean;
+  /**
    * The entities its anchor is on — the point it sits beside, the edge or rim
    * it is nudged off, the two points of a segment it is placed on. What a glyph
    * follows when geometry is quiet (quiet.ts): a mark on a quiet corner or a
@@ -940,7 +947,10 @@ export function constrainedBy(model: Model, relationName: string): string[] {
  * box, which floats a fixed number of pixels off it and is in front of
  * nothing. Null — no solid, or the hidden and wire modes — places every glyph.
  */
-export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = null): Glyph[] {
+/** No relation lit: what `placeGlyphs` is handed when nothing is selected or in conflict. */
+const NONE: ReadonlySet<string> = new Set();
+
+export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = null, lit: ReadonlySet<string> = NONE): Glyph[] {
   const out: Glyph[] = [];
   const k = uiOf(view);
   const [OFFSET, STEP, HALF_W, HALF_H, CHAR_W, PAD, MARGIN] =
@@ -957,13 +967,18 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
    */
   const taken = new Map<string, number>();
 
-  // **A linked pair's dimension is drawn once** (docs/plans/linked-profiles.md):
-  // on whichever of the two profiles is nearer the viewer, so the one number
-  // is never written twice, one over the other, when a solid is looked at
-  // square-on. A mark with no number is drawn on both ends — a right angle
-  // is true of each profile and says so at each. Which end is decided by the
-  // first anchor's depth, and by sight: an end a solid hides gives way.
-  const quiet = new Set<string>();
+  // **A linked pair is drawn once** (docs/plans/linked-profiles.md): on
+  // whichever of the two profiles is nearer the viewer, so the one number is
+  // never written twice, one over the other, when a solid is looked at
+  // square-on — and, since 2026-11-12, so a block in hidden-line or wire view
+  // wears each `⊥` once rather than at both corners of every wall, which on a
+  // phone was a thicket (docs/images/490, 500). A right angle is as true of
+  // the far profile as of the near one; it is said at the end in view. Which
+  // end is decided by the first anchor's depth, and by sight: an end a solid
+  // hides gives way. **The far end is still placed when it is lit** — in a
+  // conflict, or selected — since a conflict lights both ends and the drawing
+  // has to show both; `lit` is those names, handed in by the host.
+  const far = new Set<string>();
   const { toward } = viewAxes(view);
   const seen = new Set<string>();
   for (const r of model.relations.values()) {
@@ -974,7 +989,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
     for (const n of pair) {
       const x = model.relations.get(n)!;
       try {
-        if (!shownGlyph(model, n) || labelOf(model, x) === null) continue;
+        if (!shownGlyph(model, n)) continue;
         const [a] = anchorsFor(model, view, x);
         if (a) shown.push({ name: n, near: dot3(lift3(a.world), toward), inSight: inSight(occ, a.world) });
       } catch {
@@ -983,11 +998,11 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
     }
     if (shown.length < 2) continue;
     const best = shown.reduce((p, c) => (c.inSight !== p.inSight ? (c.inSight ? c : p) : c.near > p.near + 1e-9 ? c : p));
-    for (const s of shown) if (s !== best) quiet.add(s.name);
+    for (const s of shown) if (s !== best) far.add(s.name);
   }
 
   for (const r of model.relations.values()) {
-    if (!shownGlyph(model, r.name) || quiet.has(r.name)) continue;
+    if (!shownGlyph(model, r.name) || (far.has(r.name) && !lit.has(r.name))) continue;
     let anchors: Anchor[];
     try {
       anchors = anchorsFor(model, view, r);
@@ -1036,6 +1051,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
         halfW,
         halfH: HALF_H,
         isLabel: label !== null,
+        ...(far.has(r.name) ? { far: true } : {}),
         about: a.about,
         ...(label !== null && a.ends
           ? { ends: a.ends.map((w) => worldToScreen(view, w)) as [[number, number], [number, number]] }

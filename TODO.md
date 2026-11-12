@@ -238,6 +238,14 @@ otherwise.
   - **A dimension's label is drawn once, on the end nearer the viewer** (in
     sight first); marks (`⊥`, `∥`) on both ends. In hidden-line and wire
     views that doubles the marks, which is crowded on a phone.
+    **Changed 2026-11-12: a mark is drawn once too**, at the end nearer the
+    viewer (in sight first), and a pair is placed at both ends only while
+    lit — selected, or named by a conflict, which lights both ends
+    (`placeGlyphs`' `lit`, handed in by the host; docs/images/537–540). A
+    right angle is as true of the lid as of the base; it is said at the end
+    in view. The far end is not placed at all while not lit, so it is not
+    picked either; the near end stands for the pair, as `set` and `del` on
+    either already do.
   - **`del("e1")` takes the record, its depth and `e1_perp`, and no entity**;
     the walls stay as four lines, the `extrusion` goes with the depth, every
     twin becomes ordinary.
@@ -3177,13 +3185,15 @@ are flagged as such.
     - [ ] **Feature-made relations are still background to the conflict
           search** (`removable`): with them deletable, a conflict that
           `e1_perp` is part of could name it. Review item 3.
-    - [ ] **Marks are doubled in hidden-line and wire views**: eight `⊥`
+    - [x] **Marks are doubled in hidden-line and wire views**: eight `⊥`
           pairs on a block (docs/images/443). On a phone that is crowded; a
           mark could be drawn on the nearer end only, as a dimension is.
-          And a twin's mark sits on the lid's edge, where it wins the pick
-          over the solid's own edge under it: `solidfillets.e2e.ts` hovered
-          the middle of the plate's right lid edge and got `r6_e1`, and now
-          hovers off the middle.
+          **Done 2026-11-12** (the register above, docs/images/537–540): a
+          mark is drawn once, at the nearer end, both ends while lit.
+          Still true: a twin's mark sits on the lid's edge, where it wins
+          the pick over the solid's own edge under it: `solidfillets.e2e.ts`
+          hovered the middle of the plate's right lid edge and got `r6_e1`,
+          and now hovers off the middle.
     - [ ] **A `set` of a profile dimension on a block nothing holds tilts
           it**: a free 40 × 25 × 10 block, `set` of the 40 to 55, leaves the
           base corners at z = +4.2, −4.1, −4.1, +4.2. Measured the same on

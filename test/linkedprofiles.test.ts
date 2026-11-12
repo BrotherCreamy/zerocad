@@ -37,7 +37,7 @@ import { join, leave, relate } from "../src/among.ts";
 import { featureFaces } from "../src/faces.ts";
 import { chainsOf } from "../src/modes.ts";
 import { organiserSections } from "../src/organiser.ts";
-import { placeGlyphs } from "../src/glyphs.ts";
+import { placeGlyphs, type Glyph } from "../src/glyphs.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { pullTo } from "../src/tools/engine.ts";
 import type { View } from "../src/view.ts";
@@ -713,17 +713,30 @@ test("a lid that is another extrude's profile carries a relation on: a twin of a
   assert.equal(del(m, `${p}_${e2}`).length, 3);
 });
 
-test("a twin's mark is drawn on both ends; a dimension's on one, the end nearer the viewer", async () => {
+test("a linked pair is drawn once, mark and dimension alike, on the end nearer the viewer — and at both ends while lit", async () => {
   const { m, r, w } = await block({ pinned: true });
   const above: View = { ox: 400, oy: 300, scale: 4 };
   const marks = placeGlyphs(m, above);
-  assert.ok(marks.some((g) => g.relation === r[0]) && marks.some((g) => g.relation === `${r[0]}_e1`), "a right angle is marked at both corners");
-  const dims = marks.filter((g) => g.relation === w || g.relation === `${w}_e1`);
-  assert.deepEqual(dims.map((g) => g.relation), [`${w}_e1`], "from above, the lid's — never both, one over the other");
+  // Which ends are placed (a relation may place more than one glyph at an end).
+  const of = (gs: Glyph[], name: string) => [...new Set(gs.filter((g) => g.relation === name || g.relation === `${name}_e1`).map((g) => g.relation))];
+  // Until 2026-11-12 a mark was placed at both corners and only a dimension
+  // once: eight ⊥ on a block in hidden-line view, a thicket on a phone
+  // (docs/images/490, 500). A right angle is as true of the lid as of the
+  // base; it is said at the end in view.
+  assert.deepEqual(of(marks, r[0]), [`${r[0]}_e1`], "from above, the lid's right angle alone");
+  assert.deepEqual(of(marks, w), [`${w}_e1`], "from above, the lid's dimension — never both, one over the other");
   const { orbitBy } = await import("../src/view.ts");
   const below = orbitBy(above, 0, Math.PI);
-  const under = placeGlyphs(m, below).filter((g) => g.relation === w || g.relation === `${w}_e1`);
-  assert.deepEqual(under.map((g) => g.relation), [w], "from below, the base's");
+  const under = placeGlyphs(m, below);
+  assert.deepEqual(of(under, r[0]), [r[0]], "from below, the base's mark");
+  assert.deepEqual(of(under, w), [w], "from below, the base's dimension");
+  // Lit — selected, or named by a conflict, which lights both ends — the far
+  // end is placed too, and says it is the far one.
+  const lit = placeGlyphs(m, above, null, new Set([r[0], `${r[0]}_e1`]));
+  assert.deepEqual(of(lit, r[0]).sort(), [r[0], `${r[0]}_e1`].sort(), "lit, both corners");
+  assert.equal(lit.find((g) => g.relation === r[0])?.far, true, "the base's is the far end");
+  assert.equal(lit.find((g) => g.relation === `${r[0]}_e1`)?.far, undefined, "the lid's is not");
+  assert.deepEqual(of(lit, w), [`${w}_e1`], "a pair that is not lit is still drawn once");
 });
 
 test("in a 2D model nothing links and nothing follows: a relation is made as it always was", async () => {

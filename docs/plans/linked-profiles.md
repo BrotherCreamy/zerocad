@@ -34,7 +34,10 @@ impossible to tell which was the original and which is the derivative."*
      the conflict search (named once, by whichever end the user has in view);
    - a relation added later to either profile gets its twin at once;
    - glyphs are drawn on both ends, dimensions on whichever end faces the
-     viewer, so nothing is drawn twice at once.
+     viewer, so nothing is drawn twice at once. *(Since 2026-11-12 a mark is
+     drawn once too, at the end nearer the viewer, and at both ends only
+     while lit — selected, or in a conflict; see the CHANGELOG, "a linked
+     pair's mark is drawn once".)*
    Relations that **reach outside the profile** (a dist to another point, an
    `onPlane` to a picked plane, a `par` to an axis is fine since it is a
    direction) are not twinned: twinning them would pin the lid where the base
@@ -177,7 +180,8 @@ built.
 - `set` on either of a pair rebuilds both with the one value;
   `deleteRelation` on either takes both; a conflict names the relation that
   was typed and the host lights both ends; a dimension's label is drawn on
-  the end nearer the viewer, a mark on both.
+  the end nearer the viewer, a mark on both *(a mark once too, since
+  2026-11-12, and both ends while lit)*.
 
 | Relation | Twins? | Why |
 |---|---|---|

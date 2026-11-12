@@ -609,8 +609,16 @@ export class ToolEngine {
    * calling in here at all. The work is a few arithmetic operations per
    * relation, which is nothing next to the solve that just ran.
    */
+  /**
+   * The relations the host has lit — selected, or named by the last solve's
+   * conflict — which `placeGlyphs` places at both ends of a linked pair rather
+   * than at the nearer one alone. Set by the host before each draw; the pick
+   * path reads the last.
+   */
+  litRelations: ReadonlySet<string> = new Set();
+
   glyphs(): Glyph[] {
-    return this.glyphsOn ? placeGlyphs(this.model, this.view, this.occlusion) : [];
+    return this.glyphsOn ? placeGlyphs(this.model, this.view, this.occlusion, this.litRelations) : [];
   }
 
   /**

@@ -1540,6 +1540,10 @@ async function main() {
     // solid's edges — quiet until hovered — a conflict's glyphs were not drawn
     // at all, so CONFLICT stood over a picture with nothing red in it (found
     // by reviewsolver.e2e.ts reading the inks over a lit face; bug 74).
+    //
+    // And a linked pair's far end is placed only while lit the same way
+    // (glyphs.ts, `placeGlyphs`): the engine is told which before it places.
+    engine.litRelations = new Set([...chosen, ...conflicted.keys()]);
     const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || conflicted.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
     if (!marks.length) return;
     const k = uiOf(view);
