@@ -211,19 +211,32 @@ async function contrast(app: AppContext, selector: string, fill: string, over: "
   const overIt = (g: number) => (over === "ground" ? g < 0.02 : g > 0.3);
   const boxOf = () => app.page.$eval(selector, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
   const there = () => app.page.$eval(selector, () => true).catch(() => false);
+  // **The tail's lines are kept young for the length of the sample**: their
+  // stamps in the docked log (`data-at`, what the tail ages them by) are set
+  // to now before each shot, so the app's own rule keeps them when its timer
+  // next looks. The fade is held off above; this holds off the removal at
+  // 10 s, which at load 30–40 (four screenshots of up to 7.7 s each) took
+  // the line out in 1 sample of 5 even with it said again twice.
+  const young = () => app.page.evaluate(() => {
+    for (const d of Array.from(document.querySelectorAll<HTMLElement>("#log > div")).slice(-3)) d.dataset.at = String(Date.now());
+  });
+  const shoot = async (css: string) => { await young(); return grab(app, box!, css); };
+  let box: Box | null = null;
   for (let attempt = 1; ; attempt++) {
-    await app.page.waitForSelector(selector, { timeout: 10_000 });
-    const box = await boxOf();
+    // Said by `app.type`, the line is in the log once the entry has run —
+    // and `solve()` over the plate and the bodies ran for seconds at load 40.
+    await app.page.waitForSelector(selector, { timeout: 30_000 });
+    box = await boxOf();
     assert.ok(box.w > 4 && box.h > 4, `${selector} is drawn: ${JSON.stringify(box)}`);
     // What the text is over, polled until it is what the test drew there.
-    const groundNow = async () => median((await grab(app, box, FRESH + noFill + noHalo)).map(luminance));
+    const groundNow = async () => median((await shoot(FRESH + noFill + noHalo)).map(luminance));
     const deadline = Date.now() + 8000;
     let ground = await groundNow();
     while (!overIt(ground) && Date.now() < deadline) {
       await app.page.waitForTimeout(100);
       ground = await groundNow();
     }
-    const [A, B, C, D] = [await grab(app, box, FRESH), await grab(app, box, FRESH + noFill), await grab(app, box, FRESH + noHalo), await grab(app, box, FRESH + noFill + noHalo)];
+    const [A, B, C, D] = [await shoot(FRESH), await shoot(FRESH + noFill), await shoot(FRESH + noHalo), await shoot(FRESH + noFill + noHalo)];
     if (!(await there()) && renew && attempt < 3) {
       console.log(`  ${selector} went while it was being sampled (attempt ${attempt}): said again`);
       await renew();
