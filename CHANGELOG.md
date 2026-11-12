@@ -9,6 +9,16 @@ decisions.
 
 ## 2026-11-12 — the gate made trustworthy again: four failures that were not the app's (and one that was, in the browser only)
 
+*Merged into the working branch (`36ce753`) after through-all and fillets;
+the Android bug is **79** here, since fillets' pick tie took 78 first.
+Four doc conflicts spliced newest-first. The gate on the merge: typecheck
+0; unit 2137/2137 (load 5–9); the eleven browser files the package
+touches plus the two newest packages' own — android, overlaylock,
+undokeys, fits, chrome, pwa, touchdensity, iosback, sketchmodephone,
+filletsonething, throughall — 115 pass, 2 picture skips, 0 fail: the
+Android font-scale test passes on this container's Chromium 153 for the
+first time since the browser changed.*
+
 Four tests failed on the base branch, and every worker's gate tripped on
 them. Each was reproduced and measured before anything was changed
 (`claude/gate-stable`; the runs are counted alone and with two other e2e
