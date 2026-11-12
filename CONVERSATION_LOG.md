@@ -28,7 +28,7 @@ and `medium` becomes 21 px, which is exactly why android.md decided against
 carrying the meta. So this is Chrome's new rule, not a broken emulation: a
 page that does not opt in is told 1, and a real Pixel on Chrome ≥ 153 would
 get a 1.00 text size from this app. That makes it a browser-only bug of the
-app (77), and the fix is the app's: ask with the meta for one reading and
+app (78), and the fix is the app's: ask with the meta for one reading and
 take it out again in the same task. Two things decided along the way. The
 asked reading folds in the browser's own font size (1.3 at 20 px reads
 1.625), and the app's rule already multiplies by that, so the browser's
@@ -104,6 +104,157 @@ stderr, and restarts the server on the same port. Restarting rather than
 stopping was the call: a run is a verdict on the app, and the files still
 to run deserve one; a third death stops it, because by then the box, not
 the app, is what is being tested.
+## 2026-11-12 — through all is a relation: what was tried, what was measured, what was kept out
+
+Built on `claude/through-all-relation` from docs/plans/through-all-relation.md
+(review item 8). The register has the choices; this is the why, and the two
+things that were built, measured and taken out again.
+
+**The spec was made exact before any code.** It was written against the
+code before linked profiles and the solver package; read against 93abd3d,
+three of its sentences could not stand. "Both sides variables, exact
+Jacobian" — an `onplane` on a cap reads the cap's normal as a datum, so the
+row is exact in the two points and not in the lid's turn. "The search runs
+once, at replay" — a replay runs on seeds (operations.ts's own rule), where
+the far side cannot be found; so every operation that chooses a far point
+journals it, and an old file's through cuts are given theirs after the saved
+values are back, not at the step. And "made before" had a fourth fault the
+list did not have: a second through cut read the first one's tool as a body
+and stood a tenth past *that* — measured, 1.4 and 2.94 past the far face of
+a 14-deep plate. These went into the spec as a section of their own, then
+into the code.
+
+**Reproduced first, and one thing more.** The three faults the spec lists
+were written as tests on the base and failed there: the plate moved 0.000,
+no row read both bodies, nothing was listed. The measurement file found a
+fourth: on the base, a plate with a through hole could not be dragged — a
+corner pulled 8 moved 0.000, along the plate and off it, in both scenes. The
+reach's constant, re-read inside the row, left the first frame unsolved and
+every frame after it filtered out as the stuck part. Nobody had dragged a
+plate with a hole in it under a test.
+
+**The cap's normal as a column, built and taken out.** The up-to-face test
+dragged a boss's lid 5 against a block whose base is on the frame and whose
+depth is 42: nothing can give but the pull. With the normal a datum the
+solve stalled: 6e-4 off after two hundred iterations, improving five per
+cent a call, the stationary point of a wrong Jacobian. So `readPlane` was
+given the chord's six variables and the unit chord as Duals; the drag
+settled in two iterations. Then the conflict test turned SOLVED: `dist` 15
+on a through cut's chord through a plate 10 thick was met by sliding the
+hole 150 along the plate's top (nothing holds it in the plane) and leaning
+the cut half a degree against its `par` — a unit angle row, no length in it,
+0.014 a row, under the offender threshold. Scaling the perpendicular's
+curve-normal rows by the chord's length moved the slide to 280 and the lean
+to the `par` instead. With the plate pinned by `fix` the hole still slid. The
+lever is real geometry: an angle row costs the same whatever the arm, and a
+free translation makes the arm as long as the solve likes. Rejected, not
+because the exact row is wrong — it is right — but because the row that
+should refuse the lean is an angle, and that is review-solver's `k = 1` for
+normal rows, which is not this package's to change under a through cut. The
+datum stays, the stall is filed with the lever, and the fix for both is
+written where it goes (TODO.md, *Next up*).
+
+**The relation is not the record's.** The first cut had `e2_through` in the
+feature's `names`, as `e1_perp` is not; a relation a record names is
+background to the conflict search (`removable`), and the spec wants it named
+in a conflict. So it is found by its derived name, like `e1_perp`, and goes
+with the record only where the lid has no three points to re-hold it on
+(`reholdFaces`, linked-profiles' rule, unchanged).
+
+**Where the length row goes, and why lazily.** The extrusion's length row
+is not removed when an end is held; the block gives no row while
+`endRelation` finds one. The alternative — rebuilding the extrusion without
+its row — leaves a cascade that takes the far vertex, or a `del` of the
+relation, able to leave an extrude with neither row nor relation. Asked by
+name at every evaluation, the row is back the moment the relation is gone,
+by any road.
+
+**The shear.** With the normal a column, two scenes whose profiles had only
+`onplane`s — `plate()`'s and a hand-drawn pocket's — sheared into slivers
+when pulled through their lids: every length well above ε·L, every
+perpendicular met because the edges had turned parallel. The tools never
+draw such a profile (a rectangle is four perps), so the tests were given
+what the tools give; the collapse check's blindness to angles is filed.
+## 2026-11-12 — "there is no such thing as a sketch"
+
+Asked whether the status's free count should include a flat drawing's
+freedom to lift off its plane, the owner answered a different and larger
+question: *"There is no such thing as a sketch. There are geometry groups …
+reason I don't want to use sketch is it implied exclusivity, but I want
+geometry to be able to belong to multiple groups. A group is only fully
+defined when every element within the group is fully defined. Should be
+trivial to calculate this stuff but it's not a concern of mine now."*
+
+The model has been this since `groups.md`: a group is a set, owns nothing,
+an entity may be in any number of them. What has not been this is the
+vocabulary a person meets — a "sketch tool" that in fact chooses a plane,
+"Sketch on this face", "Sketch mode", a "Sketch" workbench — every one of
+which says there is a container, and the owner has now said twice there is
+not (first on 2026-11-09: *"every sketch is a 3D sketch"*). So the package
+is a renaming with one small reading at the end (a group row that says
+whether every member is fully defined), `docs/plans/no-sketch.md`, queued
+behind the four packages already running. The free-count question is
+closed: not a concern now, left as it is.
+
+Rejected: renaming the module id `sketch` that files name in
+`ui({ modules })` — a format change for a word nobody reads; the label
+changes, the id stays.
+
+## 2026-11-12 — a tool says how to use it: what was rejected, and what the browser said
+
+Built from `tool-howto.md` in a worktree, a PR against the working branch.
+The diff says what; these are the whys that are not in it.
+
+**The obstacle was not only the missing words.** The owner could not add a
+parallel relation. The spec read that as "the tip says what a tool is, not
+what to do", which is true — but doing it on the iPhone profile showed the
+nearer cause: there is no Constrain button. It shares Dimension's (the
+fourteenth button ran the column onto the command line, 2026-11-05), a tap
+arms the face, and only a hold or a slide opens the rest. Nothing on the
+screen said so. So a chosen tip's last line is *Hold this button for
+Constrain.* It was not asked for; it is the line the owner needed.
+
+**Rejected: showing the chosen tip in the tooltip's own element.** Simpler,
+one element, one look. But the tooltip is one of the things "open": Escape
+closes the top-most, Android's back closes it and logs "tooltip closed", and
+the back stack watches its `hidden`. A tip nobody asked for, up after every
+tap on a tool, would have put a phantom "open thing" in front of the tool it
+describes. It is a status, not a tooltip, and got its own element. That also
+left `tooltips.e2e.ts`'s old assertion — a tap "shows no tooltip" — passing
+unchanged, which is convenient and slightly too convenient: it is true of
+the tooltip and silent about the tip. Said in the spec's *As built* rather
+than papered over.
+
+**Rejected: a fixed place** ("top right, under the logo's row"). It is where
+the tip ends up on an upright iPhone 13, and it would have been ten lines.
+But the panes move, the phone turns, a tablet has a different default, and
+the one rule that matters — never over the tool's own options — needs the
+boxes anyway. So the place is the cheapest by what it hides. The first
+version of that jittered (tips of different heights settled 20 to 70 px
+apart, each at its own optimum); the `STAY` rule — take the first place
+reading down unless another is better by a third of a tip — is what makes it
+look like one fixed place while being none.
+
+**Rejected: steps as free text with "click" swapped for "tap" by a
+pattern.** "Right-click" would have become "right-tap". The placeholder
+`{tap}` is explicit, and a line that differs by more than the verb is two
+lines, one a hand.
+
+**The steps were shortened three times, by the picture.** Written to be
+complete they made a tip 245 px tall on the phone, over the top line of the
+drawing the tool was about to be used on — the very thing the pass-through
+is not an answer to: a tap goes through, but nobody taps a line they cannot
+see. At 68 characters a step and three steps, the tallest is 187 px and sits
+in the chrome above the drawing. Things that went: the constrain tool's
+"tap one again to drop it", the extend tool's dashed preview, every
+"or tap each" beside a drag.
+
+**What using the tools found that reading them had not**: a rectangle takes
+no clicks; a confirm puts the tool down while its own tooltip said it stays
+(bug 77); and `par` shrinks two free lines to dashes while reading SOLVED —
+in picture 422 since the palette package and in nobody's notes. The last was
+`review-solver.md`'s; picture 482 was two dashes until that was merged in,
+and is retaken.
 
 ## 2026-11-12 — linked profiles built: twins that hold nothing, an extrude that opens, a feature that owns nothing
 

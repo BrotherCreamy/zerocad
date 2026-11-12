@@ -28,7 +28,7 @@
 // geometric refusals a typed call makes, so the tool cannot revolve anything
 // the command line would not.
 
-import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RegionHit, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
 import {
@@ -133,6 +133,11 @@ export class RevolveTool extends FeatureTool {
     mode: MODE_OPTION,
   };
   static readonly summary = "Spins a closed shape into a solid: click it, then the axis, then ✓";
+  static readonly how: How = [
+    "{Tap} inside a closed outline.",
+    "Then {tap} a lit line or axis arrow to spin it about.",
+    "Set the angle in the options. ✓ builds it.",
+  ];
   readonly name = "revolve";
   /** The profiles picked, in the order picked. */
   readonly picks = new RegionSelection();

@@ -1,15 +1,18 @@
 // How an extrude ends (docs/plans/solid-tools-intuitive.md; the owner: "I'm
 // still not clear on how to use the extrude cut tool. It doesn't make sense to
 // me. Make it more intuitive"): blind, its depth, as it always was; through
-// all, past the far side of everything made before it; symmetric, half each
-// side of its sketch. Each is the record's (`extent`), journalled in the call's
-// options, so it survives save/open and regeneration — and through all is
-// relational: the depth dimension holds the lid past the body it goes through
-// at every solve, so a cut through a plate follows the plate made deeper.
+// all, to the far side of what it goes through; symmetric, half each side of
+// its sketch. Each is the record's (`extent`), journalled in the call's
+// options, so it survives save/open and regeneration. Through all is **a
+// relation** since docs/plans/through-all-relation.md: the far vertex of the
+// body the cut goes through, on the cut's lid (`e2_through`) — the lid stands
+// *on* the far face, and the solid kernel builds a cut's tool past it. The
+// relation itself is test/throughrelation.test.ts's; this file is the end
+// conditions as a user meets them.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Model } from "../src/model.ts";
+import { Model, endRelation } from "../src/model.ts";
 import { extrude, regen, set, setEnd } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -66,7 +69,7 @@ test("symmetric: the lid at half the depth, the solid as far below the sketch as
   assert.ok(near(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz), T + 6));
 });
 
-test("through all: a cut from the top goes past the plate's far side, and follows the plate when it is made deeper", async () => {
+test("through all: a cut from the top ends on the plate's far side, held there by a relation, and follows the plate when it is made deeper", async () => {
   await loadSolver();
   const m = new Model(3);
   const p = plate(m);
@@ -77,14 +80,16 @@ test("through all: a cut from the top goes past the plate's far side, and follow
   m.solve();
   const f = m.featureOf(e2, "extrude");
   assert.deepEqual([f.mode, f.into, f.extent], ["cut", p.feature, "through"]);
-  // Ten down to the plate's base, and a unit past it (a tenth of ten is less than one).
-  assert.ok(near(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz), -1), `the lid one below the base: ${lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)}`);
+  // Ten down, to the plate's base — on it, not past it: the far face is where the hole's rim is.
+  assert.ok(Math.abs(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)) < 1e-6, `the lid on the base: ${lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)}`);
+  const r = endRelation(m, f);
+  assert.ok(r && r.name === `${e2}_through` && p.base.includes(r.args[0] as string), "held by a relation on a corner of the plate's base");
   const body = () => insideBody(m, chainsOf(m).bodies[0]);
   assert.ok(!body()(p.t.at(50, 30, 0.5)), "no material left at the bottom of the hole");
-  // The plate twice as deep: the cut's lid follows, by the solve alone.
+  // The plate twice as deep: the cut's lid follows, by the relation alone.
   set(m, `${m.featureOf(p.feature, "extrude").depth}.value`, 2 * T);
   m.solve();
-  assert.ok(near(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz), -2), `a tenth past the deeper base: ${lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)}`);
+  assert.ok(Math.abs(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)) < 1e-6, `on the deeper base: ${lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)}`);
   assert.ok(!body()(p.t.at(50, 30, 0.5)), "still through");
   assert.ok(body()(p.t.at(20, 30, 0.5)), "the plate beside it is material");
 });
@@ -102,9 +107,10 @@ test("through all on a stepped body: through the boss and the plate under it", a
   const hole = circleOn(m, lidCircle, onTop(p, 50, 30).map((c, i) => c + 15 * p.t.uz[i]), 4, p.t.uz);
   const e3 = extrude(m, hole, -1, { mode: "cut", end: "through" });
   m.solve();
-  // From 25 up down past 0: 25 deep and 2.5 more.
+  // From 25 up down to 0: the far side is the plate's base, through the boss and the plate both.
   const h = lidHeight(m, e3, p.t.at(0, 0, 0), p.t.uz);
-  assert.ok(near(h, -2.5), `the lid below the plate's base: ${h}`);
+  assert.ok(Math.abs(h) < 1e-6, `the lid on the plate's base: ${h}`);
+  assert.ok(p.base.includes(endRelation(m, m.featureOf(e3, "extrude"))!.args[0] as string), "held on the plate, the farther body, not the boss");
   const inside = insideBody(m, chainsOf(m).bodies[0]);
   assert.ok(!inside(p.t.at(50, 30, 20)) && !inside(p.t.at(50, 30, 5)), "a hole through boss and plate");
   assert.ok(inside(p.t.at(42, 30, 20)), "the boss's wall beside the hole");
@@ -123,7 +129,8 @@ test("each end condition survives save/open byte for byte, and a regeneration ke
   assert.equal(save(back), file);
   assert.deepEqual([...back.features.values()].map((f) => f.kind === "extrude" ? f.extent ?? "blind" : null), ["blind", "through", "symmetric"]);
   back.solve();
-  assert.ok(near(lidHeight(back, "e2", p.t.at(0, 0, 0), p.t.uz), -1), "through, after the replay");
+  assert.ok(Math.abs(lidHeight(back, "e2", p.t.at(0, 0, 0), p.t.uz)) < 1e-6, "through, after the replay");
+  assert.ok(back.relations.has("e2_through"), "and held, after the replay — handed the far vertex, searching nothing");
   assert.ok(near(lidHeight(back, "e3", p.t.at(0, 0, 0), p.t.uz), T + 3), "symmetric, after the replay");
   // Regenerated (the profile brought back into step): still how it ended.
   regen(back, "e2");
@@ -131,11 +138,13 @@ test("each end condition survives save/open byte for byte, and a regeneration ke
   back.solve();
   assert.equal(back.featureOf("e2", "extrude").extent, "through");
   assert.equal(back.featureOf("e3", "extrude").extent, "symmetric");
-  assert.ok(near(lidHeight(back, "e2", p.t.at(0, 0, 0), p.t.uz), -1));
+  assert.ok(Math.abs(lidHeight(back, "e2", p.t.at(0, 0, 0), p.t.uz)) < 1e-6);
+  assert.ok(back.relations.has("e2_through"));
   // And the regenerated file opens to the same.
   const again = open(save(back));
   again.solve();
   assert.equal(again.featureOf("e2", "extrude").extent, "through");
+  assert.equal(save(again), save(back));
 });
 
 test("typed, the lines replay: extrude with { end }, and setEnd changing it afterwards — and the refusals say what would do", async () => {
@@ -150,37 +159,45 @@ test("typed, the lines replay: extrude with { end }, and setEnd changing it afte
   assert.ok(near(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz), T - 4), "blind, four down");
   scope.setEnd(e2, "through");
   m.solve();
-  assert.ok(near(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz), -1), "through all now");
-  assert.deepEqual(m.journal.at(-1), { op: "setEnd", args: [e2, "through"] });
+  assert.ok(Math.abs(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)) < 1e-6, "through all now: on the far face");
+  // Journalled with what it found, so a replay searches nothing.
+  const far = m.relationOf(`${e2}_through`).args[0];
+  assert.deepEqual(m.journal.at(-1), { op: "setEnd", args: [e2, "through", far] });
   const back = open(save(m));
   back.solve();
   assert.equal(back.featureOf(e2, "extrude").extent, "through");
+  assert.deepEqual(back.relationOf(`${e2}_through`).args, [far, `${e2}.lid`]);
   scope.setEnd(e2, "blind");
   m.solve();
   assert.ok(near(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz), T - 4), "blind again, as deep as it was");
-  assert.throws(() => scope.extrude(hole, -4, { end: "upTo" }), /end is "blind" \(the depth\), "through" \(through all\) or "symmetric"/);
+  assert.ok(!m.relations.has(`${e2}_through`));
+  assert.throws(() => scope.extrude(hole, -4, { end: "upTo" }), /end is "blind" \(the depth\), "through" \(through all\), "upto" \(up to a face\) or "symmetric"/);
   assert.throws(() => setEnd(m, e2, "sideways"), /setEnd's end is "blind"/);
   assert.throws(() => setEnd(m, "l1", "through"), /setEnd/);
   // A revolve has no end condition to take.
   assert.throws(() => scope.revolve(hole, "t.x", 1, { end: "through" }), /revolve has no option "end"/);
 });
 
-test("through all into nothing is the blind extrude it was typed as — nothing made before it stands that way", async () => {
+test("through all into nothing is the blind extrude it was typed as — its swept profile meets no body that way", async () => {
   await loadSolver();
   const m = new Model(3);
   const p = plate(m);
-  // A circle on the plate's top, cut *up* "through all": everything before it is below.
+  // A circle on the plate's top, cut *up* "through all": everything is below.
   const top = p.lid.slice(0, 3).join(".");
   const up = circleOn(m, top, onTop(p, 50, 30), 4, p.t.uz);
   const e2 = extrude(m, up, 7, { mode: "cut", into: p.feature, end: "through" });
   m.solve();
   assert.ok(near(lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz), T + 7), `seven up, as typed: ${lidHeight(m, e2, p.t.at(0, 0, 0), p.t.uz)}`);
-  // Beside the plate, cut down, it goes as far as the plate is deep: through
-  // all is past everything made before, wherever it stands across the sketch.
+  assert.equal(endRelation(m, m.featureOf(e2, "extrude")), null, "nothing holds it: there is nothing to hold it to");
+  assert.deepEqual((m.journal.at(-1)!.args.at(-1) as { to: unknown }).to, null, "journalled as having met nothing");
+  // Beside the plate, cut down, it meets nothing either — what it goes through
+  // is what its own profile meets, not whatever stands anywhere that way (the
+  // old reach took the plate's far side; this is the blind cut it was typed as).
   const away = circleOn(m, top, p.t.at(L + 40, W + 40, T), 4, p.t.uz);
   const e3 = extrude(m, away, -1, { mode: "cut", into: p.feature, end: "through" });
   m.solve();
-  assert.ok(near(lidHeight(m, e3, p.t.at(0, 0, 0), p.t.uz), -1));
+  assert.ok(near(lidHeight(m, e3, p.t.at(0, 0, 0), p.t.uz), T - 1));
+  assert.equal(endRelation(m, m.featureOf(e3, "extrude")), null);
 });
 
 // ---- the solid kernel builds what the lid bounds -------------------------------

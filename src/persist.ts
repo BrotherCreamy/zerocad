@@ -18,14 +18,14 @@
 // and reopening a drawing should give back the one that was saved rather
 // than whichever the solver happens to find this time.
 
-import { Model, ORIGIN, memberName, parsePointTriple, type JournalEntry } from "./model.ts";
+import { Model, ORIGIN, endRelation, memberName, parsePointTriple, type JournalEntry } from "./model.ts";
 import { framePlaneAxes } from "./curveplane.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { measure } from "./relations/measure.ts";
 import { faceRef } from "./relations/solidref.ts";
 import { isFullTurn } from "./relations/revolution.ts";
-import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve, set, unhole } from "./operations.ts";
+import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve, set, setEnd, unhole } from "./operations.ts";
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
@@ -301,7 +301,37 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 21;
+export const VERSION = 23;
+// 23 (docs/plans/through-all-relation.md): **through all is a relation, and an
+// end is journalled with what it resolved to.** (22 is the fillets package's,
+// built beside this one; a file of either is read here.) An extrude that ends
+// through all holds its lid by `onplane(<far vertex>, "e2.lid")`, named
+// `e2_through`, and one that ends up to a face by `onplane(<lid point>,
+// "e1:l2")`, `e2_upto`. Neither relation has an entry of its own: the entry
+// that set the end makes it, and **carries which** — `extrude(…, { end:
+// "through", to: "p7" })`, `setEnd("e2", "through", "p7")`; a depth in `to`
+// where the far side has no vertex and the lid is placed; `null` where
+// nothing was met; `{ end: "upto", face: "e1:l2" }`; a `regen`'s or
+// `fillet`'s regenerated list may hold `[feature, [], "end", to]` for an end
+// it chose again; and `setEnd("e2", "blind", -10)` is what deleting
+// `e2_through` journals. Resolved for `extrude`'s own reason — a replay runs
+// on seeds, and the far side cannot be found among seeds. A version-21 build
+// would refuse the options by name (`extrude has no option "to"`), which
+// alone would not bump it; but it would also read `setEnd("e2", "through",
+// "p7")` as the old through all — a lid a tenth past whatever was made
+// before, held by no relation — and a later `deleteRelation("e2_through")`
+// would name nothing: the misreading a version is for.
+//
+// Going the other way **a file of 22 or before opens to the same solid**:
+// its `{ end: "through" }` carries no `to`, so the extrude replays as it did
+// and holds nothing yet; once the saved values are back — the drawing as it
+// was solved, not seeds — each such end's far side is found once and written
+// at the journal's end as the `setEnd` it is (`fromSaved`, last). So the file
+// re-saves in the new form and reopens without searching. The lid moves from
+// a tenth past the far face to on it; the body cut is the same, since a
+// through cut's tool is built past its lid now (solids.ts, `extrudeSpan`).
+// test/throughrelation.test.ts opens a file the build before wrote and holds
+// it to that, by volume.
 // 21 (docs/plans/linked-profiles.md): **an extrude's two profiles are linked,
 // and a feature owns nothing**. No entry changed shape, and none is added for
 // a twin: the relations within a profile each gain a twin on the other
@@ -1213,6 +1243,20 @@ export function fromSaved(saved: SavedModel, dim?: number, how: { regions?: bool
   frameless.settle();
   // An old file's holes and islands, told apart where the saved drawing has them.
   regions.settle();
+  // An old file's through-all ends (before 23, see `VERSION`): each far side
+  // found once, on the drawing as it was saved, and journalled as the `setEnd`
+  // it is. One that cannot be laid out any more stays as it replayed: blind
+  // at its number, saying through.
+  if (saved.version < 23 && model.dim === 3) {
+    for (const f of [...model.features.values()]) {
+      if (f.kind !== "extrude" || f.extent !== "through" || endRelation(model, f) || model.relations.get(f.depth)?.op !== "extrusion") continue;
+      try {
+        setEnd(model, f.name, "through");
+      } catch {
+        // left as it replayed
+      }
+    }
+  }
 
   last = { missing, skipped };
   return model;

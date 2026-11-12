@@ -182,7 +182,7 @@ Pixel's variable follows Settings → Display → Font size.
 
 **Chromium 153 tells only a page that asks** (measured 2026-11-12, when the
 browser under the suite became 153.0.8010.12 and the e2e above read *text
-size 1.00* under a scale of 1.3 on every run; browser-only bug 77). The same
+size 1.00* under a scale of 1.3 on every run; browser-only bug 78). The same
 flag, Pixel 7, the page's `text-size-adjust: 100%`:
 
 | Read, Chromium 153 | scale 1.0 | scale 1.3 | scale 1.3, browser font 20 px | scale 1.3, font 13 px |

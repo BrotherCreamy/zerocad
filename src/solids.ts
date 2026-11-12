@@ -39,7 +39,8 @@
 // is the one place readers differ, and two halves are read by everything. So
 // no face here has a seam and no edge is used twice by one face.
 
-import { defineThroughReach, entityKind, isClosedEntity, lidReach, memberName, type ExtrudeFeature, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
+import { endRelation, entityKind, isClosedEntity, memberName, type ExtrudeFeature, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
+import { lidReach } from "./relations/extrusion.ts";
 import { memberPoints } from "./solids/profile.ts";
 import { portionAngles } from "./arcgeom.ts";
 import { curveFrame, curvePath, featurePlane, planeAxes as refPlaneAxes } from "./curveplane.ts";
@@ -905,19 +906,32 @@ function extent(pieces: Piece[], reach: (p: number[], dir: number[]) => number):
 
 /**
  * Where an extrude's solid runs along its sketch's normal: from `start` (0,
- * the sketch, for blind and through; minus half the depth for symmetric) for
- * `depth` (signed, the way it goes). Read off the depth dimension and the
- * record's end condition (`Extent`) — through all's from the geometry made
- * before it, as the dimension holds its lid (`lidReach`) — and nothing else,
- * so the kernel, the insideness the modes ask and the exported B-rep all build
- * what the lid bounds. Throws for a dimension with no depth.
+ * the sketch, for everything but symmetric, which starts half the depth
+ * behind it) for `depth` (signed, the way it goes). Read off the depth
+ * dimension and the record's end condition (`Extent`, `lidReach`) — and
+ * nothing else, so the kernel, the insideness the modes ask and the exported
+ * B-rep all build what the lid bounds. Throws for a dimension with no depth.
+ *
+ * **A through-all cut's tool goes past its lid** (`throughPast`,
+ * docs/plans/through-all-relation.md). The drawn lid stands *on* the far face,
+ * where the hole's rim is, held there by a relation; a tool body ending
+ * exactly on that face would meet it face on, which a boolean is least sure
+ * of. So the body handed to the kernel — and the insideness the modes ask,
+ * which must agree with it — runs a little further, and no relation and no
+ * picture sees that. Only a cut, and only one whose end is held: an add
+ * through to a face is flush with it, which is what adding up to a face
+ * means; a placed end has the margin in its depth already.
  */
 export function extrudeSpan(model: Model, f: ExtrudeFeature): { start: number; depth: number } {
   const d = model.relations.get(f.depth)?.args[1];
   if (typeof d !== "number" || !Number.isFinite(d) || d === 0) throw new Error("it has no depth");
   refuseOblique(model, f);
   if (f.extent === "symmetric") return { start: -d / 2, depth: d };
-  return { start: 0, depth: lidReach(model, f.depth, d) };
+  const reach = lidReach(model, f.depth, d);
+  if (f.extent === "through" && f.mode === "cut" && endRelation(model, f)) {
+    return { start: 0, depth: reach + Math.sign(reach) * throughPast(Math.abs(reach)) };
+  }
+  return { start: 0, depth: reach };
 }
 
 /**
@@ -944,71 +958,19 @@ function refuseOblique(model: Model, f: ExtrudeFeature): void {
 }
 
 /**
- * How far past the far side of everything made before it a through-all lid
- * stands: a tenth of the way again, and at least one unit — never flush with a
- * face, which a boolean meets edge-on (docs/plans/solid-tools-intuitive.md,
- * vetoable).
+ * How far past the far side a through-all cut goes, for a reach of `far`: a
+ * tenth of the way again, and at least one unit — never flush with a face,
+ * which a boolean meets edge-on (docs/plans/solid-tools-intuitive.md). Since
+ * docs/plans/through-all-relation.md this is the **tool body's** margin
+ * (`extrudeSpan`), and what a *placed* end's depth is given (farside.ts): the
+ * drawn lid of a held one stands on the far face itself.
  */
-const THROUGH_PAST = 0.1;
-const THROUGH_LEAST = 1;
-
-/**
- * A through-all extrude's reach, signed as `depth`: the farthest any solid
- * made before `f` stands off `f`'s sketch along the depth's way, sampled off
- * each one's own sweep (`kernelSweep`) — an extrude's profile at its base and
- * at its lid, a revolve's profile points each by the circle it turns through —
- * and a little past (`THROUGH_PAST`). Where nothing stands that way, the
- * depth itself: a through cut into nothing is the blind cut it was typed as,
- * and the tool says it reaches no solid. Registered with the model below, so
- * the depth dimension holds the lid here at every solve (`lidReach`).
- */
-export function throughReach(model: Model, f: ExtrudeFeature, depth: number): number {
-  let plane;
-  try {
-    // The way read off its frame, not its chord (profiles-held.md): the reach
-    // holds the chord's length, and a way read off the chord would move with
-    // every step the solve takes toward it — measured, a cut through a plate
-    // set deeper leaned and never settled.
-    plane = kernelProfile(model, refPlaneAxes(model, f.frame), f.loops);
-  } catch {
-    return depth;
-  }
-  const way = plane.n.map((c) => Math.sign(depth) * c);
-  const off = (p: number[]) => dot3(sub3(p, plane.at.origin), way);
-  let far = -Infinity;
-  for (const g of model.features.values()) {
-    if (g === f) break; // only what was made before it
-    let sw;
-    try {
-      sw = kernelSweep(model, g);
-    } catch {
-      continue; // a feature that cannot be laid out stands nowhere
-    }
-    const z = cross3(sw.at.x, sw.at.y);
-    const world = (q: number[], h = 0) => [0, 1, 2].map((i) => sw.at.origin[i] + q[0] * sw.at.x[i] + q[1] * sw.at.y[i] + h * z[i]);
-    const pts = sw.profile.loops.flat().flatMap((m) => memberPoints(m, 16));
-    if (sw.sweep.kind === "extrude") {
-      for (const q of pts) far = Math.max(far, off(world(q)), off(world(q, sw.sweep.depth)));
-      continue;
-    }
-    // A revolve: each profile point turns through a circle about the axis,
-    // which stands as far along `way` as its centre's foot does plus its
-    // radius times how square the axis is to `way`.
-    const O = world(sw.sweep.point);
-    const k = unit3(sub3(world([sw.sweep.point[0] + sw.sweep.dir[0], sw.sweep.point[1] + sw.sweep.dir[1]]), O));
-    if (!k) continue;
-    const across = Math.sqrt(Math.max(0, 1 - dot3(k, way) ** 2));
-    for (const q of pts) {
-      const p = world(q);
-      const c = O.map((x, i) => x + dot3(sub3(p, O), k) * k[i]);
-      far = Math.max(far, off(c) + Math.hypot(...sub3(p, c)) * across);
-    }
-  }
-  if (!(far > 1e-9)) return depth;
-  return Math.sign(depth) * (far + Math.max(THROUGH_LEAST, THROUGH_PAST * far));
+export function throughPast(far: number): number {
+  return Math.max(THROUGH_LEAST, THROUGH_PAST * far);
 }
 
-defineThroughReach(throughReach);
+const THROUGH_PAST = 0.1;
+const THROUGH_LEAST = 1;
 
 /**
  * A feature's sweep as the solid kernel takes it (src/solids/): its profile as

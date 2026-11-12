@@ -502,7 +502,7 @@ test("Android's font scale, measured: Chromium reports env(preferred-text-scale)
   assert.match(await said(app), /100% here is 1\.3× a desktop's: a phone 1\.3, text size 1\.00 \(the system's font scale\)/);
   const scaled = await openApp({ device: "Pixel 7", args: ["--blink-settings=accessibilityFontScaleFactor=1.3"] });
   try {
-    // **Which page this Chromium tells** (bug 77). 141 told every page; 153
+    // **Which page this Chromium tells** (bug 78). 141 told every page; 153
     // tells only one carrying `<meta name="text-scale" content="scale">`,
     // and the app's page, which has none, read 1.00 under a system scale of
     // 1.3 — so this test failed on every run the day the browser under the

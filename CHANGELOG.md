@@ -16,7 +16,7 @@ files looping on the same four cores, and every run's load average was
 kept).
 
 - **Android's font scale, measured** (android.e2e.ts) — **the app's, in the
-  browser only: bug 77.** The browser under the suite became Chromium
+  browser only: bug 78 (77 on the branch; tool-howto took 77 first, so renumbered on the merge).** The browser under the suite became Chromium
   153.0.8010.12 when the container was rebuilt, and 153 reports
   `env(preferred-text-scale)` only to a page carrying `<meta
   name="text-scale" content="scale">`; every other page is told 1, whatever
@@ -126,6 +126,128 @@ whatever the other workers were doing.
   apart, the banner each time, the files after it green against the
   restarted server, the two in flight failed with the signatures the
   banner now names.
+## 2026-11-12 — through all is a relation: the far vertex on the cut's lid, and up to face is the same relation the other way
+
+Review item 8, which the owner passed: *"Through all should be a relation to
+the far face's defining geometry."* His principles: *"correct relationships
+BETWEEN entities … bidirectional relationships everywhere by default"*, *"I
+should be able to pull on anything"*, *"hierarchies do exist, but they are
+not timeline based."* Spec: [`docs/plans/through-all-relation.md`](docs/plans/through-all-relation.md),
+with an *As built*. Pictures 510–521 in `docs/images`, mouse and iPhone 13.
+
+- **What was true before, measured** (`test/throughrelation.test.ts`'s first
+  three tests, `test/through.measure.ts`): a through-all cut's lid was held at
+  a number the solids layer worked out, read as a constant inside the
+  `extrusion` row. One way: the cut's far rim pulled, the plate moved
+  **0.000**. No row read the cut's lid and the plate together. Nothing was
+  listed. And a plate with a through hole in it **could not be dragged at
+  all** — a corner pulled 8 moved 0.000, along the plate and off it. Two
+  through cuts compounded: the second stood a tenth past the first one's
+  tool.
+- **Built**: a through-all extrude's lid is held by `onplane("p7", "e2.lid")`
+  — the far vertex of what its swept profile meets, named `e2_through`,
+  listed, marked at the vertex and on the cut's far rim, deletable (a blind
+  cut where it stood, one journalled step), named in a conflict. The
+  `extrusion` gives no length row while it stands; the lid is **on** the far
+  face, and the kernel builds a cut's tool a tenth past it. The plate set
+  deeper: 7 iterations and 8 ms where it took 35 and 63 (a hole and a pocket:
+  8 and 13 for 9 and 50). The corner dragged 8 moves 8.
+- **Up to face**: the end row's third choice and one press on the face —
+  `onplane(<lid point>, "e1:l2")`, `e2_upto`, held both ways for a flat face
+  parallel to the sketch; refused in words for one that is not; a round wall
+  or a face only the kernel knows placed at the press.
+- **Placed, not faked**: a round far side (a revolve) or nothing met leaves
+  an ordinary depth, labelled "through (placed)", with the log saying to set
+  the end again after a change.
+- **Chosen once, by an operation**: the call, `setEnd`, `regen` and `fillet`
+  journal the vertex they found (`{ end: "through", to: "p7" }`,
+  `setEnd("e2", "through", "p7")`, `[e2, [], "end", "p9"]` in a regenerated
+  list); a replay runs on seeds and searches nothing. A turn that leaves
+  another corner farther is said in the organiser's row ("short") with one
+  tap to take the far side again — never re-pointed inside a solve.
+- **Format 23**: a file from before replays its through cuts as they were
+  and, once its saved values are back, finds each far side once and writes
+  the `setEnd` at the journal's end; it re-saves in the new form and opens to
+  the same solid (`test/fixtures/through-v21`, by volume).
+- **The hook is gone**: `defineThroughReach`/`throughReach` are no more;
+  `lidReach` lives in relations/extrusion.ts and reads the model alone;
+  `src/farside.ts`, at the operations' height, says which vertex.
+- **Tried and kept out**: a cap's normal as a column of the row. It settled a
+  drag that had stalled — but let a contradicting dimension be met by sliding
+  the hole 150 along the plate and leaning the cut half a degree, SOLVED
+  where it is a conflict. The datum stays; both are in the register and
+  `CONVERSATION_LOG.md`.
+- **Slower where it moves at all**: a resize drag of a plate with a hole and
+  a pocket, twelve frames, 1.6 s where before the drag did nothing; filed.
+## 2026-11-12 — a tool says how to use it: on a hover, and on a phone as it is chosen
+
+The owner, asked to try adding a parallel relation: *"I don't even know how
+to add a parallel relation. Maybe a little tooltip should pop up when I hover
+over (desktop) or select (phone) a tool."* (docs/plans/tool-howto.md).
+
+| | |
+|---|---|
+| ![iPhone 13, Constrain just chosen from behind the Dimension button: its tip beside the tray's top, over the organiser, the strip and the log — Constrain, what it does, three steps (tap the things to relate; then choose: Parallel, Tangent…; pick several for one relation, hold a line for Leave), and Hold this button for Dimension; the palette below saying what can be picked](docs/images/480-iphone-constrain-chosen-its-tip-says-how.png) | ![Two lines tapped, one of them through the tip, which has gone: the palette lists Parallel, Perpendicular and 6 more…, the section that said "no relation yet" gone to make the room](docs/images/481-iphone-two-lines-tapped-parallel-and-perpendicular-no-more-needed.png) |
+| ![Parallel pressed: par("l2", "l1") in the log, the two lines parallel at their own lengths, a // mark on each (the upper one's partly behind the log), the palette waiting for the next](docs/images/482-iphone-parallel-pressed-the-two-lines-parallel.png) | ![Desktop, the mouse on Constrain in the relate button's flyout: the tooltip under the flyout with its three steps in a mouse's words between what it does and arm("constrain")](docs/images/483-desktop-hovering-constrain-the-tooltip-with-its-steps.png) |
+| ![iPhone 13, Extrude chosen: its tip at the top — tap inside a closed outline; set the depth in the options, ⇅ turns it the other way; ✓ builds the solid; hold this button for Cut, Surface, Edge — and the options pane it speaks of clear below, the rectangle clear between](docs/images/484-iphone-extrude-chosen-its-tip-clear-of-its-options-pane.png) | ![The line tool chosen a second time: the three steps alone, no name, starting at the same line as the first](docs/images/485-iphone-the-second-time-the-steps-alone.png) |
+| ![iPhone 13, a tap on the relate button, whose face is Dimension: its tip, ending Hold this button for Constrain](docs/images/486-iphone-dimension-chosen-its-tip-says-constrain-is-behind-the-button.png) | ![iPhone 13 on its side: the tip at the top right, over the command line's end, the strip, the log and the organiser's top — and over the right-hand ends of the two lines, the limitation filed](docs/images/487-iphone-landscape-the-tip-over-the-organiser-and-the-drawings-corner.png) |
+
+- **Every tool declares how it is used** (`static how`, tools/tool.ts): the
+  steps, three lines at most, in the words of someone doing them — `{tap}`
+  reads *click* under a mouse and *tap* under a finger, a line may be one for
+  each hand where they really differ (a chain ended by Esc or by Cancel), and
+  a tool whose gesture depends on how it is armed says the armed one (a
+  circle locked to 3 points never says to drag). `defineTool` refuses a how
+  that is not lines of text, or is more than three. Select and the Hand have
+  theirs (`ENGINE_HOW`). **Each line was written by doing it in the browser,
+  mouse and finger** — which is how the lines differ from the files' own
+  comments: a rectangle is a drag (two clicks do nothing), a point puts the
+  tool down, a confirm puts a feature tool down. The whole table is in the
+  spec's *As built*.
+- **On a phone, choosing a tool shows its tip** (`Tooltips.announce`): name,
+  what it does, how, and for a button that holds several tools what else is
+  there — *Hold this button for Constrain.* **Constrain shares Dimension's
+  button**; a tap arms the face, and until now nothing on the screen said the
+  button held anything else. The tip takes no touch (no pointer events: a tap
+  on it picks the line under it, e2e-asserted), goes at the next press, when
+  the tool is put down, or once read (a second and 40 ms a character, 3–10 s),
+  and the second time a tool is chosen in a session it is the steps alone
+  (5 s at most). Holding a button still shows the full tooltip without arming.
+- **Where it goes** (`chosenPlacement`, pure): the place that hides least of
+  what matters — over the log and the organiser for nothing, the action strip
+  and the command line at half the drawing's price, the drawing's middle
+  third at four times it — never over the tray, the tool's own options pane,
+  the palette or the logo's corner; and of places about as good, the first
+  reading down, so every tip starts at the same line. On an upright iPhone 13
+  that is beside the tray's top; no tip is taller than 187 px there. The
+  eight-line tips (Constrain, Dimension) are clear of the drawing's middle
+  third; the nine-line ones of twelve tools end 14–32 px inside its top edge.
+- **On a desktop the hover's tooltip has the steps**, between what the tool
+  does and its command; a click shows nothing more.
+- **The parallel case**: with two lines tapped the palette shows Parallel
+  *and* Perpendicular, then "6 more…" — the wasted row (TODO, review of #88)
+  was the section under the rows, "l1, l2 have / no relation yet", 39 px of a
+  164 px pane; where the rows overflow, a section with nothing in it now
+  gives way first. And the palette's empty state says what to pick and what
+  will be offered.
+- **The setting**: `ui({ tips: false })`, and *Tips when a tool is chosen* in
+  the logo menu's View; the viewer's, stored, never journalled.
+- **Bug 77**, found pressing ✓ in the browser: its tooltip said "the tool
+  stays armed", and a confirm has put the tool down since the opaque-solids
+  merge. It says what happens.
+- **Seen on the way**: before `review-solver` was merged in, `par` on two
+  free lines shrank both to a few pixels and read SOLVED — the first picture
+  482 showed two dashes. With it merged they keep their lengths; the picture
+  is retaken on the merged code, and the e2e asserts the directions.
+- **Merged with review-relations**: the constrain tool's steps say that
+  several picked make one relation and that a line's menu has Leave, both
+  done in the browser on the merged code.
+- Tests: `test/toolhowto.test.ts` (15) and `test/e2e/toolhowto.e2e.ts` (13:
+  eight under fingers — every tool on the tray and behind it chosen in turn —
+  one in landscape, four with a mouse). No existing test's code changed
+  (harness.ts's opening comment carries the count, seventy-seven). One of
+  them now says less than it reads: `tooltips.e2e.ts` asserts a tap "shows
+  no tooltip", true of `#tooltip` and silent about `#chosentip`.
 
 ## 2026-11-12 — where linked profiles met the solver package: the merge
 
@@ -145,8 +267,12 @@ it. Two places met:
 - Browser-only bugs renumbered: the solver's are 74 and 75, the trim tool on
   a lid's edge is 76. Seventy-six.
 
-Measured on the merge: typecheck 0; unit 2080 of 2080. The browser suite's
-result is in the commit that follows it.
+Measured on the merge: typecheck 0; unit 2080 of 2080; kernel 11 of 11;
+browser 813 tests, 790 passed, 2 picture skips, 21 failed — of which 20 were
+the suite's own dev server dying partway under four workers' load (`no dev
+server at …`, modefeedback onward), and those files rerun alone on a quiet
+machine were 55 of 56; the one left is the known Android font-scale
+measurement, which fails on this container's browser regardless of the code.
 
 ## 2026-11-12 — an extrude's two profiles are peers: every relation has a twin, an edit to one is an edit to both, and nothing is owned
 

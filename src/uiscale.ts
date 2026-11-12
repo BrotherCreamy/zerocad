@@ -140,7 +140,7 @@ export function textFactor(d: Device): number {
  *   the answer. Zero or less is the probe's fallback: no variable.
  * - **Chromium 153 reports it only to a page that asks**, with
  *   `<meta name="text-scale" content="scale">`; a page that does not reads 1
- *   whatever the system says (bug 77: the e2e read *text size 1.00* under a
+ *   whatever the system says (bug 78: the e2e read *text size 1.00* under a
  *   system scale of 1.3). `asked` is the variable read with that meta in the
  *   document for the length of the reading, or null where that was not
  *   tried. What 153 reports then is **the system's scale times the browser's

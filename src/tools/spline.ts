@@ -15,7 +15,7 @@
 // A finger lays a point where it lifts, so a press can be slid onto the snap
 // it wants first; a click lays one where the button comes up, the same place.
 
-import { Tool, press, type FeatureDialog, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, press, type FeatureDialog, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import { addSpline } from "../relations/spline.ts";
@@ -37,6 +37,11 @@ export function splinePreview(at: number[][], closed: boolean, scale: number): n
 export class SplineTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
   static readonly summary = "Draws a spline through the points you click; double-click to end it";
+  static readonly how: How = [
+    "{Tap} each point for the curve to pass through.",
+    { mouse: "Double-click the last point, or press Enter, to end it.", finger: "✓ in the options ends it." },
+    "{Tap} the first point again to close it.",
+  ];
   readonly name = "spline";
   private plane = new CurvePlane(this.ctx, this.name);
   /** The clicks laid so far, each read on the gesture's plane, snaps and all. */

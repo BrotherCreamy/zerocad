@@ -33,6 +33,83 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A tool says how to use it, as built** (the owner, 2026-11-12: *"I don't
+  even know how to add a parallel relation. Maybe a little tooltip should pop
+  up when I hover over (desktop) or select (phone) a tool."*;
+  docs/plans/tool-howto.md, built). The choices made building it, each
+  vetoable:
+  - **Three steps at most, and short**: a step is at most 68 characters, two
+    lines of an iPhone 13's tip; `defineTool` refuses a fourth. Reason: no
+    tip is then taller than 187 px on the phone, and it fits the chrome above
+    the drawing. Cost: some tools say less than they could (the constrain
+    tool's "tap one again to drop it" went; under a finger its first step
+    is "Tap the things to relate." with the examples left to the palette's
+    own line, to make room for "Pick several for one relation; hold a line
+    for Leave." after review-relations).
+  - **A nine-line tip ends 14–32 px inside the drawing's middle third** on
+    an iPhone 13 (twelve tools; the third starts at y 221, they end at
+    235–253). Reason: the summary is two lines and three steps are five.
+    The eight-line tips, Constrain's and Dimension's among them, are clear.
+  - **The words are the hand's**: `{tap}` is *click* under a mouse and *tap*
+    under a finger; a hover is a mouse's, a hold and a chosen tip a finger's.
+    Reason: "click" on a phone is the summaries' filed limitation, not to be
+    repeated.
+  - **A how may depend on the options**: a circle locked to 3 points says to
+    tap three points, on its hover too. Reason: the lock is remembered, and
+    a tip describing a gesture the tool will not take is worse than none.
+  - **The summary stays above the steps**, though they overlap ("click inside
+    it, then ✓" over "Tap inside a closed outline"). Reason: the spec's
+    "name, what it does, how", and the summaries are other tests' text.
+  - **Chosen by finger only**: a tap on a tray button or a flyout item, or a
+    slide onto one. Not a click, not `arm("x")` typed, not the context menu.
+    Reason: a mouse has the hover; a typed call is not a question.
+  - **An element of its own** (`#chosentip`, `role="status"`), not the
+    tooltip's. Reason: nothing asked for it and nothing closes it, so Escape
+    and Android's back, which close "what is open", must not see it. (And
+    `tooltips.e2e.ts`'s "a tap shows no tooltip" stays true of the tooltip.)
+  - **It takes no touch** (no pointer events) **and any press puts it away**,
+    not only one on the drawing. Reason: the tooltip's own rule, and a press
+    anywhere is the hand getting on with it.
+  - **The timing: a second and 40 ms a character, 3 s at least, 10 at most**
+    (`readingMs`); the constrain tool's is 9 s, the Hand's 8. Reason: 25
+    characters a second is a quick silent reader; shorter and it is not
+    read, longer and it is furniture. **Worked out, not felt**: no person
+    has timed it on a phone — the owner's to say.
+  - **The second-time rule: the steps alone, no name, 5 s at most**, counted
+    per tool per page load (a reload starts over). Every time after is the
+    same as the second. Reason: the spec's; a reload is a fresh session. Not
+    counted: a hold's tooltip, which is asked for.
+  - **Where it goes is worked out, not fixed** (`chosenPlacement`): bare
+    drawing 1 a pixel, the drawing's middle third 3 more, the action strip
+    and the command line a half, the log and the organiser nothing; never
+    the tray, the tool's options, the palette, the logo's corner. Reason: a
+    tap through the tip onto drawing nobody can see does something with a
+    tool armed; a tap through it onto the log does nothing.
+  - **It covers the action strip** (Undo, Redo, Delete, Cancel) on an
+    upright phone while it is up. Reason: the alternative is 65 px further
+    into the drawing. The buttons still work under it. The likeliest veto.
+  - **Every tip starts at the same line** (`STAY`: a place up to a third of
+    a tip's area worse than the best is taken for being the first reading
+    down). Reason: without it a short tip and a tall one settled a pane's
+    edge apart, and looked like two things.
+  - **A group's button says what else it holds**: *Hold this button for
+    Constrain.*, by name up to 44 characters, else *for 8 more tools.*
+    Reason: Constrain shares Dimension's button and nothing on the screen
+    said so — the owner's actual obstacle. Not in the spec.
+  - **The setting's name is `ui({ tips: false })`**, its row *Tips when a
+    tool is chosen* in the logo menu's View, stored under `neocad.tips.v1`,
+    on by default, never journalled. It turns off the chosen tip only: a
+    hover's and a hold's tooltip are asked for and have no switch.
+  - **The phone palette drops a section with nothing in it before it drops a
+    row** ("l1, l2 have / no relation yet"), only where the rows overflow.
+    Reason: 39 px of a 164 px pane; with it gone two relations fit, not one.
+  - **The palette's empty line keeps its first four words** (*pick what to
+    relate — two lines, a line and a circle…*). Reason: two suites match
+    them, and they were right.
+  - **The ✓'s tooltip now says "…and puts the tool down"** (bug 77). The
+    other way to make it true — keep the tool armed after a confirm — is a
+    behaviour change and the owner's call.
+
 - **An extrude's two profiles are peers; a feature relates, it does not own**
   (the owner, 2026-11-09 and 2026-11-12: *"kind of like mirror relations"*,
   *"i don't like the idea of anything being 'consumed'"*, *"If you change one
@@ -506,6 +583,19 @@ otherwise.
   - **The status does not open the palette**: `4 agreeing` is text. A tap
     on it that typed `ui({ show: "constraints" })` would be one line; not
     done, to keep the status's buttons the relation-selecting kind.
+- **There is no sketch (the owner, 2026-11-12):** *"There is no such thing
+  as a sketch. There are geometry groups (you can come up with a better
+  name… reason I don't want to use sketch is it implied exclusivity, but I
+  want geometry to be able to belong to multiple groups). A group is only
+  fully defined when every element within the group is fully defined.
+  Should be trivial to calculate this stuff but it's not a concern of mine
+  now."* The model already is this (a group is a set, an entity in any
+  number of them, `groups.md`); the **word** is still in the tool, the face
+  menu, `help()`, a workbench and code names, and goes:
+  `docs/plans/no-sketch.md`, queued. A group's definedness (every member
+  fully defined) is the last item there, after the renaming. The question
+  of whether the drawing's `N free` counts a flat drawing's freedom to leave
+  its plane is **closed**: not a concern now; left as it is.
 - **Decided by the owner (2026-11-12), to build** — each in its spec:
   - *"I should be able to pull on anything."* A free body moves when a point
     held to its face is pulled (#89's both-ways `onplane`); nothing is made
@@ -537,7 +627,8 @@ otherwise.
   - Edge snap on a face keeps `on` + `onplane` (*"Do what you think is
     best"*). Left for now by the owner, not decided: faces in the wire
     view, the palette's start state and height, a tap on the status count.
-  - **Open with the owner**: whether the status counts a flat drawing's
+  - ~~Open with the owner~~ (closed 2026-11-12, "not a concern of mine
+    now"; see *There is no sketch* above): whether the status counts a flat drawing's
     freedom to leave its plane (it does not today — `gaugePlanes`).
 
 - **Reviewed against the owner's principle (2026-11-09; CONVERSATION_LOG has
@@ -590,9 +681,19 @@ otherwise.
          re-journalled by its line. The choices are the register entry
          below;
   7. [ ] a chamfer face's sketch plane follows the solid or is refused;
-  8. [ ] Through all as a relation to the far face's geometry, not a hook —
-         specified in `docs/plans/through-all-relation.md` (2026-11-12),
-         queued after linked profiles; Up to face is the same relation.
+  8. [x] Through all as a relation to the far face's geometry, not a hook —
+         built 2026-11-12 from `docs/plans/through-all-relation.md`, with Up
+         to face as the same relation the other way round: `e2_through` is
+         `onplane(<far vertex>, "e2.lid")`, `e2_upto` is `onplane(<lid
+         point>, face)`, the `extrusion` gives no length row while one
+         stands, `throughReach` and its hook are gone (`src/farside.ts`, at
+         the operations' height, says *which* vertex, once). What was
+         discovered building it is in the register below and filed under
+         *Next up*: a cap's normal stays a datum (exact in position, not in
+         the lid's turn) because making it a column let a contradiction be
+         met by sliding a free body along a lever; and on the build before,
+         a plate with a through hole could not be dragged at all (the drag
+         moved 0.000 of 8, measured).
 
 - **A prism stays a prism: relations between a feature's entities, both
   ways** (the owner, 2026-11-08/09: *"Why is it that after I extrude I can
@@ -682,11 +783,46 @@ otherwise.
     axis (a bug, fixed), the radians and the missing flip (added); none was
     finding Cut, which the revolve's mode row has. Revolve gets ⇅ and keeps
     its own button.
-  - **Through all is past everything made before the feature**, wherever it
-    stands across the sketch, and a tenth more (at least one unit) so its
-    lid is never flush with a face; into nothing it is the blind depth it
-    was typed as. Its label reads "through all"; the dimension keeps only
-    its sign.
+  - **Through all is a relation to the far vertex of what the swept profile
+    meets** (docs/plans/through-all-relation.md, 2026-11-12, replacing *past
+    everything made before*): `onplane("p7", "e2.lid")`, named `e2_through`.
+    The drawn lid stands **on** the far face, not a tenth past it; the solid
+    kernel builds a through *cut's* tool a tenth past its lid (at least one
+    unit), and an add through to a face is flush. Into nothing it is the
+    blind depth it was typed as, and says so. The dimension keeps only its
+    sign; its label reads "through all" while the relation holds and
+    "through (placed)" where none does.
+  - **The far point is chosen by an operation and never re-pointed inside a
+    solve**: at the call, by `setEnd`, by `regen` (and `fillet`'s
+    regeneration), each journalling the vertex it chose — a replay runs on
+    seeds and searches nothing. Between, a turn that leaves another corner
+    farther is said in the organiser's row ("short") with one tap.
+  - **Round and kernel-only far sides are placed, not held**: a revolve's
+    side, a face only the kernel knows — the lid at the measure, an ordinary
+    depth, the log saying so and that the end must be set again after a
+    change. A fillet on the far corner of a slanted block turns a held end
+    into a placed one (the arc bulges past both tangent points).
+  - **Up to a face not parallel to the sketch is refused**, in words: a lid
+    on it would not be this profile moved, and the kernel sweeps square. A
+    face behind the sketch turns the extrude round first (its own `set`).
+  - **A cap's normal stays a datum** in a relation on it (`readPlane`): the
+    through row is exact in both points and not in the lid's turn. Made a
+    column of the row (the chord's six variables) it settled a drag that
+    had stalled, 6e-4 off after two hundred iterations — but a dimension
+    contradicting a through relation was then met by sliding the hole 150
+    along the plate's top and leaning the cut half a degree against its
+    `par`, every row under the offender threshold, SOLVED where it is a
+    conflict (unit angle rows have no length; a free in-plane translation
+    is a lever of any length). Measured both ways; the datum kept.
+  - **What a through cut goes through is what its own profile meets**, not
+    what was made first, and never another cut: two through cuts no longer
+    compound (the second stood a tenth past the first one's tool).
+  - **Deleting `e2_through` is `setEnd("e2", "blind", -10)`** in the
+    journal: the depth the lid stood at, in the entry, since a replay cannot
+    measure it. Deleting the far vertex does the same ahead of the deletion.
+  - **The relation is not among the record's `names`**, so it is a relation
+    the conflict search and the diagnosis name, not background; and it has
+    no twin — a relation to a face is a position.
   - **Symmetric's number is the whole depth** (SolidWorks' mid plane and
     Onshape's symmetric read it so): half each side.
   - **The end condition is a drop-down where the depth's label was** —
@@ -2701,7 +2837,7 @@ are flagged as such.
   regressions, and every worker's gate tripped on them. Each was measured
   before it was touched; the CHANGELOG entry has the counts, before and
   after, alone and loaded. *Android's font scale* was the app's, in the
-  browser only (bug 77, Chromium 153 tells only a page that asks;
+  browser only (bug 78, Chromium 153 tells only a page that asks;
   android.md). *The see-through log line* was the test racing the app's
   fade with four slow screenshots. *The conflict search's cost* was a
   wall-clock budget in a unit test on a shared box: measured in solves and
@@ -2738,6 +2874,65 @@ are flagged as such.
           and out before the first paint; `medium` was measured back at 16
           px, but a paint between the two readings would be the browser's
           own doing).
+- [x] **Through all is a relation; up to face is the same relation the other
+  way round** (review item 8; spec
+  [`through-all-relation.md`](docs/plans/through-all-relation.md)). **Built**
+  (2026-11-12, branch `claude/through-all-relation`): `e2_through` and
+  `e2_upto`, the `extrusion` without a length row while one stands, the far
+  side chosen by operations and journalled, placed ends said, format 23,
+  the hook gone. Decisions in the register above. Left:
+    - [ ] **A cap's normal is a datum in a relation on it**, so a drag that
+          fights what pins a body creeps: a boss up to a pinned block's lid,
+          its lid pulled 5 against the block's depth, left the solve 6e-4 off
+          after two hundred iterations, improving 5% a solve (measured, the
+          up-to-face test's first form). The chord as a column settles it in
+          a few — and opens the lever below. What would close both: a length
+          on the unit-angle rows (`par(curve, plane)`, the `.n` row — the
+          curve's radius is the natural one; review-solver's `k = 1` for
+          normal rows is the decision to revisit), and then the exact normal.
+    - [ ] **A free in-plane translation is a lever of any length for a unit
+          angle row.** With the cap's normal a column, `dist` 15 against a
+          through relation through a plate 10 thick was met by sliding the
+          hole 150 along the plate's top and leaning the cut 0.5°, every row
+          under `OFFENDING` (0.05): SOLVED. The same lever exists today for
+          any relation whose cheap compromise is an angle. A solve that moves
+          something farther than the drawing is wide is not an answer; the
+          collapse check does not look.
+    - [ ] **A profile with no direction relations shears, and the collapse
+          check does not see it**: a free 40 × 40 base pulled through its lid
+          became a 12-wide parallelogram, every length well above ε·L, every
+          perp of the chord met because the edges had turned parallel to one
+          another. `keptSizes` keeps lengths, not angles. Every sketch the
+          tools draw carries perps, which is why the tests square theirs.
+    - [ ] **A drag with two through cuts is slow**: a plate corner dragged 8
+          along the plate in twelve frames, 335 iterations and 1.6 s with a
+          hole and a pocket (108 and 155 ms with the hole alone); three of the
+          twelve frames ran to the kernel's sixty. Before, the same drag moved
+          nothing at all (0.000 of 8, both builds measured in
+          `test/through.measure.ts`), so there is no "before" to be slower
+          than; but 130 ms a frame on a desktop is a phone's second.
+    - [ ] **The through relation's marks are quiet** (docs/plans/quiet-geometry.md's
+          rule for a point's marks): pictures 510/516 show no ▱ until the
+          conflict (513/519). Whether a relation to another body should be
+          loud is the owner's.
+    - [ ] **The far rim's mark is behind the plate** from above, so
+          `placeGlyphs` leaves it out; from below it is the one that shows.
+    - [ ] **A fillet on the far corner of a slanted block makes the end
+          placed** (the arc bulges past both tangent points): the hold is
+          lost silently but for the label. A relation to a curve's apex
+          (onsurface, TODO) would keep it held.
+    - [ ] **A second through cut is not a body to go through**, by design;
+          nor is an *open* or *unbuilt* feature. A boss added after the cut
+          *is* met if the cut is set again or regenerated, and not before —
+          the organiser's "short" row says so.
+    - [ ] **`seatEnds` seats every held end after every `set`**, which is a
+          scan of the features; cheap today, and the place to look if `set`
+          slows on a drawing of many cuts.
+    - [ ] **Up to a face not parallel to the sketch** is refused: a lid on it
+          would not be this profile moved. SolidWorks' Up To Surface trims the
+          body to the face; that needs a trim in the kernel.
+    - [ ] **The boolean build order is still a timeline** (a cut cuts what
+          was built before it), as the spec left it.
 
 - [x] **An extrude's two profiles are peers; features relate, they do not
   own** (the owner, 2026-11-09 and 2026-11-12; spec
@@ -2978,7 +3173,7 @@ are flagged as such.
           it; the other four ways (mouse, iPhone, landscape) passed every
           run. **↳ Closed by gate-stable (2026-11-12).** Both were what
           they looked like, and neither was the test alone. *The font
-          scale* was the app's, in the browser only (bug 77): Chromium 153
+          scale* was the app's, in the browser only (bug 78): Chromium 153
           reports `env(preferred-text-scale)` only to a page carrying
           `<meta name="text-scale" content="scale">` and tells every other
           page 1 (141 told every page; the table is in android.md). The
@@ -3081,13 +3276,15 @@ are flagged as such.
         menu, the Cut tool, Blind/Through all/Symmetric with `setEnd`, the
         depth handle with ⊙/⊗ square on, the origin's axes for a revolve (a
         bug), the face's menu items first. Left, each with a proposal:
-    - [ ] **Up to face.** Through all and symmetric are relational through
-          the depth dimension's reach (`lidReach`); up to face is the same
-          shape — the reach the distance from the sketch to a plane, read
-          live — and a planar face of a sweep already is a plane reference
-          (its three points, as sketch on a face makes). What is not built
-          is the pick: a second stage in the extrude tool ("Up to face",
-          then a click on a face), and a kernel face (a fillet's, a
+    - [x] **Up to face.** Built 2026-11-12 with through all as a relation
+          (docs/plans/through-all-relation.md): the end row's "Up to face"
+          and one press on the face, `onplane(<lid point>, face)` named
+          `e2_upto`, held both ways for a flat face parallel to the sketch;
+          a round wall placed where the profile's middle meets it; a face
+          only the kernel knows placed at the pressed point, with the depth
+          in the journal. Left: a face not parallel to the sketch (refused
+          in words), as the next line says. Was: a second stage in the
+          extrude tool ("Up to face", then a click on a face), and a kernel face (a fillet's, a
           boolean's) has no entity points to name. Proposal: `{ end: {
           upTo: "p5.p6.p8" } }` for a face of entities first, kernel faces
           once sketch-mode's face picking lands.
@@ -4644,13 +4841,48 @@ extended the way `defineTool` extends the tool registry would close it.
   one edge; whichever is right, the other should change. The walk is kept
   over the four panes it was written over, so the palette is out of it.
 
-- [ ] **The phone palette wastes a row (2026-11-09, review of #88).** Pictures
+- [x] **The phone palette wastes a row (2026-11-09, review of #88).** Pictures
   427, 431 and 432: one applicable row, a blank row, then "N more…". The fit
   budget in `src/constraints.ts` `sync` (`room = clientHeight − rest −
   oneRow`) leaves a whole row unused on a three-row pane, so the likeliest
   two should show and only one does. Find the slack (a margin on the
   more-row or the empty-section line, probably) and measure on the iPhone 13
   picture: one more row is Symmetric without a second tap.
+  **Fixed 2026-11-12** (docs/plans/tool-howto.md). Measured on the iPhone 13:
+  the body is 164 px, a heading 20.5, a row 44, and the slack was neither
+  margin — it was the whole section under the rows, "l1, l2 have / no
+  relation yet", 39.4 px. The budget was right about the room it was given.
+  Where the rows overflow, a section with nothing in it now gives way first:
+  two lines show Parallel, Perpendicular, "6 more…" (picture 481), 6.5 px to
+  spare. A selection that *has* relations still shows one row and its list.
+
+- [ ] **What the tool-howto package left (2026-11-12), each seen in the
+  browser:**
+  - **Landscape**: on an iPhone 13 on its side the chosen tip lies over the
+    command line's end, the strip, the log, the organiser's top **and the
+    drawing's right** (picture 487). The screen is 750 × 342 and the tip is
+    390 × 167; there is no place clear of the drawing at that width. The
+    answer is probably a narrow form of the tip down the right-hand column
+    (203 px), tried at each candidate width; not built.
+  - **The tools' guidance says "click" on a phone**: `constrain: click what
+    to relate`, `click what to dimension: a vertex…` are written into the
+    tools' `log` calls with no hand to ask. The chip shows them, in italics,
+    right beside a tip that says "tap". The tools' behaviour was out of this
+    package's scope.
+  - **The summaries say "click" on a phone** (filed with the tooltips
+    package): now directly above steps that say "tap". One line each, for
+    both hands; making them the hand's is a change to thirty strings and
+    the tests that quote them.
+  - **Most drawing tools put themselves down after one shape** (a point, a
+    rectangle, a circle…); the line tool, trim, extend, dimension and
+    constrain do not. Only the point's how says so. Whether one shape per
+    choice is right is the owner's.
+  - **Not tried on an iPhone**: the tip's place under real safe-area insets,
+    and whether nine seconds is the right time to read one, are the device's
+    to judge. (Whether iOS fires `click` as a pointer event is not relied
+    on: the last `pointerdown`'s type is what is read.)
+  - **A chosen tip for `arm()` typed or the context menu**: none. A person
+    who types a tool's name asked for nothing; could be revisited.
 
 - [x] **Pages reloading mid-test when a worker checks out a worktree
   (2026-11-05).** "Execution context was destroyed, most likely because of a

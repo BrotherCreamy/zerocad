@@ -51,7 +51,7 @@
 // be kept yet (glyphs.ts holds no state, and a position is not a relation);
 // that is filed in TODO.md, not smuggled in here.
 
-import { press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { Tool } from "./tool.ts";
 import type { Pick } from "../picking.ts";
@@ -74,6 +74,11 @@ export class DimensionTool extends Tool {
     // says the reading and makes nothing.
   };
   static readonly summary = "Dimensions what you click, a solid's faces too; a click places it";
+  static readonly how: How = [
+    "{Tap} what to measure: a line, a circle, two points…",
+    "Then {tap} empty space to place it.",
+    "Double-{tap} the number to edit it.",
+  ];
   readonly name = "dimension";
   // Its picks are entities, not places: a snap marker would promise a point.
   readonly snaps = false;

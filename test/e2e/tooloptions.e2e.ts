@@ -123,7 +123,7 @@ test("arming extrude by its button shows the options panel beside the tray: Blin
   // depth's label was — Blind — and the depth's ⇅; no row of its own.
   assert.deepEqual(labels, ["mode"]);
   assert.deepEqual(await app.page.$eval(`${PANEL} select.obeside`, (s) => [(s as HTMLSelectElement).value, Array.from((s as HTMLSelectElement).options, (o) => o.textContent)]),
-    ["blind", ["Blind", "Through all", "Symmetric"]]);
+    ["blind", ["Blind", "Through all", "Up to face", "Symmetric"]]);
   assert.deepEqual(await app.page.$$eval(`${PANEL} .ochoose`, (els) => els.map((el) => [el.textContent, el.getAttribute("aria-pressed")])),
     [["New", "false"], ["Add", "false"], ["Cut", "false"], ["∩", "false"]]);
   assert.equal(await app.page.$eval(`${PANEL} button.oflip`, (b) => b.getAttribute("aria-label")), "Flip direction");
