@@ -39,27 +39,29 @@ function twoLines(dim: number): Model {
   return m;
 }
 
-console.log("\n## two free lines (60.133 and 60.828 long), one relation, then solve");
-console.log("| relation | dim | l1 after | l2 after | worst relative change | iterations | solved |");
-console.log("|---|---|---|---|---|---|---|");
-const cases: [string, (m: Model) => void][] = [
-  ["par(l1, l2)", (m) => { parallel(m, "l1", "l2"); }],
-  ["perp(l1, l2)", (m) => { perpendicular(m, "l1", "l2"); }],
-  ["ang(l1, l2, 60°)", (m) => { angle(m, "l1", "l2", Math.PI / 3); }],
-  ["col(l1, l2)", (m) => { collinear(m, "l1", "l2"); }],
-  ["on(p3, l1)", (m) => { pointOnLine(m, "p3", "l1"); }],
-  ["sym(p3, p4, l1)", (m) => { symmetric(m, "p3", "p4", "l1"); }],
-  ["par(l1, origin.x)", (m) => { parallel(m, "l1", "origin.x"); }],
+console.log("\n## two free lines (l1 60.133 long, l2 60.828), one relation, then solve");
+console.log("| relation | dim | lines it reads for direction: before → after | worst relative change | iterations | solved |");
+console.log("|---|---|---|---|---|---|");
+// Each with the lines it reads for their direction only: the ones whose length it has no business changing.
+// (`on` and `sym` move p3 and p4, which are l2's ends, so l2's length is theirs to change.)
+const cases: [string, string[], (m: Model) => void][] = [
+  ["par(l1, l2)", ["l1", "l2"], (m) => { parallel(m, "l1", "l2"); }],
+  ["perp(l1, l2)", ["l1", "l2"], (m) => { perpendicular(m, "l1", "l2"); }],
+  ["ang(l1, l2, 60°)", ["l1", "l2"], (m) => { angle(m, "l1", "l2", Math.PI / 3); }],
+  ["col(l1, l2)", ["l1", "l2"], (m) => { collinear(m, "l1", "l2"); }],
+  ["on(p3, l1)", ["l1"], (m) => { pointOnLine(m, "p3", "l1"); }],
+  ["sym(p3, p4, l1)", ["l1"], (m) => { symmetric(m, "p3", "p4", "l1"); }],
+  ["par(l1, origin.x)", ["l1"], (m) => { parallel(m, "l1", "origin.x"); }],
 ];
-for (const [name, add] of cases) {
+for (const [name, lines, add] of cases) {
   for (const dim of [2, 3]) {
     const m = twoLines(dim);
-    const was = [lengthOf(m, "l1"), lengthOf(m, "l2")];
+    const was = lines.map((l) => lengthOf(m, l));
     add(m);
     const r = m.solve();
-    const now = [lengthOf(m, "l1"), lengthOf(m, "l2")];
+    const now = lines.map((l) => lengthOf(m, l));
     const rel = Math.max(...now.map((v, i) => Math.abs(v - was[i]) / was[i]));
-    console.log(`| ${name} | ${dim}D | ${f3(now[0])} | ${f3(now[1])} | ${e2(rel)} | ${r.iterations} | ${r.solved} |`);
+    console.log(`| ${name} | ${dim}D | ${lines.map((l, i) => `${l} ${f3(was[i])} → ${f3(now[i])}`).join(", ")} | ${e2(rel)} | ${r.iterations} | ${r.solved} |`);
   }
 }
 
@@ -181,18 +183,29 @@ function jiggle(m: Model): void {
 }
 
 console.log("\n## the solver fixtures: opened and solved; then every point moved 1% of the drawing's size and solved again");
-console.log("| fixture | entities | relations | open: iterations | open: ms | open: moved from the file | jiggled: iterations | jiggled: ms | jiggled: solved |");
-console.log("|---|---|---|---|---|---|---|---|---|");
-const fixtures = ["bracket.zerocad", "curves-v12.neocad", "features-v12.neocad", "flat2d-v12.neocad", "pre-explicit-regions.neocad", "shapes-v15.neocad"];
-for (const name of fixtures) {
-  const text = await readFile(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
-  const m = open(text);
+console.log("(kernel: `problem.solve()`, the rows alone; model: `Model.solve()`, with its checks. Times are the best of three.)");
+console.log("| fixture | entities | relations | open: iterations | open: ms | open: moved from the file | jiggled, kernel: iterations | ms | jiggled, model: iterations | ms | solved |");
+console.log("|---|---|---|---|---|---|---|---|---|---|---|");
+
+/** One row of the table: `m` as opened, then `jig` applied and solved both ways from the same jiggled values. */
+function fixtureRow(name: string, m: Model, jig: () => void): void {
   const filed = m.problem.snapshot();
   const opened = best(m, () => m.solve());
   const moved = Math.max(0, ...filed.map((v, i) => Math.abs(m.problem.getVar(i) - v)));
-  jiggle(m);
-  const j = best(m, () => m.solve());
-  console.log(`| ${name} | ${m.entities.size} | ${m.relations.size} | ${opened.out.iterations} | ${opened.ms.toFixed(2)} | ${e2(moved)} | ${j.out.iterations} | ${j.ms.toFixed(2)} | ${j.out.solved} |`);
+  jig();
+  const jiggled = m.problem.snapshot();
+  // The model's solve first: it is what takes the values the rows are scaled by, as the app's does.
+  const whole = best(m, () => m.solve());
+  m.problem.restore(jiggled);
+  const bare = best(m, () => m.problem.solve());
+  console.log(`| ${name} | ${m.entities.size} | ${m.relations.size} | ${opened.out.iterations} | ${opened.ms.toFixed(2)} | ${e2(moved)} `
+    + `| ${bare.out.iterations} | ${bare.ms.toFixed(2)} | ${whole.out.iterations} | ${whole.ms.toFixed(2)} | ${whole.out.solved} |`);
+}
+
+const fixtures = ["bracket.zerocad", "curves-v12.neocad", "features-v12.neocad", "flat2d-v12.neocad", "pre-explicit-regions.neocad", "shapes-v15.neocad"];
+for (const name of fixtures) {
+  const m = open(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
+  fixtureRow(name, m, () => jiggle(m));
 }
 {
   // Forty rectangles in a row, tied to each other: test/conflicts.test.ts's cost sketch.
@@ -207,12 +220,10 @@ for (const name of fixtures) {
     if (r === 0) fix(m, "r0k0", [0, 0, 0]);
     else dist(m, `r${r - 1}k1`, `r${r}k0`, 10);
   }
-  const filed = m.problem.snapshot();
-  const opened = best(m, () => m.solve());
-  const moved = Math.max(0, ...filed.map((v, i) => Math.abs(m.problem.getVar(i) - v)));
   // A smaller jiggle than a file's: 1% of two kilometres would be 20 on a side of 25.
-  let k = 0;
-  for (const e of m.entities.values()) if (e.kind === "point") m.setCoords(e.name, m.coords(e.name).map((c) => c + 0.5 * Math.sin(12.9898 * ++k)));
-  const j = best(m, () => m.solve());
-  console.log(`| forty rectangles (jiggled ±0.5) | ${m.entities.size} | ${m.relations.size} | ${opened.out.iterations} | ${opened.ms.toFixed(2)} | ${e2(moved)} | ${j.out.iterations} | ${j.ms.toFixed(2)} | ${j.out.solved} |`);
+  fixtureRow("forty rectangles (jiggled ±0.5)", m, () => {
+    let k = 0;
+    for (const e of m.entities.values()) if (e.kind === "point") m.setCoords(e.name, m.coords(e.name).map((c) => c + 0.5 * Math.sin(12.9898 * ++k)));
+  });
 }
+

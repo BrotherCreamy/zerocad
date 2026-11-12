@@ -10,8 +10,8 @@
 
 import { Dual } from "../kernel/dual.ts";
 import type { Model } from "../model.ts";
-import { curveNormal, directionOf, frameBasis, joinVars, unitDuals } from "./refs.ts";
-import { dot, norm, vecSub, wedge } from "./vec.ts";
+import { curveNormal, directionOf, fadeUnder, frameBasis, joinVars, lengthBefore, rowLength, unitDuals } from "./refs.ts";
+import { angleBetween, dot, unit, vecSub, wedge } from "./vec.ts";
 
 function requireLength(op: string, v: unknown): number {
   if (typeof v !== "number" || !Number.isFinite(v) || v < 0) throw new Error(`${op} needs a length of 0 or more, got ${JSON.stringify(v)}`);
@@ -53,8 +53,8 @@ export function distAlong(model: Model, a: string, b: string, axis: string, targ
 
 /**
  * **`ang3(v, a, b, θ)`** — the angle at vertex `v` between the directions to
- * `a` and to `b`, in radians, unsigned: u·w = |u||w| cos θ, `ang`'s form, so
- * smooth at 0 and π and nowhere a square. SolidWorks' three-point angle.
+ * `a` and to `b`, in radians, unsigned: the angle itself less θ, `ang`'s
+ * form (`angleBetween`), nowhere a square. SolidWorks' three-point angle.
  */
 export function angle3(model: Model, v: string, a: string, b: string, radians: number): string {
   if (typeof radians !== "number" || !Number.isFinite(radians)) throw new Error(`ang3 needs an angle in radians, got ${JSON.stringify(radians)}`);
@@ -62,11 +62,18 @@ export function angle3(model: Model, v: string, a: string, b: string, radians: n
   if (new Set([v, a, b]).size < 3) throw new Error("ang3 takes three different points: the vertex, then one on each side");
   return model.relation("angle3", [v, a, b, radians], () => {
     const dim = model.dim;
-    const target = Math.cos(radians);
+    const target = Math.acos(Math.max(-1, Math.min(1, Math.cos(radians))));
     model.addResidual(pts.flatMap((p) => p.varIndices), (l) => {
       const [V, P, Q] = [l.slice(0, dim), l.slice(dim, 2 * dim), l.slice(2 * dim)];
-      const u = vecSub(P, V), w = vecSub(Q, V);
-      return [dot(u, w).sub(norm(u).mul(norm(w)).mul(target))];
+      // As `ang` (docs/plans/review-solver.md): the angle between the two
+      // arms at unit length, less the one asked for, times the longer arm as
+      // the solve began. Raw — u·w − |u||w|cos θ — it is a product with both
+      // arms' lengths, and the solve met part of an angle by changing them.
+      const floor = model.lengthFloor();
+      const [iv, ia, ib] = pts.map((p) => p.varIndices);
+      const k = rowLength(lengthBefore(model, [...iv, ...ia]), lengthBefore(model, [...iv, ...ib]));
+      const [u, w] = [vecSub(P, V), vecSub(Q, V)];
+      return [fadeUnder(angleBetween(unit(u, floor), unit(w, floor)).sub(target).mul(k), floor, u, w)];
     }, `ang3(${v},${a},${b})`);
   });
 }

@@ -16,7 +16,7 @@
 
 import { Dual } from "../kernel/dual.ts";
 import { ORIGIN, parseAxisRef, parseFramePlane, parsePointTriple, spanOf, type Model } from "../model.ts";
-import { vecSub } from "./vec.ts";
+import { normSquared, unit, vecSub } from "./vec.ts";
 
 /**
  * A line's endpoint variables, resolved lazily. `model.line()` is re-run each
@@ -327,6 +327,13 @@ export interface DirectionRef {
   direction: (own: Dual[]) => Dual[];
   /** The frame an axis reference reads, or null when this side is geometry. */
   frame: string | null;
+  /**
+   * Set when `direction` is a line's or a point pair's `b − a`: a direction
+   * that carries a **length**, which a row must divide out (`unitSides`) or
+   * the solve can meet the relation by shortening the line. Absent for a side
+   * that is unit already — a frame's axis, a plane's or a curve's normal.
+   */
+  ends?: true;
 }
 
 /** The direction from the first `dim` Duals to the second — a line or a point pair. */
@@ -336,7 +343,98 @@ function fromEnds(dim: number, vars: () => number[]): DirectionRef {
     vars,
     direction: (own) => vecSub(own.slice(dim), own.slice(0, dim)),
     frame: null,
+    ends: true,
   };
+}
+
+/**
+ * Both sides of a direction relation **at unit length**, from the block's
+ * Duals, and `k`, what the row is then multiplied by
+ * (docs/plans/review-solver.md).
+ *
+ * A side that is a line (`ends`) is divided by its own length, so the row's
+ * gradient along the line is zero and the relation turns the line without
+ * scaling it; `k` is then how long the longer of the lines **was when the
+ * solve began** (`rowLength`), a plain number that is no variable of the row,
+ * which keeps the row a length. Two sides that were unit already (a curve's
+ * normal against a frame's axis) are handed back as they are with `k` = 1:
+ * such a row never read a length.
+ *
+ * `scaled` finishes a row: times `k`, and — only where a line is shorter
+ * than the floor — times that line's length over the floor, so that under
+ * the floor the row runs down to nothing with the line, as the
+ * un-normalised row did, rather than staying an angle of something that has
+ * no direction.
+ */
+export function unitSides(model: Model, u: DirectionRef, v: DirectionRef, l: Dual[]):
+  { du: Dual[]; dv: Dual[]; k: number; scaled: (row: Dual) => Dual } {
+  const [ru, rv] = [u.direction(l.slice(0, u.width)), v.direction(l.slice(u.width))];
+  if (!u.ends && !v.ends) return { du: ru, dv: rv, k: 1, scaled: (row) => row };
+  const floor = model.lengthFloor();
+  const k = rowLength(u.ends ? lengthBefore(model, u.vars()) : 0, v.ends ? lengthBefore(model, v.vars()) : 0);
+  const short = [u.ends ? sizeOver(ru, floor) : null, v.ends ? sizeOver(rv, floor) : null].filter((s): s is Dual => s !== null);
+  return {
+    du: u.ends ? unit(ru, floor) : ru,
+    dv: v.ends ? unit(rv, floor) : rv,
+    k,
+    scaled: (row) => short.reduce((r, s) => r.mul(s), row.mul(k)),
+  };
+}
+
+/**
+ * How far apart two points were **when the solve began** — `vars` their
+ * variables, one point's then the other's (a line's, as `lineVars` lists
+ * them). A plain number that does not move during a solve
+ * (`Model.valueBefore`): what a direction row is scaled by.
+ */
+export function lengthBefore(model: Model, vars: readonly number[]): number {
+  const dim = vars.length / 2;
+  let sq = 0;
+  for (let i = 0; i < dim; i++) {
+    const d = model.valueBefore(vars[dim + i]) - model.valueBefore(vars[i]);
+    sq += d * d;
+  }
+  return Math.sqrt(sq);
+}
+
+/**
+ * **What a row of unit directions is multiplied by**: the longest of the
+ * lengths it read them from, as they were when the solve began, and never
+ * less than one unit.
+ *
+ * The longest, so the row stopping at the kernel's tolerance leaves no end
+ * of any of its lines farther off than that tolerance. Not the drawing's
+ * size: on forty rectangles two thousand across, rows that large beside
+ * `dist` rows of one made the normal equations fifty times worse conditioned,
+ * and the solve took 23 iterations where it had taken 8. Never under one,
+ * because the kernel calls a row an offender past an absolute 0.05: a full
+ * disagreement between two lines a thousandth of a unit long would otherwise
+ * read as solved.
+ */
+export function rowLength(...lengths: number[]): number {
+  return Math.max(1, ...lengths);
+}
+
+/**
+ * How long `unit(v, floor)` is where that is not 1 — `|v| / floor`, for a `v`
+ * shorter than the floor — or null for a `v` at full length, which is every
+ * line that has a direction to give.
+ */
+export function sizeOver(v: Dual[], floor: number): Dual | null {
+  let sq = 0;
+  for (const c of v) sq += c.val * c.val;
+  if (sq > floor * floor) return null;
+  return sq > 0 && floor > 0 ? normSquared(v).sqrt().div(floor) : Dual.constant(0);
+}
+
+/** `row` times how short each of `vs` is under the floor (`sizeOver`): unchanged where none is. */
+export function fadeUnder(row: Dual, floor: number, ...vs: Dual[][]): Dual {
+  let out = row;
+  for (const v of vs) {
+    const s = sizeOver(v, floor);
+    if (s) out = out.mul(s);
+  }
+  return out;
 }
 
 /**
@@ -410,6 +508,16 @@ export function directionOf(model: Model, ref: string): DirectionRef {
 export function directionOfPoints(model: Model, aName: string, bName: string): DirectionRef {
   const a = model.point(aName), b = model.point(bName);
   return fromEnds(model.dim, () => [...a.varIndices, ...b.varIndices]);
+}
+
+/**
+ * Those of `names` that are lines: what a block that reads them for their
+ * direction says it **turns** (`Model.addResidual`'s last argument), so a
+ * solve that meets the block keeps their lengths. A frame's axis, a circle
+ * and a point are no line, and are left out.
+ */
+export function linesOf(model: Model, names: readonly (string | null | undefined)[]): string[] {
+  return names.filter((n): n is string => typeof n === "string" && model.entities.get(n)?.kind === "line");
 }
 
 /** Concatenates several lazy variable lists into one. */

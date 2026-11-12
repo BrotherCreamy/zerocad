@@ -8,7 +8,8 @@
 // delete and replace:
 //
 // - `perp(chord, e1)` — the chord square to every edge of e1's profile. Its
-//   rows are `ĉ·ê = 0` for every straight edge (its two points), `ĉ × n̂ = 0`
+//   rows are `ℓ·ĉ·ê = 0` for every straight edge (its two points, ê its unit
+//   direction, ℓ how long it was when the solve began), `ĉ × n̂ = 0`
 //   for every edge with a normal of its own (an arc's, an ellipse's), and
 //   `ĉ·(pᵢ₊₁ − pᵢ)` along a spline. Between them they hold the profile flat
 //   and the chord square to it: a right prism, which way ever it is turned.
@@ -23,8 +24,8 @@
 
 import type { Dual } from "../kernel/dual.ts";
 import { memberName, type Model, type ProfileMember } from "../model.ts";
-import { curveNormal, unitDuals, type DirectionRef } from "./refs.ts";
-import { dot, vecSub } from "./vec.ts";
+import { curveNormal, lengthBefore, rowLength, unitDuals, type DirectionRef } from "./refs.ts";
+import { dot, unit, vecSub } from "./vec.ts";
 
 /** The profile a record stands on, as members, or null for a name that is no extrude's or edge extrude's. */
 export function profileMembers(model: Model, record: string): ProfileMember[] | null {
@@ -46,10 +47,17 @@ function edgeRows(model: Model, m: ProfileMember): EdgeRow[] {
   if (!e) return [];
   const pts = (a: string, b: string): EdgeRow => ({
     vars: [...model.point(a).varIndices, ...model.point(b).varIndices],
-    // In lengths, not a cosine: the edge's run along the chord. A residual the
-    // solve stops at is then a distance, as every other row's is — a cosine of
-    // 1e-10 on a 40-long edge would leave its end 4e-9 off the plane.
-    rows: (c, own) => [dot(c, vecSub(own.slice(3, 6), own.slice(0, 3)))],
+    // In lengths, not a bare cosine: a residual the solve stops at is then a
+    // distance, as every other row's is — a cosine of 1e-10 on a 40-long edge
+    // would leave its end 4e-9 off the plane. The length is the edge's **as
+    // the solve began**, a plain number, not the edge's own as it moves: with
+    // that (the edge's run along the chord, as this was) a shorter edge is a
+    // smaller residual, and the solve could square a wall partly by shrinking
+    // the profile (docs/plans/review-solver.md).
+    rows: (c, own) => {
+      const k = rowLength(lengthBefore(model, [...model.point(a).varIndices, ...model.point(b).varIndices]));
+      return [dot(c, unit(vecSub(own.slice(3, 6), own.slice(0, 3)), model.lengthFloor(), k))];
+    },
   });
   if (e.kind === "line") return [typeof m === "string" ? pts(e.refs[0], e.refs[1]) : pts(m.from, m.to)];
   if (e.kind === "spline" || e.kind === "bspline") {

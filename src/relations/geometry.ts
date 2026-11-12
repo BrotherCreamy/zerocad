@@ -18,8 +18,8 @@
 import { addEllipse, checkEllipse, ellipseOf, isConic, semiAxes } from "../kinds/ellipse.ts";
 import { parseAxisRef, type Model } from "../model.ts";
 import { Dual } from "../kernel/dual.ts";
-import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
-import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameBasis, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
+import { angleBetween, dot, norm, turnFactor, turnToParallel, turnToSquare, unit, vecSub, wedge, wedgeNorm } from "./vec.ts";
+import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, fadeUnder, frameBasis, joinVars, lengthBefore, linesOf, lineVars, rowLength, unitDuals, unitSides, type DirectionRef } from "./refs.ts";
 import { coincident, onPlane } from "./basic.ts";
 import { angleToProfile, leanOffNormal, profileMembers, squareToProfile } from "./profilesquare.ts";
 import { isPathCurve, onSpline, tangentSpline } from "./spline.ts";
@@ -91,35 +91,51 @@ function directionSides(model: Model, op: string, a: string, b: string, c?: stri
  * The shared body of `parallel` and `perpendicular`: read two directions and
  * say how they must relate.
  *
- * Parallel is "the wedge vanishes", perpendicular is "the dot vanishes" — both
- * linear in each input and well clear of being a square, whose gradient would
- * vanish at its own root.
+ * Each is **the turn that would make it so, times a length**: of the two
+ * unit directions (`unitSides`), the angle between them as undirected lines
+ * for parallel (`turnToParallel`) and its difference from a right angle for
+ * perpendicular (`turnToSquare`), times how long the longer line was when the
+ * solve began — how far that line's end has to travel. Neither is a square,
+ * whose gradient would vanish at its own root.
+ *
+ * Two things the rows of raw `b − a` got wrong (docs/plans/review-solver.md).
+ * They were products with the lines' lengths — |u||v|·sin, |u||v|·cos — so a
+ * shorter line was a smaller residual: `par` between two free 60-long lines
+ * left them 8.8 and 1.2 long, SOLVED. And a sine or a cosine is flat where it
+ * is largest: two lines exactly square have no way to turn that lowers their
+ * sine, so the only way down was shorter — which is how a `par` across a
+ * rectangle's corner folded a side to nothing. An angle has the same slope
+ * everywhere, so the relation turns its lines from any position and never
+ * scales them.
  */
 function directionRelation(
   model: Model, op: string, tag: string,
   a: string, b: string, c: string | null | undefined,
   residual: (u: Dual[], v: Dual[]) => Dual[],
 ): string {
+  // `residual` is handed unit directions and gives the turn; this scales it.
   const { u, v, args } = directionSides(model, tag, a, b, c);
   return model.relation(op, args, () => {
-    model.addResidual(joinVars(u.vars, v.vars), (l) =>
-      residual(u.direction(l.slice(0, u.width)), v.direction(l.slice(u.width))),
-    `${tag}(${args.join(",")})`);
+    model.addResidual(joinVars(u.vars, v.vars), (l) => {
+      const { du, dv, scaled } = unitSides(model, u, v, l);
+      return residual(du, dv).map(scaled);
+    }, `${tag}(${args.join(",")})`, linesOf(model, args));
   });
 }
 
 /**
- * Two directions point the same way (or exactly opposite): their wedge
- * vanishes. Each side is a line or a frame axis (`par("l1", "f1.x")`), and the
- * first may instead be a pair of points (`par("p1", "p3", "f1.x")`).
+ * Two directions point the same way (or exactly opposite): the turn between
+ * them as undirected lines vanishes. Each side is a line or a frame axis
+ * (`par("l1", "f1.x")`), and the first may instead be a pair of points
+ * (`par("p1", "p3", "f1.x")`).
  */
 export function parallel(model: Model, l1: string, l2: string, l3?: string | null): string {
-  return directionRelation(model, "parallel", "par", l1, l2, l3, (u, v) => wedge(u, v));
+  return directionRelation(model, "parallel", "par", l1, l2, l3, turnToParallel);
 }
 
 /**
- * Two directions are at a right angle: their dot product vanishes. Same three
- * forms as `parallel`.
+ * Two directions are at a right angle: the angle between them is π/2. Same
+ * three forms as `parallel`.
  */
 export function perpendicular(model: Model, l1: string, l2: string, l3?: string | null): string {
   // **Square to a profile** (docs/plans/profiles-held.md): `perp(chord, e1)` or
@@ -133,15 +149,20 @@ export function perpendicular(model: Model, l1: string, l2: string, l3?: string 
     const args = l3 != null ? [l1, l2, l3] : [l1, l2];
     return model.relation("perpendicular", args, () => squareToProfile(model, chord, last, `perp(${args.join(",")})`));
   }
-  return directionRelation(model, "perpendicular", "perp", l1, l2, l3, (u, v) => [dot(u, v)]);
+  return directionRelation(model, "perpendicular", "perp", l1, l2, l3, (u, v) => [turnToSquare(u, v)]);
 }
 
 /**
- * The angle between two directions, in radians. Unsigned — this is the angle
- * between them as undirected lines would have it, because a *signed* angle
- * needs an orientation, which only exists in 2D. Stated as u·v = |u||v|cos(θ)
- * rather than by taking an arccos, so the residual stays smooth everywhere
- * including at 0 and π.
+ * The angle between two directions, in radians. Unsigned — the angle between
+ * the two as vectors, in [0, π], because a *signed* angle needs an
+ * orientation, which only exists in 2D. The row is that angle less the one
+ * asked for, times a length that is no variable, as `par` and `perp` are
+ * (`unitSides`, `angleBetween`). It used to be u·v − |u||v|cos θ: a product
+ * with both lengths, which could be met by changing them, and a cosine, flat
+ * at 0 and π — two lines drawn parallel and then given an angle had no way to
+ * turn (docs/plans/review-solver.md). The angle is taken as atan2 of the
+ * wedge's length against the dot, smooth everywhere but along one line, where
+ * `angleBetween` picks a way to turn.
  *
  * Either side may be a frame axis, which is how "this edge sits at 30° to the
  * frame" is written. There is deliberately **no point-pair form**: the
@@ -166,23 +187,33 @@ export function angle(model: Model, l1: string, l2: string, radians: number): st
     throw new Error(`ang needs something it can move: "${l1}" and "${l2}" are both frame axes`);
   }
   return model.relation("angle", [l1, l2, radians], () => {
-    const target = Math.cos(radians);
+    // What the cosine form meant by any number of radians: the angle in [0, π] with that cosine.
+    const target = Math.acos(Math.max(-1, Math.min(1, Math.cos(radians))));
     model.addResidual(joinVars(u.vars, v.vars), (l) => {
-      const du = u.direction(l.slice(0, u.width)), dv = v.direction(l.slice(u.width));
-      return [dot(du, dv).sub(norm(du).mul(norm(dv)).mul(target))];
-    }, `ang(${l1},${l2})`);
+      const { du, dv, scaled } = unitSides(model, u, v, l);
+      return [scaled(angleBetween(du, dv).sub(target))];
+    }, `ang(${l1},${l2})`, linesOf(model, [l1, l2]));
   });
 }
 
-/** A point lies somewhere on the infinite line through a line's two endpoints. */
+/**
+ * A point lies somewhere on the infinite line through a line's two endpoints.
+ *
+ * The row is how far off the line the point is: (q − a) ∧ û, û the line's
+ * **unit** direction (`unit`, vec.ts) — a length, signed in 2D and the three
+ * components of the offset's cross product in 3D, never a square. Written
+ * with the raw `b − a` it was that distance times the line's length, and a
+ * shorter line was a smaller residual: `on` between a point 25 off a free
+ * 60-long line left the line 21 long (docs/plans/review-solver.md).
+ */
 export function pointOnLine(model: Model, pointName: string, lineName: string): string {
   return model.relation("pointOnLine", [pointName, lineName], () => {
     const p = model.point(pointName);
     const dim = model.dim;
     model.addResidual(joinVars(p.varIndices, lineVars(model, lineName)), (l) => {
       const [q, a, b] = chunk(l, dim, 3);
-      return wedge(vecSub(q, a), vecSub(b, a));
-    }, `on(${pointName},${lineName})`);
+      return wedge(vecSub(q, a), unit(vecSub(b, a), model.lengthFloor()));
+    }, `on(${pointName},${lineName})`, [lineName]);
   });
 }
 
@@ -259,24 +290,42 @@ function equalArcLength(model: Model, l1: string, l2: string): string {
 // --- the sketch relations (docs/plans/sketch-relations.md) ----------------
 
 /**
- * Two lines lie on one infinite line: both of the second's ends on the first's
- * line — which is `par` plus an end `on`, said as one relation with one glyph.
- * Two blocks, the wedge of each of the second's ends against the first's
- * direction; both lazy, so the relation follows an edge a fillet re-points.
- * Every component is linear in each end and none is a square, in any
- * dimension.
+ * Two lines lie on one infinite line — which is `par` plus an `on`, said as
+ * one relation with one glyph. Two blocks, both lazy, so the relation follows
+ * an edge a fillet re-points:
+ *
+ * - `|dir`: the turn between the two **unit** directions, times how long the
+ *   longer line was when the solve began — `par`'s own row
+ *   (`directionRelation`);
+ * - `|mid`: the second line's middle on the first's line, its offset
+ *   (m − a) ∧ û₁ — `on`'s row, of the middle.
+ *
+ * No row is a square, in any dimension, and none can be met by a shorter
+ * line. It used to be the wedge of each of the second line's ends against the
+ * first's raw `b − a`, which is those two ends' distances off the line times
+ * the first line's length: `col` between two free 60-long lines left them
+ * 17.5 and 2.9 long (docs/plans/review-solver.md). The middle rather than the
+ * two ends, because an end's offset is still lowered by pulling that end in
+ * along its own line; the middle does not move when its line changes length.
  */
 export function collinear(model: Model, l1: string, l2: string): string {
   if (l1 === l2) throw new Error(`collinear needs two lines: ${l1} twice is one`);
   return model.relation("collinear", [l1, l2], () => {
     const dim = model.dim;
-    const vars = joinVars(lineVars(model, l1), lineVars(model, l2));
-    for (const [end, tag] of [[2, "start"], [3, "end"]] as const) {
-      model.addResidual(vars, (l) => {
-        const pts = chunk(l, dim, 4);
-        return wedge(vecSub(pts[end], pts[0]), vecSub(pts[1], pts[0]));
-      }, `col(${l1},${l2})|${tag}`);
-    }
+    const [v1, v2] = [lineVars(model, l1), lineVars(model, l2)];
+    const vars = joinVars(v1, v2);
+    model.addResidual(vars, (l) => {
+      const [a, b, c, d] = chunk(l, dim, 4);
+      const floor = model.lengthFloor();
+      const k = rowLength(lengthBefore(model, v1()), lengthBefore(model, v2()));
+      const [u, v] = [vecSub(b, a), vecSub(d, c)];
+      return turnToParallel(unit(u, floor), unit(v, floor)).map((r) => fadeUnder(r.mul(k), floor, u, v));
+    }, `col(${l1},${l2})|dir`, [l1, l2]);
+    model.addResidual(vars, (l) => {
+      const [a, b, c, d] = chunk(l, dim, 4);
+      const mid = c.map((ci, i) => ci.add(d[i]).div(2));
+      return wedge(vecSub(mid, a), unit(vecSub(b, a), model.lengthFloor()));
+    }, `col(${l1},${l2})|mid`, [l1, l2]);
   });
 }
 
@@ -578,10 +627,20 @@ export function tangent(model: Model, a: string, b: string, side?: string | null
       // within √tolerance of the join and the rank analysis read the joint
       // as free. This one crosses zero cleanly. Either way the arc is
       // tangent to the line; which side it leaves on is kept by the seed.
+      // As `perp`: the turn that would square the two unit directions, times
+      // the longer of the line and the radius as the solve began. The raw
+      // product is r·|u|·cos, which a smaller arc or a shorter line lowers
+      // (docs/plans/review-solver.md).
       const at = shared();
-      if (at >= 0) return [dot(vecSub(at === 0 ? p : q, ctr), u)];
+      if (at >= 0) {
+        const floor = model.lengthFloor();
+        const ends = lineVars(model, lineName)();
+        const k = rowLength(lengthBefore(model, ends), lengthBefore(model, [...center.varIndices, ...ends.slice(at * dim, (at + 1) * dim)]));
+        const radius = vecSub(at === 0 ? p : q, ctr);
+        return [fadeUnder(turnToSquare(unit(radius, floor), unit(u, floor)).mul(k), floor, radius, u)];
+      }
       return [wedgeNorm(vecSub(ctr, p), u).div(norm(u)).sub(l[3 * dim])];
-    }, `tan(${a},${b})`);
+    }, `tan(${a},${b})`, [lineName]);
     const normal = curveNormal(model, circleName);
     if (normal) {
       model.addResidual(joinVars(lineVars(model, lineName), center.varIndices, normal), (l) => {
@@ -638,11 +697,21 @@ function tangentCircles(model: Model, a: string, b: string, given?: string | nul
       // whichever way the arcs were drawn, held by the seed.
       if (joint() !== null) {
         const s = l.slice(2 * dim + 2, 3 * dim + 2);
-        const u = vecSub(s, p), v = vecSub(q, p);
-        if (dim === 2) return [wedge(u, v)[0]];
+        // As `par`: the turn between the radius to the joint and the line of
+        // centres, each at unit length, times the longer of them as the
+        // solve began. Raw, it is a product with the first arc's radius, and
+        // a smaller arc lowers it.
+        const floor = model.lengthFloor();
+        const scale = rowLength(
+          lengthBefore(model, [...pa.varIndices, ...model.point(joint()!).varIndices]),
+          lengthBefore(model, [...pa.varIndices, ...pb.varIndices]),
+        );
+        const [ru, rv] = [vecSub(s, p), vecSub(q, p)];
+        const u = unit(ru, floor), v = unit(rv, floor);
+        if (dim === 2) return [fadeUnder(turnToParallel(u, v)[0].mul(scale), floor, ru, rv)];
         const n = unitDuals(l.slice(3 * dim + 2, 3 * dim + 5));
         const x = [u[1].mul(v[2]).sub(u[2].mul(v[1])), u[2].mul(v[0]).sub(u[0].mul(v[2])), u[0].mul(v[1]).sub(u[1].mul(v[0]))];
-        return [dot(n, x)];
+        return [fadeUnder(dot(n, x).mul(turnFactor(x, dot(u, v))).mul(scale), floor, ru, rv)];
       }
       const d = norm(vecSub(p, q));
       return [inside ? d.sub(ra.sub(rb).abs()) : d.sub(ra.add(rb))];
@@ -768,7 +837,7 @@ function tangentEllipse(model: Model, a: string, b: string, side?: string | null
       const cos = dot(u, w).div(len);
       const support = major.mul(major).sub(major.mul(major).sub(minor.mul(minor)).mul(cos.mul(cos))).sqrt();
       return [wedgeNorm(vecSub(c, p), w).div(len).sub(support)];
-    }, `tan(${a},${b})`);
+    }, `tan(${a},${b})`, [lineName]);
     if (ev.normal) {
       model.addResidual(joinVars(lineVars(model, lineName), ev.vars), (l) => {
         const [p, q] = chunk(l, dim, 2);
@@ -826,16 +895,22 @@ export function symmetric(model: Model, aName: string, bName: string, lineName: 
     const dim = model.dim;
     const varIndices = joinVars(a.varIndices, b.varIndices, lineVars(model, lineName));
 
+    // Both rows against the mirror line's **unit** direction, so each is a
+    // length — how far the pair's middle is off the line, how far apart the
+    // two are along it — and neither is lowered by a shorter mirror line
+    // (docs/plans/review-solver.md: raw, `sym` of two free points left a
+    // 60-long mirror line 37 long). The join `q − p` is left as it is: two
+    // points on the line mirror each other with no join at all.
     model.addResidual(varIndices, (l) => {
       const [p, q, s, e] = chunk(l, dim, 4);
       const mid = p.map((pi, i) => pi.add(q[i]).div(2));
-      return wedge(vecSub(mid, s), vecSub(e, s));
-    }, `sym(${aName},${bName},${lineName})|mid`);
+      return wedge(vecSub(mid, s), unit(vecSub(e, s), model.lengthFloor()));
+    }, `sym(${aName},${bName},${lineName})|mid`, [lineName]);
 
     model.addResidual(varIndices, (l) => {
       const [p, q, s, e] = chunk(l, dim, 4);
-      return [dot(vecSub(q, p), vecSub(e, s))];
-    }, `sym(${aName},${bName},${lineName})|perp`);
+      return [dot(vecSub(q, p), unit(vecSub(e, s), model.lengthFloor()))];
+    }, `sym(${aName},${bName},${lineName})|perp`, [lineName]);
   });
 }
 
@@ -884,14 +959,19 @@ function symmetricAxis(model: Model, aName: string, bName: string, ref: string):
  * line's two ends, read lazily so the mirror follows an edge a fillet
  * re-points; or a frame's axis — the located line through the frame's origin
  * along it, read as a datum (`frameBasis`, never pushed), `symmetricAxis`'s
- * reading. `at` hands back a point on it and its direction (not unit).
+ * reading. `at` hands back a point on it and its **unit** direction: every
+ * row read against it is then a length, and none is lowered by a shorter
+ * mirror line (docs/plans/review-solver.md).
  */
 function mirrorLine(model: Model, ref: string): { vars: () => number[]; width: number; at: (own: Dual[]) => { s: Dual[]; u: Dual[] } } {
   const dim = model.dim;
   const axis = parseAxisRef(ref);
   if (!axis) {
     if (model.entities.get(ref)?.kind !== "line") throw new Error(`sym mirrors about a line or a frame's axis — "${ref}" is neither`);
-    return { vars: lineVars(model, ref), width: 2 * dim, at: (own) => ({ s: own.slice(0, dim), u: vecSub(own.slice(dim, 2 * dim), own.slice(0, dim)) }) };
+    return {
+      vars: lineVars(model, ref), width: 2 * dim,
+      at: (own) => ({ s: own.slice(0, dim), u: unit(vecSub(own.slice(dim, 2 * dim), own.slice(0, dim)), model.lengthFloor()) }),
+    };
   }
   model.requireAxis(axis.axis, ref);
   const basis = frameBasis(model, axis.frame);
@@ -933,8 +1013,8 @@ function mirrorPair(p: Dual[], q: Dual[], s: Dual[], u: Dual[]): { mid: Dual[]; 
  *
  * - **Two lines** — four rows in 2D, a segment's freedoms: their middles
  *   mirrored (the point form's two blocks), their directions mirrored
- *   (`wedge` of one against the other's mirror, as `par` reads two
- *   directions) and their lengths equal. Said of the *segment*, not its ends,
+ *   (`wedge` of one's unit direction against the other's mirror, as `par`
+ *   reads two directions) and their lengths equal. Said of the *segment*, not its ends,
  *   so it needs no pairing of one line's ends with the other's: either way
  *   round satisfies it, and a line drawn the other way is not refused or
  *   flipped.
@@ -968,6 +1048,9 @@ function symmetricCurves(model: Model, aName: string, bName: string, ref: string
   const axis = mirrorLine(model, ref);
   const dim = model.dim;
   const tag = `sym(${aName},${bName},${ref})`;
+  // The mirror line is read for where it lies and which way it runs, never
+  // for how long it is: every block says so (`Model.addResidual`'s `turns`).
+  const mirror = linesOf(model, [ref]);
   if (ka === "line") {
     return model.relation("symmetric", [aName, bName, ref], () => {
       const vars = joinVars(lineVars(model, aName), lineVars(model, bName), axis.vars);
@@ -981,11 +1064,16 @@ function symmetricCurves(model: Model, aName: string, bName: string, ref: string
         const m1 = a1.map((v, i) => v.add(b1[i]).div(2)), m2 = a2.map((v, i) => v.add(b2[i]).div(2));
         const { mid, perp } = mirrorPair(m1, m2, s, u);
         return [...mid, perp];
-      }, `${tag}|mid`);
+      }, `${tag}|mid`, mirror);
       model.addResidual(vars, (l) => {
         const { a1, b1, a2, b2, u } = parts(l);
-        return wedge(vecSub(b2, a2), mirrored(vecSub(b1, a1), u));
-      }, `${tag}|dir`);
+        // As `par`: the turn between one's unit direction and the other's
+        // mirror, times the longer line as the solve began.
+        const floor = model.lengthFloor();
+        const k = rowLength(lengthBefore(model, lineVars(model, aName)()), lengthBefore(model, lineVars(model, bName)()));
+        const [d1, d2] = [vecSub(b1, a1), vecSub(b2, a2)];
+        return turnToParallel(unit(d2, floor), mirrored(unit(d1, floor), u)).map((r) => fadeUnder(r.mul(k), floor, d1, d2));
+      }, `${tag}|dir`, [...mirror, aName, bName]);
       model.addResidual(vars, (l) => {
         const { a1, b1, a2, b2 } = parts(l);
         return [norm(vecSub(b2, a2)).sub(norm(vecSub(b1, a1)))];
@@ -1012,7 +1100,7 @@ function symmetricCurves(model: Model, aName: string, bName: string, ref: string
       const { s, u } = axis.at(l.slice(2 * dim));
       const { mid, perp } = mirrorPair(p, q, s, u);
       return [...mid, perp];
-    }, `${tag}|centre`);
+    }, `${tag}|centre`, mirror);
     model.addResidual([ca.radiusVar, cb.radiusVar], (l) => [l[1].sub(l[0])], `${tag}|radius`);
     if (na && nb) {
       // One plane: the normals parallel — `coradial`'s block. The mirror of a
@@ -1035,7 +1123,7 @@ function symmetricCurves(model: Model, aName: string, bName: string, ref: string
       }, (l) => {
         const [p, q] = chunk(l, dim, 2);
         return [dot(vecSub(q, p), axis.at(l.slice(2 * dim)).u)];
-      }, `${tag}|${which}`);
+      }, `${tag}|${which}`, mirror);
     }
   });
 }
