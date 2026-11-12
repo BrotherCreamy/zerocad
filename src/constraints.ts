@@ -92,6 +92,19 @@ export function setCommand(name: string, value: number): string {
 /** The ops whose value is an angle, in the radians `set` takes. */
 const ANGLE_OPS = new Set(["angle", "revolution"]);
 
+/**
+ * What the palette says while the constrain tool waits for its first pick
+ * (docs/plans/tool-howto.md, the empty palette teaches): **what can be picked
+ * and what will be offered**, in a line. It used to say only *pick what to
+ * relate — the relations that apply are listed here*, which is true and told
+ * the owner nothing he could do: *"I don't even know how to add a parallel
+ * relation."* The pairs named are ones the list answers with the relations
+ * named after them (`constraintsFor`; a test holds each to it).
+ */
+export const PICKING =
+  "pick what to relate — two lines, a line and a circle, a point and a line… " +
+  "Parallel, Perpendicular, Tangent, Midpoint and the others that fit are then listed here";
+
 /** A relation as the palette shows it. */
 export function heldRow(model: Model, r: RelationEntry, selection: readonly string[]): HeldRow {
   let glyph: string;
@@ -134,7 +147,7 @@ export function paletteFor(
   // the tool is waiting for, where the list will be, rather than listing the
   // drawing as though nothing were going on.
   if (!about.length && picking) {
-    return [{ id: "apply", title: "relate", note: "", rows: [], empty: "pick what to relate — the relations that apply are listed here" }];
+    return [{ id: "apply", title: "relate", note: "", rows: [], empty: PICKING }];
   }
   if (about.length) {
     const apply: ApplyRow[] = constraintsFor(model, about).map((a) => ({ label: a.label, command: a.text, ...(a.off ? { off: a.off } : {}) }));
@@ -230,7 +243,20 @@ export class ConstraintsPalette {
     // row that opens the rest — measured on the real rows, since a greyed one
     // is three rows tall. A hidden pane (height 0) is left whole.
     const applies = sections.find((s) => s.id === "apply");
-    if (!this.expanded && applies && this.body.clientHeight > 0 && this.body.scrollHeight > this.body.clientHeight + 1) {
+    const overflows = () => this.body.scrollHeight > this.body.clientHeight + 1;
+    if (!this.expanded && applies && this.body.clientHeight > 0 && overflows()) {
+      // **A section with nothing in it gives way first.** "l1, l2 have — no
+      // relation yet" is a heading and a line, 39 px of a phone's 164 px
+      // pane: nine tenths of a row a finger could press, spent on saying
+      // nothing — which is why one relation showed where two fit (TODO.md,
+      // "The phone palette wastes a row": the budget below was right, the
+      // room it was given was not). Where everything fits it stays, and it
+      // is back once more… is opened or a relation is made.
+      const lean = sections.filter((s) => s === applies || s.rows.length > 0);
+      if (lean.length < sections.length) {
+        this.build(lean, null);
+        if (!overflows()) return true;
+      }
       const rows = Array.from(this.body.querySelectorAll<HTMLElement>(".ocmd"));
       if (rows.length > 1) {
         const rest = this.body.scrollHeight - rows.reduce((h, r) => h + r.offsetHeight, 0);
@@ -242,7 +268,7 @@ export class ConstraintsPalette {
           keep++;
         }
         keep = Math.max(1, Math.min(keep, rows.length - 1));
-        this.build(sections, keep);
+        this.build(lean, keep);
       }
     }
     return true;
