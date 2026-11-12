@@ -7,6 +7,98 @@ decisions.
 
 ---
 
+## 2026-11-12 — the solver's two measured costs: a kept size is pulled by a probe and a finish, and the drag frame's cost was never the kernel's
+
+docs/plans/solver-cost.md, built on `claude/solver-cost` from the review's
+two numbers (TODO.md's register, *The case to fix first*). Nothing visible
+changes: the pictures of the solver package hold (460–469), and the sizes
+a solve keeps come back more exactly than they did. Every number below is
+`test/keptsizes.measure.ts`'s or `test/solver.measure.ts`'s, on this box,
+best of five.
+
+**The kernel every worker here was timing was a debug build.** `npm run
+build:kernel` fails at binaryen's download on this container and the
+fallback, `build:kernel:dev`, is `wasm-pack build --dev`: no optimisation,
+148 KB, its linear algebra ten times slower (a kernel step on forty
+rectangles mid-drag 1.7 ms against 0.09). The spec's table — 1407 ms for
+one dimension set, 20.6 ms for a drag frame — was taken on it. wasm-pack
+0.15 has `--no-opt`, so `npm run build:kernel:noopt` is the release kernel
+without the wasm-opt pass (32 KB), CONTRIBUTING says to time nothing on the
+dev kernel, and the measure scripts print which kernel they were given.
+
+| case (release kernel; the review's debug kernel in brackets) | before, load 0–2 | after, load 2–6 |
+|---|---|---|
+| one dimension set: forty chained rectangles, **widths free** | 238 ms (1287), 4 solves, 41 iterations, widths left **1e-2** off | **109 ms**, 5 solves, 19 iterations, 3e-11 |
+| one dimension set: forty chained rectangles, widths dimensioned | 186 ms (904), 6 solves, 27 iterations | **143 ms**, 5 solves, 21 iterations |
+| one dimension set: forty par-to-axes rectangles | 75 ms (412), 6 solves, 24 iterations | **57 ms**, 5 solves, 19 iterations |
+| a drag frame: forty rectangles held `par` to the axes and dimensioned | 8.2–9.1 ms (23.0) | unchanged: 8.5 ms (the kernel's share is 0.5 ms of it) |
+| a drag frame: forty rectangles of four perps chained by `par` | 37 ms (188) | unchanged |
+
+- **What the spec thought, and what was true.** Setting a gap in forty
+  chained free-width rectangles was said to drift fifty-six sizes by 1e-7.
+  Measured: fifty-two by 1e-7 and **four by 3.1%** — the straight step met
+  the wider gap by narrowing the two rectangles beside it, and `keptSizes`
+  was right to bring them back (a free size is kept; the chain opens
+  instead). The cost was never the number of pulls. The pull was weak, so
+  that a size a dimension owns stays with the dimension, and a weak
+  compromise is a step the kernel's conjugate gradient cannot take exactly:
+  counted by a TypeScript mirror of solver.rs on the pull's own Jacobian, it
+  hits its 200-iteration cap at every damping under 1e-3 and leaves 1e-4 to
+  1e-7 of the step behind, so the pull crept for thirty iterations and
+  stopped 2.7e-4 short — which is why the base left those widths 1e-2 off.
+- **A drift that cannot be seen is not a drift** (`DRIFT`, 1e-6 of the
+  size — what the review asked lengths be kept to; it was 1e-9). Not the
+  spec's thousandth: a level line whose end is pinned elsewhere slides 1e-5
+  of its length under the angle's row, and a thousandth would have let it
+  (`directionrows.test.ts` says so). Not a share of the drawing's extent
+  either, which would have left a rectangle 3% narrower in a drawing fifty
+  rectangles wide.
+- **The pull is a probe, then a finish** — not the spec's one ring, which
+  was measured and does not work: a pull on the four narrowed widths alone
+  was met by narrowing the two rectangles beside them (the drift moved one
+  rectangle over), and one ring of blocks round them left 0.63 the same way
+  and cannot translate a chain. So every held size of the component is
+  pulled, twice: a weak probe for four iterations (a tenth of a `dist`
+  row's weight) tells the sizes the relations own — they keep 98% of their
+  change — from the free ones, which come most of the way back (0 to 12%
+  left) or are pushed further off by the probe itself; then the free ones,
+  and only they, are pulled as a `dist` pulls, a row that is a length:
+  nothing fights it, the step is exact, six to nine iterations to the root,
+  the release has nothing left to do. Pulled hard on everything instead,
+  the owned side ends halfway and the release wanders from there (heights
+  2.8 off, measured). The second round the base made ("what the relations
+  changed anyway is theirs") is gone with the reason for it.
+- **The drag frame's cost is the rows' evaluation, not the kernel's**, and
+  the spec's item 3 was answered by its own census. (a) holds: `par(line,
+  axis)` reads the line's six variables and never the frame's (pinned by a
+  test). The non-zeros: at rest a `par` row has **2.0**, as the raw row had
+  — a unit direction's gradient is diagonal exactly on the axis — and 160 of
+  480 rows are identically zero (the wedge's component along the axis); ten
+  frames into a drag 2.8 a row, and the `dist` rows 4.0. The kernel's step
+  mid-drag: 15–17 CG iterations whatever λ, **0.09 ms**; five such a frame.
+  One evaluation of the rows: 1.0–1.2 ms, six a frame. (b), two rows for
+  three against a constant, was analysed and not done: the turn is
+  perpendicular to the axis, so its three components' normal equations are
+  exactly the two rows', and the kernel does the same work either way,
+  while projecting onto a tilted frame's plane costs more Dual arithmetic
+  than the dead component does. The frame on this box is 8.2–9.1 ms
+  against the spec's 8; (c) is filed in the register with the numbers: the
+  next item is the Dual arithmetic of the direction rows (a `par` block is
+  5.1 µs, most of it Map allocation; a constant-aware `Dual.mul` measured
+  the block at 4.1 µs and the frame within the box's noise), not the CG
+  preconditioner.
+- **One bound moved** in `test/conflicts.test.ts`: the bounded conflict
+  search's five trials were asserted at ≤ 8 kernel solves and read 19 here,
+  because the `par` across a corner now folds a side where it sheared — the
+  free coordinates of that under-determined chain (every gap a distance)
+  stand 3e-3 elsewhere after the drag's release, and a conflict's compromise
+  is the nearest local one. Both paths are the design's and both have been
+  seen on the base; the bound is 5 trials × 7 solves, said so.
+- **Tests**: unit 2143 (2137 before): `test/keptsizes.test.ts` (6) and the
+  bound above; `test/keptsizes.measure.ts` and a census section in
+  `test/solver.measure.ts` print the tables. E2E: `reviewsolver.e2e.ts` and
+  `conflicts.e2e.ts` unchanged and green (17).
+
 ## 2026-11-12 — the gate made trustworthy again: four failures that were not the app's (and one that was, in the browser only)
 
 *Merged into the working branch (`36ce753`) after through-all and fillets;
