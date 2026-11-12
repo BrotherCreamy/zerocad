@@ -27,7 +27,7 @@
 
 import type { Model } from "../model.ts";
 import { arcEndpoints, equalLength, equalRadius, onCircle, perpendicular, tangent } from "../relations/geometry.ts";
-import { holdCurve, holdOnSketchPlane } from "./place.ts";
+import { holdCurve, holdOnChosenPlane } from "./place.ts";
 import { planeOfRef } from "../workplane.ts";
 import { cross3, lift3, unit3 } from "../vec3.ts";
 
@@ -122,7 +122,7 @@ export function polygon(model: Model, centre: string, vertex: string, n: number,
   const vertices = [vertex];
   for (let k = 1; k < n; k++) {
     const p = model.addPoint(at(k)).name;
-    holdOnSketchPlane(model, p, plane);
+    holdOnChosenPlane(model, p, plane);
     vertices.push(p);
   }
   const sides = vertices.map((p, k) => model.addLine(p, vertices[(k + 1) % n]).name);
@@ -201,7 +201,7 @@ export function slot(model: Model, a: string, b: string, width: number, plane: s
   const side = (o: number[], s: number) => o.map((x, i) => x + s * r * (p[i] ?? 0));
   const made = (at: number[]) => {
     const q = model.addPoint(at).name;
-    holdOnSketchPlane(model, q, plane);
+    holdOnChosenPlane(model, q, plane);
     return q;
   };
   // Left of a→b first: a's left, b's left, then b's right, a's right — the

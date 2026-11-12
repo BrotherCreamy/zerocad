@@ -676,12 +676,52 @@ otherwise.
   fully defined when every element within the group is fully defined.
   Should be trivial to calculate this stuff but it's not a concern of mine
   now."* The model already is this (a group is a set, an entity in any
-  number of them, `groups.md`); the **word** is still in the tool, the face
-  menu, `help()`, a workbench and code names, and goes:
-  `docs/plans/no-sketch.md`, queued. A group's definedness (every member
-  fully defined) is the last item there, after the renaming. The question
-  of whether the drawing's `N free` counts a flat drawing's freedom to leave
-  its plane is **closed**: not a concern now; left as it is.
+  number of them, `groups.md`); the **word** was in the tool, the face
+  menu, `help()`, a workbench and code names, and is gone:
+  `docs/plans/no-sketch.md`, **built** (2026-11-12, `claude/no-sketch`),
+  *As built* there. The question of whether the drawing's `N free` counts
+  a flat drawing's freedom to leave its plane is **closed**: not a concern
+  now; left as it is. Each vetoable:
+  - **"Plane" is the tool's name** (icon as it was): what it does is choose
+    a plane to draw on. Not "Face" (Top, Front and Right are no faces) and
+    not "Draw on" (a verb for a button). `arm("sketch")` stays as an alias
+    that answers with the tool's name, as `circle3` does.
+  - **"Draw on this face"** on a face's menu and **"Draw on this"** on a
+    frame's; the chip's menu header *drawing on e1's top*.
+  - **The "Sketch" workbench is "Drawing"** (id `drawing`), not dropped: a
+    tray without the solid tools is still a thing to want. `workbench(
+    "sketch")` and a saved head saying `sketch` open it, by one alias table
+    never listed or written back.
+  - **The module id `sketch` stays** in files (`ui({ modules })`, a
+    workbench file's module list); only its label changed. A rename is a
+    format change for nothing a person reads.
+  - **"Group" is kept** as the word (the organiser's, and the owner's own in
+    `groups.md`); the owner invited a better name and none was better.
+  - **A group's "N free" counts members, not freedoms**: how many of its
+    entity members some motion still moves — what *Select what is free*
+    selects, so the two agree. A count of the group's own degrees of
+    freedom needs a rank with the rest pinned, a kernel question per group;
+    not built ("not a concern of mine now").
+  - **The dot is a CSS dot, not ● / ○ text**: the open marker already uses
+    those glyphs on the same row, so the reading is told apart by shape
+    (a ring in the free ink) and place (before the count). Its tooltip is a
+    hover's; a finger's hold on it is the row's menu, whose header says the
+    same count — on a phone the dot is what is left of the row between the
+    marker's and the eye's finger-wide targets.
+  - **A relation in a group is counted neither way**; a group of relations
+    alone has no reading; before a solve the dot is a faint dotted ring and
+    the menu item says "known after a solve".
+  - **`{tap}` is filled once, in the engine's `ctx.log`**, for every line a
+    tool logs, not per tool; headless, the placeholder is what the tool
+    said, and the tests pin it. A summary takes `{tap}` too and
+    `toolSummary(name, hand)` reads it; `tools()` typed reads as a mouse.
+  - **Picture 503 was the picture helper's mouse** (it moves the mouse off
+    the drawing before a shot, and a mouse move makes the hand a mouse):
+    the hand is seeded from the device since 2026-11-05, and picture 531 is
+    the same screen saying *tap*. No code changed for it.
+  - **The blank status in pictures 515 and 521 is the fade, by design**
+    (`statusFade`, statusline.ts; `display:none` in index.html, text kept);
+    measured in `nosketch.e2e.ts`. Nothing changed.
 - **Decided by the owner (2026-11-12), to build** — each in its spec:
   - *"I should be able to pull on anything."* A free body moves when a point
     held to its face is pulled (#89's both-ways `onplane`); nothing is made
@@ -2923,6 +2963,28 @@ are flagged as such.
 
 ## Next up
 
+- [x] **There is no sketch** (the owner, 2026-11-12; spec
+  [`no-sketch.md`](docs/plans/no-sketch.md)). **Built** (2026-11-12, branch
+  `claude/no-sketch`): the Plane tool, Draw on this face, the Drawing
+  workbench, the aliases for the old names, a group's definedness dot and
+  *Select what is free*, a tool's running guidance in the hand's word, and
+  the grep test. Decisions in the register above. Left:
+    - [ ] **A group's degrees of freedom as a count of its own** (the dot's
+          count is of members that move): the rank of the Jacobian with
+          every variable outside the group pinned, one `analyse` per group
+          per user-caused solve. Cheap for a few groups; measure first.
+    - [ ] **The picture helpers in `throughall.e2e.ts` and
+          `filletsonething.e2e.ts` move the mouse before a shot**, which on
+          an iPhone emulation turns the chip's words to a mouse's (picture
+          503). A phone's shot should move no mouse — `nosketch.e2e.ts`'s
+          helper does not; theirs could ask the viewport first.
+    - [ ] **A headless host with no engine reads `{tap}` raw** in a tool's
+          guidance and in a refusal it throws (the fill is the engine's
+          `ctx.log`). A `Tool` could fill it with a host-given hand; the
+          unit tests pin the placeholder today.
+    - [ ] **The plane tool's options row reads "plane · on · Top Front
+          Right"**: the option's label was "plane" and now "on"; a better
+          word may exist.
 - [x] **The gate made trustworthy again** (branch `claude/gate-stable`,
   2026-11-12): four tests failed on the base for reasons that were not
   regressions, and every worker's gate tripped on them. Each was measured

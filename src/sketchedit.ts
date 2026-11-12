@@ -99,7 +99,7 @@ function refuseOwned(model: Model, name: string, op: string): void {
   const f = ownerOf(model, name);
   // A lid's edge with a partner on the base is no one's to refuse: the two
   // profiles are peers, and the edit is made on both (`acrossOf`).
-  if (f && !acrossOf(model, name)) throw new Error(`"${name}" is part of ${f}'s solid — ${op} the sketch it was made from, and ${f} follows it`);
+  if (f && !acrossOf(model, name)) throw new Error(`"${name}" is part of ${f}'s solid — ${op} the profile it was made from, and ${f} follows it`);
 }
 
 /**

@@ -29,7 +29,7 @@ import { FilletTool } from "../src/tools/fillet.ts";
 import { DimensionTool } from "../src/tools/dimension.ts";
 import { ConstrainTool } from "../src/tools/constrain.ts";
 import { ExtrudeTool } from "../src/tools/extrude.ts";
-import { SketchTool } from "../src/tools/sketch.ts";
+import { PlaneTool } from "../src/tools/plane.ts";
 import { worldToScreen, type View } from "../src/view.ts";
 import { hitTest } from "../src/picking.ts";
 import { regionAtFor } from "./featurectx.ts";
@@ -241,7 +241,7 @@ test("Done types workplane(null) for a face, setDefaultFrame(null) for a default
   assert.equal(doneCommand(none.m), null);
   const menu = planeMenu(face.m, activePlane(face.m, 4)!);
   assert.deepEqual(menu.items.map((i) => [i.label, i.action.do === "run" ? i.action.command : ""]), [
-    ["Look at", 'lookAt("p5.p6.p8")'], ["Change…", 'arm("sketch")'], ["Done", "workplane(null)"],
+    ["Look at", 'lookAt("p5.p6.p8")'], ["Change…", 'arm("plane")'], ["Done", "workplane(null)"],
   ]);
 });
 
@@ -370,7 +370,7 @@ test("the polygon, the slot and the ellipse: their two places, then the slot's w
 test("the point, the sketch tool, the dimension and constrain tools say what to click", async () => {
   const { m } = await drawn(...PLATE);
   assert.equal(new PointTool(ctxFor(m)).next!("finger"), "tap where the point goes");
-  assert.equal(new SketchTool(ctxFor(m)).next!("mouse"), "click a lit face or plane to sketch on it");
+  assert.equal(new PlaneTool(ctxFor(m)).next!("mouse"), "click a lit face or plane to draw on it");
   const d = new DimensionTool(ctxFor(m));
   assert.equal(d.next!("mouse"), "click what to dimension");
   d.picks = ["l1"];

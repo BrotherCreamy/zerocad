@@ -378,7 +378,7 @@ test("by mouse: the sketch tool on a kernel chamfer's face is refused, saying wh
     await say(a, 'view("shaded"); chamfer("e1", ["e1.lid|e1.m0"], 4)');
     const bodies = await kernelBodies(a);
     assert.ok(bodies[0]?.faces.includes("e2.f0"), `the kernel's chamfer: ${JSON.stringify(bodies)}`);
-    await say(a, 'arm("sketch")');
+    await say(a, 'arm("plane")');
     // The chamfer's face runs along the front of the lid, from y = −15 to −11 at the top, at 45°: its middle.
     await hand.click(await a.screenOf([0, -13, 8]));
     const log = await a.log();

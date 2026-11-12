@@ -280,7 +280,7 @@ abstract class BlendTool extends FeatureTool {
     }
     const s = this.ctx.solids;
     if (s && !s.views().length) {
-      this.guide("the solid kernel is still building the bodies — a moment, then click an edge");
+      this.guide("the solid kernel is still building the bodies — a moment, then {tap} an edge");
       return;
     }
     const hit = this.hitAt(p.screen);
@@ -310,7 +310,7 @@ abstract class BlendTool extends FeatureTool {
       return;
     }
     if (this.pair !== null || (this.body !== null && !this.edges.length && this.keeps[0] !== null)) {
-      this.guide(`${this.body} is picked as a surface — click another surface, or ✗ to pick edges instead`);
+      this.guide(`${this.body} is picked as a surface — {tap} another surface, or ✗ to pick edges instead`);
       return;
     }
     if (this.body !== null && hit.body !== this.body) {
@@ -534,7 +534,7 @@ export class EdgeFilletTool extends NewBlendTool {
     radius: { default: DEFAULT_BLEND, unit: "length", check: positive },
     tangent: { default: true, label: "tangent" },
   };
-  static readonly summary = "Fillets a solid's edges: click edges or a face, see it, then ✓";
+  static readonly summary = "Fillets a solid's edges: {tap} edges or a face, see it, then ✓";
   static readonly how: How = [
     "{Tap} edges of a solid; a face takes all its edges.",
     "Set the radius in the options.",
@@ -549,7 +549,7 @@ export class EdgeChamferTool extends NewBlendTool {
     setback: { default: DEFAULT_BLEND, unit: "length", check: positive },
     tangent: { default: true, label: "tangent" },
   };
-  static readonly summary = "Chamfers a solid's edges, one setback: click edges or a face, then ✓";
+  static readonly summary = "Chamfers a solid's edges, one setback: {tap} edges or a face, then ✓";
   static readonly how: How = [
     "{Tap} edges of a solid; a face takes all its edges.",
     "Set the setback in the options.",

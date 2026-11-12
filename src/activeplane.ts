@@ -3,7 +3,7 @@
 // whats happening. needs clearer visual/contextual feedback to the user").
 //
 // A sketch is a plane — the work plane, or the default frame's (workplane.ts's
-// `sketchPlaneRef`) — and nothing drew it: the camera turned square to it when
+// `drawingPlaneRef`) — and nothing drew it: the camera turned square to it when
 // it was set, and that was the only sign. This module answers the questions the
 // drawing pass and the mode chip ask of it, and draws nothing:
 //
@@ -26,7 +26,7 @@ import { featureFaces, loopOutlines, type Face } from "./faces.ts";
 import { findLoops, type Loop } from "./loops.ts";
 import { planeAxes } from "./curveplane.ts";
 import { regionOf } from "./operations.ts";
-import { planeLabel, planeNormalRef, sketchPlaneRef } from "./workplane.ts";
+import { planeLabel, planeNormalRef, drawingPlaneRef } from "./workplane.ts";
 
 /** The plane being sketched on, as drawn and named. */
 export interface ActivePlane {
@@ -155,7 +155,7 @@ function loopOf(loops: Loop[], model: Model, ref: string): number {
  * neighbours, as sketch on face takes them) or, for a round face, the rim of
  * its circle — then to the plain loop they are corners of, then left a plane.
  */
-export function activePlane(model: Model, scale: number, ref: string | null = sketchPlaneRef(model)): ActivePlane | null {
+export function activePlane(model: Model, scale: number, ref: string | null = drawingPlaneRef(model)): ActivePlane | null {
   if (ref === null || model.dim !== 3) return null;
   let axes: ReturnType<typeof planeAxes>;
   let anchors: ReturnType<typeof anchorsOf>;

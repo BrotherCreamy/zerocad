@@ -25,7 +25,7 @@ import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.t
 import { ORIGIN, SETTABLE_PROPERTY, isCurveKind, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { toolUnavailable } from "./toolavail.ts";
-import { sketchOnFaceCommand } from "./sketchface.ts";
+import { drawOnFaceCommand } from "./faceplane.ts";
 import { toolGroup, toolbarButtons, type RegionHit } from "./tools/tool.ts";
 import { findLoops, type Loop } from "./loops.ts";
 import { featureRegion, holeIndex, holeLoop, type FeatureRegion } from "./operations.ts";
@@ -106,7 +106,7 @@ function quoted(name: string): string {
  * The menu for whatever a right-click landed on: an entity, a constraint glyph
  * (`pick.kind === "relation"`), or empty canvas (`pick === null`) — and, on
  * empty canvas, the closed region the click is inside, if any (the engine's
- * `regionAt`, asked by the host), which is what offers "Sketch on this face".
+ * `regionAt`, asked by the host), which is what offers "Draw on this face".
  * `history`, when given, adds Undo and Redo at the bottom (see `historyItems`);
  * left out, the menu is only about the pick, which is what most tests ask.
  * `viewMode`, when given, adds the View row to the empty-canvas menu (see
@@ -444,11 +444,11 @@ function toolItems(model: Model): MenuItem[] {
 }
 
 function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
-  // On a face, the face's own items come first — Sketch on this face, Edit e1,
+  // On a face, the face's own items come first — Draw on this face, Edit e1,
   // Flip direction — and the tools after: on an iPhone the tool list filled
   // the screen and the face's items were below it, out of sight (seen in the
   // solid-tools walkthrough, W15; docs/plans/solid-tools-intuitive.md).
-  const face = [...sketchOnFaceItem(model, region), ...faceEditItems(model, region)];
+  const face = [...drawOnFaceItem(model, region), ...faceEditItems(model, region)];
   return {
     header: null,
     items: [
@@ -468,10 +468,10 @@ function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
 }
 
 /**
- * **Sketch on this face**, when the right-click landed inside a closed region:
+ * **Draw on this face**, when the right-click landed inside a closed region:
  * `workplane("a.b.c")` on three of its own points, facing the viewer — the very
- * line the sketch tool types for a click in the same place (see
- * ../sketchface.ts), so menu and tool cannot make different planes of one face.
+ * line the plane tool types for a click in the same place (see
+ * ../faceplane.ts), so menu and tool cannot make different planes of one face.
  * The click is on empty canvas as far as picking goes — faces never pick — and
  * the region is what makes it more than that, as it is for the extrude tool.
  *
@@ -480,11 +480,11 @@ function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
  * on one line, a circle off its own frame — is shown disabled with the reason,
  * for Fix's reason: an item that vanished would leave "why not here" unanswered.
  */
-function sketchOnFaceItem(model: Model, region: RegionHit | null): MenuItem[] {
+function drawOnFaceItem(model: Model, region: RegionHit | null): MenuItem[] {
   if (!region || model.dim !== 3) return [];
-  const label = "Sketch on this face";
+  const label = "Draw on this face";
   try {
-    return [{ label, action: { do: "run", command: sketchOnFaceCommand(model, region.loops[region.index], region.toward) } }];
+    return [{ label, action: { do: "run", command: drawOnFaceCommand(model, region.loops[region.index], region.toward) } }];
   } catch (err) {
     return [{ label, action: { do: "disabled", why: err instanceof Error ? err.message : String(err) } }];
   }
@@ -547,7 +547,7 @@ function entityMenu(model: Model, pick: Pick): Menu {
     items.push({ label: "Dimension minor", action: { do: "run", command: `minor(${quoted(pick.name)}, ${num(b)})` } });
   }
   if (pick.kind === "point") items.push(fixItem(model, pick.name));
-  if (pick.kind === "frame") items.push(sketchOnItem(model, pick.name));
+  if (pick.kind === "frame") items.push(drawOnItem(model, pick.name));
   // A curve in 3D: an edge extrude of the chain it is in (docs/plans/profiles-held.md),
   // typed for the depth to be finished — the menu cannot know how far.
   if (model.dim === 3 && ["line", "arc", "circle", "spline"].includes(pick.kind) && !model.isConstruction(pick.name)) {
@@ -659,17 +659,17 @@ function faceEditItems(model: Model, region: RegionHit | null): MenuItem[] {
 }
 
 /**
- * **Sketch on this**, on a frame: make it the default and look at it square-on
+ * **Draw on this**, on a frame: make it the default and look at it square-on
  * — Onshape's "new sketch on this plane", as the two commands it is. Typed,
  * like every item here, so the log teaches what it did and both halves can be
  * retyped on their own: `setDefaultFrame` is the edit (journalled, one undo
  * step), `lookAt` only moves the camera. In a 2D model there is nothing to
  * turn the view toward, and the item is only the first half.
  */
-function sketchOnItem(model: Model, frame: string): MenuItem {
+function drawOnItem(model: Model, frame: string): MenuItem {
   const name = quoted(frame);
   const command = model.dim === 3 ? `setDefaultFrame(${name}); lookAt(${name})` : `setDefaultFrame(${name})`;
-  return { label: "Sketch on this", action: { do: "run", command } };
+  return { label: "Draw on this", action: { do: "run", command } };
 }
 
 /**

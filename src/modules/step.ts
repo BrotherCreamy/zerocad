@@ -14,7 +14,7 @@ defineModule("step", {
     "           CAD or CAM tool: exact faces — planes, cylinders, cones,",
     "           spheres, tori — one body per extrude or revolve, named e1, e2,",
     "           …; hidden solids and construction geometry left out. curves:",
-    "           true adds the sketch curves no solid is made of. The share",
+    "           true adds the loose curves no solid is made of. The share",
     "           sheet on a phone, a download elsewhere; the app menu's Export",
     "           STEP… types it. With no solid it says so and writes nothing.",
   ],

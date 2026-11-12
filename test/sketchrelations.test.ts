@@ -636,7 +636,7 @@ test("the dimension tool guides a placement with nothing measurable", () => {
   const m = new Model(2);
   const { ctx, said } = scripted(m, [null]);
   new DimensionTool(ctx).onDown(at0);
-  assert.match(said[0], /click what to dimension/);
+  assert.match(said[0], /\{tap\} what to dimension/);
   assert.equal(m.relations.size, 0);
 });
 

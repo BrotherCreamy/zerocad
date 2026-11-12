@@ -55,6 +55,17 @@ export interface OrganiserRow {
   selected: boolean;
   /** Whether it is the open group — null for a row that cannot be opened, a feature. */
   open: boolean | null;
+  /**
+   * **Whether the group is fully defined** (docs/plans/no-sketch.md; the
+   * owner: *"A group is only fully defined when every element within the
+   * group is fully defined."*): how many of its entity members some motion
+   * still moves (`Model.diagnose`'s `free`), of how many it has. A reading,
+   * not a count of its own: `free: 0` is defined, drawn as a filled dot;
+   * anything else a hollow one, with the count on hover. Absent for a row
+   * that is not a group, and null for a group with no entity in it or
+   * before any solve has said what is free.
+   */
+  defined?: { free: number; of: number } | null;
   /** What the open marker types: `opengroup("g1")`, or `closegroup()` on the open one. */
   openCommand: string | null;
   /** A body's chain, its features' names in order — what the see-through tree hangs under it (`organiserTree`). */
@@ -120,10 +131,34 @@ function eyeCommand(name: string, eye: Eye): string | null {
 }
 
 /**
- * The pane's sections, read off the model — the canvas's `selection` only for
- * which rows are lit. Pure: a test asks it what the pane would show.
+ * A group's entity members that some motion still moves — the `free` set of
+ * the last diagnosis (`Model.diagnose`), kept to the group — or null before
+ * any diagnosis. A relation in the group is not a thing that moves, and is
+ * not counted either way. What *Select what is free* selects, and what the
+ * row's dot and count are read from, so the two cannot disagree.
  */
-export function organiserSections(model: Model, selection: readonly string[] = []): OrganiserSection[] {
+export function freeMembers(model: Model, group: string, free: ReadonlySet<string> | null): string[] | null {
+  if (free === null) return null;
+  const g = model.groups.get(group);
+  return g ? g.members.filter((n) => model.entities.has(n) && free.has(n)) : null;
+}
+
+/** The row's reading of a group's definedness — see `OrganiserRow.defined`. */
+export function definedOf(model: Model, group: string, free: ReadonlySet<string> | null): { free: number; of: number } | null {
+  const g = model.groups.get(group);
+  const moving = freeMembers(model, group, free);
+  if (!g || moving === null) return null;
+  const of = g.members.filter((n) => model.entities.has(n)).length;
+  return of ? { free: moving.length, of } : null;
+}
+
+/**
+ * The pane's sections, read off the model — the canvas's `selection` only for
+ * which rows are lit, and `free`, the last diagnosis's free entities (null
+ * before one), only for each group's definedness. Pure: a test asks it what
+ * the pane would show.
+ */
+export function organiserSections(model: Model, selection: readonly string[] = [], free: ReadonlySet<string> | null = null): OrganiserSection[] {
   const chosen = new Set(selection);
   const lit = (members: readonly string[]) => members.length > 0 && members.every((m) => chosen.has(m));
   const groups: OrganiserRow[] = [...model.groups.values()].map((g) => {
@@ -133,6 +168,7 @@ export function organiserSections(model: Model, selection: readonly string[] = [
       name: g.name, detail: "", count: g.members.length, eye, eyeCommand: eyeCommand(g.name, eye),
       tapCommand: `select(${quoted(g.name)})`, selected: lit(g.members),
       open, openCommand: open ? "closegroup()" : `opengroup(${quoted(g.name)})`,
+      defined: definedOf(model, g.name, free),
     };
   });
   const features: OrganiserRow[] = [...model.features.values()].map((f) => {
@@ -311,17 +347,19 @@ export function addCommand(selection: readonly string[]): string {
 /**
  * A row's menu (a right-click, or a finger's long-press), each item typing its
  * command — for a group: Rename (put in the command line to finish, as *Set
- * value…* is), Add selection, Remove selection, Open or Close, Ungroup; for a
- * feature: *Edit e1* and Delete. An item that would do nothing is shown off,
- * with the reason, as the context menu shows one.
+ * value…* is), Add selection, Remove selection, *Select what is free* (the
+ * members some motion still moves, from `free`, the last diagnosis's), Open
+ * or Close, Ungroup; for a feature: *Edit e1* and Delete. An item that would
+ * do nothing is shown off, with the reason, as the context menu shows one.
  */
-export function rowMenu(model: Model, name: string, selection: readonly string[] = []): Menu | null {
+export function rowMenu(model: Model, name: string, selection: readonly string[] = [], free: ReadonlySet<string> | null = null): Menu | null {
   const g = model.groups.get(name);
   if (g) {
     const inIt = selection.filter((n) => g.members.includes(n));
     const out = selection.filter((n) => !g.members.includes(n));
     const args = (names: readonly string[]) => [quoted(name), ...names.map(quoted)].join(", ");
     const open = model.openGroup === name;
+    const moving = freeMembers(model, name, free);
     const items: MenuItem[] = [
       { label: "Rename…", action: { do: "type", text: `rename(${quoted(name)}, "` } },
       out.length
@@ -330,13 +368,20 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
       inIt.length
         ? { label: "Remove selection", action: { do: "run", command: `removeFrom(${args(inIt)})` } }
         : { label: "Remove selection", action: { do: "disabled", why: selection.length ? `none of the selection is in ${name}` : "select members to remove first" } },
+      moving === null
+        ? { label: "Select what is free", action: { do: "disabled", why: "what is free is known after a solve" } }
+        : moving.length
+          ? { label: "Select what is free", action: { do: "run", command: `select(${moving.map(quoted).join(", ")})` } }
+          : { label: "Select what is free", action: { do: "disabled", why: `${name} is fully defined — every member is held` } },
       open
         ? { label: "Close", action: { do: "run", command: "closegroup()" } }
         : { label: "Open", action: { do: "run", command: `opengroup(${quoted(name)})` } },
       { label: "Ungroup", action: { do: "run", command: `ungroup(${quoted(name)})` } },
     ];
     const count = `${g.members.length} member${g.members.length === 1 ? "" : "s"}`;
-    return { header: `${name}  group of ${count}${open ? "  ·  open" : ""}`, items };
+    const defined = definedOf(model, name, free);
+    const state = defined === null ? "" : defined.free === 0 ? "  ·  fully defined" : `  ·  ${defined.free} of ${defined.of} free`;
+    return { header: `${name}  group of ${count}${state}${open ? "  ·  open" : ""}`, items };
   }
   const r = model.regions.get(name);
   if (r) {
@@ -435,6 +480,20 @@ export function eyeTip(r: OrganiserRow): Tip {
   return r.eye === "shown"
     ? { name: `Hide ${r.name}`, summary: "Stops drawing it; it is kept, and still solved", command: r.eyeCommand }
     : { name: `Show ${r.name}`, summary: r.eye === "partial" ? "Draws all of it again — some is hidden" : "Draws it again", command: r.eyeCommand };
+}
+
+/**
+ * A group's definedness dot's tooltip (docs/plans/no-sketch.md): the count in
+ * words — `3 of 8 members can still move` — and where to find them.
+ */
+export function definedTip(r: OrganiserRow): Tip {
+  const d = r.defined ?? null;
+  if (d === null) return { name: r.name, summary: "Whether every member is held — known after a solve" };
+  if (d.free === 0) return { name: `${r.name} is fully defined`, summary: `Every one of its ${d.of} member${d.of === 1 ? "" : "s"} is held: nothing in it can move` };
+  return {
+    name: `${r.name} is not fully defined`,
+    summary: `${d.free} of its ${d.of} member${d.of === 1 ? "" : "s"} can still move — Select what is free, on its menu, picks them`,
+  };
 }
 
 /** A group's open marker's tooltip. */
@@ -588,6 +647,9 @@ export class Organiser {
       el.textContent = note;
       row.appendChild(el);
     }
+    // A group's row in the tree wears the docked row's dot, so the see-through
+    // form says what the docked one says.
+    if (n.row?.defined !== undefined) row.appendChild(this.definedEl(n.row));
     if (n.row) {
       const r = n.row;
       giveTip(row, () => ({ name: r.name, summary: "Selects it — right-click for its menu", command: r.tapCommand }),
@@ -667,6 +729,7 @@ export class Organiser {
       detail.textContent = r.detail;
       row.appendChild(detail);
     }
+    if (r.defined !== undefined) row.appendChild(this.definedEl(r));
     const count = document.createElement("span");
     count.className = "ocount";
     count.textContent = String(r.count);
@@ -687,6 +750,31 @@ export class Organiser {
     });
     this.longPress(row, r.name);
     return row;
+  }
+
+  /**
+   * A group's definedness, before its count: a filled dot when every member
+   * is held, a hollow one in the free ink when some can still move — the ink
+   * free entities are drawn in on the canvas, so the dot and the drawing say
+   * one thing — and a faint one before a solve has said. The count is its
+   * tooltip (`definedTip`); `data-defined` carries the reading for a test.
+   * A span, not a button: it offers nothing to press, and a finger's hold on
+   * it is the row's hold — the menu, whose header says the same count — not
+   * a tooltip of its own (`hold: false`, as the row's tip is). On a phone
+   * the row's buttons each take a finger's width, and the dot is what is
+   * left in the middle: a hold there that showed only a tip would be a row
+   * with no menu (found in picture 536's first take).
+   */
+  private definedEl(r: OrganiserRow): HTMLElement {
+    const el = document.createElement("span");
+    el.className = "odef";
+    const d = r.defined ?? null;
+    el.dataset.defined = d === null ? "unknown" : d.free === 0 ? "yes" : "no";
+    if (d !== null) el.dataset.free = String(d.free);
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", definedTip(r).name);
+    giveTip(el, () => definedTip(r), this.host.tooltip, { hold: false });
+    return el;
   }
 
   private button(cls: string, text: string, command: string | null, tip: () => Tip): HTMLButtonElement {
@@ -717,7 +805,8 @@ export class Organiser {
       this.swallow = false;
       if (e.pointerType !== "touch") return;
       // A hold on the row's marker or eye is that button's — its tooltip —
-      // not the row's menu: one hold, one answer.
+      // not the row's menu: one hold, one answer. The definedness dot is no
+      // button: a hold on it is the row's (see `definedEl`).
       if (e.target instanceof Element && e.target.closest("button")) return;
       const [x0, y0] = [e.clientX, e.clientY];
       const timer = setTimeout(() => {

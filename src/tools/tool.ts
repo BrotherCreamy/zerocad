@@ -545,24 +545,26 @@ export const ENGINE_TOOLS: readonly string[] = [SELECT, HAND];
  * is in — here, because neither is a class with a static to carry one.
  */
 export const ENGINE_SUMMARIES: Readonly<Record<string, string>> = {
-  [SELECT]: "Picks things: click one, or drag across empty space to box several",
+  [SELECT]: "Picks things: {tap} one, or drag across empty space to box several",
   [HAND]: "Pans the view: drag from anywhere, over the drawing too",
 };
 
 /**
  * A tool's one-line description — Select's and the Hand's, or a registered
  * tool's own `static summary` — or null for a tool that declares none (or no
- * tool at all), which is then shown by its name alone.
+ * tool at all), which is then shown by its name alone. A summary says `{tap}`
+ * where a how line does, and is read for a hand the same way (`howText`): the
+ * tooltip a finger holds up says "tap", the one a mouse hovers says "click",
+ * and `tools()` typed reads as a mouse.
  */
-export function toolSummary(name: string): string | null {
-  if (Object.hasOwn(ENGINE_SUMMARIES, name)) return ENGINE_SUMMARIES[name];
-  const ctor = registry.get(name);
-  return ctor ? ownSummary(ctor) : null;
+export function toolSummary(name: string, hand: Hand = "mouse"): string | null {
+  const raw = Object.hasOwn(ENGINE_SUMMARIES, name) ? ENGINE_SUMMARIES[name] : ownSummary(registry.get(name));
+  return raw === null ? null : howText(raw, hand);
 }
 
 /** The class's own `summary`, not one it inherits — see `Tool.summary`. */
-function ownSummary(ctor: ToolCtor): string | null {
-  if (!Object.hasOwn(ctor, "summary")) return null;
+function ownSummary(ctor: ToolCtor | undefined): string | null {
+  if (!ctor || !Object.hasOwn(ctor, "summary")) return null;
   const s = (ctor as unknown as { summary?: unknown }).summary;
   return typeof s === "string" && s.trim() ? s.trim() : null;
 }
@@ -780,10 +782,17 @@ export function groupCurrent(button: ToolbarButton, remembered: string | null | 
  *
  * A tool registered under one of these names (`defineTool("circle3", …)` at
  * the command line) is that tool, and the alias steps aside.
+ *
+ * `sketch` is the plane tool's old name (docs/plans/no-sketch.md; the owner:
+ * *"There is no such thing as a sketch"*): what the tool does is choose a
+ * plane to draw on, and nothing drawn there is inside anything. The alias
+ * keeps `arm("sketch")` working for old habits, and is as unlisted as the
+ * other two.
  */
 export const TOOL_ALIASES: Readonly<Record<string, { tool: string; options: Readonly<Record<string, unknown>>; says: string }>> = {
   circle3: { tool: "circle", options: { method: "3pt" }, says: "the circle tool, locked to 3 points" },
   arc3: { tool: "arc", options: { method: "3pt" }, says: "the arc tool, locked to 3 points" },
+  sketch: { tool: "plane", options: {}, says: "the plane tool, by its old name — a plane to draw on" },
 };
 
 /** The alias `name` is, when no tool is registered under it — else null. */

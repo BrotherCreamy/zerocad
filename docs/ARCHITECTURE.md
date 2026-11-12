@@ -157,10 +157,14 @@ anything — an operation's job, and the line between the two layers
 that the next drag can renumber, so it is never journalled; once
 materialised, the crossing is a held point, a T, to every later question.
 
-`sketchface.ts` sits beside `loops.ts`: given a loop and the line of sight, the
-three of its points a sketch plane on it is made of — pure, and read by the
-sketch tool and the context menu alike, so the two cannot make different planes
-of one face.
+`faceplane.ts` sits beside `loops.ts`: given a loop and the line of sight, the
+three of its points a plane to draw on it is made of — pure, and read by the
+Plane tool and the context menu alike, so the two cannot make different planes
+of one face. (It was `sketchface.ts`, and the tool the "sketch" tool, until
+2026-11-12: the owner, *"There is no such thing as a sketch"* — a plane is a
+place a click lands and an `onplane` if one is made, never a container, and
+no word a person reads says otherwise; docs/plans/no-sketch.md, and the
+grep in `test/nosketch.test.ts` that keeps it so.)
 
 `faces.ts` is the sixth: what a solid's faces are this frame, which of them
 face the viewer, in what order to fill them and how bright — computed, not
@@ -694,6 +698,13 @@ could not be a container without undoing that. It is a **set**
   `owns` — what it made — so a feature selects, hides and lists as a group
   does, and refuses `addTo`/`removeFrom`/`ungroup`, since its members follow
   its profile.
+- **A group is fully defined when every member is** (the owner, 2026-11-12;
+  docs/plans/no-sketch.md) — and that is a *reading*, never a count the
+  group keeps: `Model.diagnose` already says which entities some motion
+  still moves, and the organiser keeps that set to the group's members for
+  its dot and for *Select what is free*. No relation, no solve, nothing
+  stored: a group that owns nothing cannot be more or less defined than
+  what is in it.
 
 The registry is **structure**, so it lives in the model, and every edit is an
 **operation** (`groups.ts`, `asOperation`), replayed by `persist.ts`'s table;
@@ -1129,8 +1140,8 @@ plane. Every sketch is a 3D sketch, unless you enter into active on-plane
 constraint."* Where a click lands on the ground in a fresh document is a
 position, never a relation. A drawing tool holds what it makes to a plane
 only when sketch mode's work plane or a default frame is set, **or when the
-click landed on a solid's flat face** (`holdOnSketchPlane`, `holdCurve`: a
-chosen plane by `sketchPlaneRef`, a face by its name — the owner's later
+click landed on a solid's flat face** (`holdOnChosenPlane`, `holdCurve`: a
+chosen plane by `drawingPlaneRef`, a face by its name — the owner's later
 *"it should constrain to the plane i am hovering over"*,
 docs/plans/click-on-face.md); otherwise a curve is held by nothing but its
 own definition, its normal seeded facing the plane it was drawn on.
@@ -1564,7 +1575,7 @@ software WebGL asked for by name, and a test fails if the app ever falls back.
 a closed loop of real entities — a lid its twin loop, a wall the quad of an
 edge, two side edges and the twin edge — so the face under a click is the
 region `loopAt` finds, and a frame on three of its own points (`plane(a, b,
-c)`, `sketchface.ts`) is the sketch plane, following the solid because its
+c)`, `faceplane.ts`) is the plane drawn on, following the solid because its
 points are the solid's. Back-face culling gives the orientation for free: the
 first face a ray meets is one whose outward normal faces the viewer, so
 ordering the points to face the camera puts +z out of the solid.

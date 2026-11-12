@@ -10,7 +10,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { findSnap, describeSnap } from "../src/snapping.ts";
 import { placePoint } from "../src/tools/place.ts";
-import { sketchPlane } from "../src/workplane.ts";
+import { chosenPlane } from "../src/workplane.ts";
 import { alignView, orbitBy, viewAxes, worldToScreen, type View } from "../src/view.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { menuFor } from "../src/menu.ts";
@@ -47,7 +47,7 @@ function scene() {
   const t = tiltedFrame(m);
   m.addPoint(t.at(12, 7, 40), "far"); // forty off the sketch, toward the viewer
   const view: View = alignView({ ox: 400, oy: 300, scale: 3 }, t.ux, t.uy, t.origin);
-  return { m, t, view, sketch: sketchPlane(m)! };
+  return { m, t, view, sketch: chosenPlane(m)! };
 }
 
 test("an off-plane point is offered at its projection onto the sketch — the foot of the perpendicular", () => {
@@ -179,12 +179,12 @@ test("frame() in a view nobody turned journals what it always did", () => {
 
 // --- the menu ---------------------------------------------------------------------
 
-test("a frame's menu offers Sketch on this: the default, then look at it — typed, like every item", () => {
+test("a frame's menu offers Draw on this: the default, then look at it — typed, like every item", () => {
   const m = new Model(3);
   const t = tiltedFrame(m);
   m.setDefaultFrame(null);
   const menu = menuFor(m, { name: t.name, kind: "frame", distance: 0 });
-  const item = menu.items.find((i) => i.label === "Sketch on this");
+  const item = menu.items.find((i) => i.label === "Draw on this");
   assert.ok(item, menu.items.map((i) => i.label).join(", "));
   assert.deepEqual(item.action, { do: "run", command: 'setDefaultFrame("t"); lookAt("t")' });
   // And the command does what the label says.

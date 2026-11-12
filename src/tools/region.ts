@@ -185,8 +185,8 @@ export function missedRegion(model: Model): string {
   } catch {
     found = 0;
   }
-  return found ? "click inside a closed outline — the ones I can see are lit"
-    : "no closed outline yet — draw one, then click inside it";
+  return found ? "{tap} inside a closed outline — the ones I can see are lit"
+    : "no closed outline yet — draw one, then {tap} inside it";
 }
 
 /**

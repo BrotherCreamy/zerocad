@@ -259,7 +259,7 @@ test("locked to 3 points, a click along a line is a rim point on it, as circle3'
   assert.ok(opsOf(three.m).some(([op, args]) => op === "pointOnLine" && (args as string[])[1] === "l1"));
   assert.ok(!opsOf(three.m).some(([op]) => op === "tangent"));
   const tan = draw(2, true, CircleTool, { method: "tangent" }, click([0, 10]));
-  assert.match(tan.ctx.said[0], /^circle: click on a line, circle or arc for it to touch/);
+  assert.match(tan.ctx.said[0], /^circle: \{tap\} on a line, circle or arc for it to touch/);
   // Locked to centre: two clicks, centre then rim — Onshape's centre-point circle.
   const centre = draw(2, false, CircleTool, { method: "centre" }, [...click([0, 0]), ...click([3, 4])]);
   assert.equal(centre.ctx.finished, true);
@@ -392,7 +392,7 @@ test("circle3 and arc3 arm the one tool, locked to 3 points — listed as that, 
   assert.equal(getToolCtor("circle3"), undefined);
   assert.equal(aliasCommand("circle3"), 'arm("circle", {method: "3pt"})');
   assert.equal(armedLine("arc3"), 'armed: arc3 — the arc tool, locked to 3 points, arm("arc", {method: "3pt"})');
-  assert.deepEqual(Object.keys(TOOL_ALIASES), ["circle3", "arc3"]);
+  assert.deepEqual(Object.keys(TOOL_ALIASES), ["circle3", "arc3", "sketch"]);
 
   const armed: string[] = [];
   const repl = new Repl(neocadScope({ model: new Model(3), arm: (name, options) => { e.arm(name, options); armed.push(e.armed!.name); }, optionMemory: memory }));

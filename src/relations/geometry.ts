@@ -376,7 +376,7 @@ export function intersection(model: Model, p: string, c1: string, c2: string): s
  * keeps the nearer.
  */
 export function pierce(model: Model, p: string, curve: string, planeName?: string | null): string {
-  if (model.dim !== 3) throw new Error("pierce needs a 3D model — in 2D every curve already lies in the sketch's plane");
+  if (model.dim !== 3) throw new Error("pierce needs a 3D model — in 2D every curve already lies in the drawing's plane");
   model.point(p);
   const plane = planeName ?? model.drawingPlane();
   model.planeKind(plane);

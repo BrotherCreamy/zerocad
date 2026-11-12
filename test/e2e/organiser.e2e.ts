@@ -174,7 +174,7 @@ test("the row menu's items type their commands: Add selection, Remove selection,
   await app.repl(`select("${edge}")`);
   await app.page.click(`${row("g1")} .oname`, { button: "right" });
   await app.page.waitForTimeout(150);
-  assert.deepEqual(await menuItems(app), ["Rename…", "Add selection", "Remove selection", "Open", "Ungroup"]);
+  assert.deepEqual(await menuItems(app), ["Rename…", "Add selection", "Remove selection", "Select what is free", "Open", "Ungroup"]);
   await choose(app, "Remove selection");
   assert.equal(await lastTyped(app), `removeFrom("g1", "${edge}")`);
   assert.equal((await rows(app, "groups"))[0][1], "7");
@@ -286,7 +286,7 @@ for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
       assert.equal(await lastTyped(p), 'select("g1")');
       await f.hold(...mid, 700);
       await p.page.waitForTimeout(150);
-      assert.deepEqual(await menuItems(p), ["Rename…", "Add selection", "Remove selection", "Close", "Ungroup"],
+      assert.deepEqual(await menuItems(p), ["Rename…", "Add selection", "Remove selection", "Select what is free", "Close", "Ungroup"],
         "a long-press is the right-click");
       assert.equal(await lastTyped(p), 'select("g1")', "and the release was not also a tap");
       await shot(p, `${device.replace(/ /g, "-")}-menu`);

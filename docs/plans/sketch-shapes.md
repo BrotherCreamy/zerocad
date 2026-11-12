@@ -1,5 +1,10 @@
 # Plan: sketch shapes — polygon, slot and the ellipse
 
+> **The word "sketch" is retired** (2026-11-12, the owner: *"There is no such
+> thing as a sketch"*): the tool is the Plane tool, the menu item "Draw on
+> this face", the workbench "Drawing". This file keeps its name and its words
+> as history; see [`no-sketch.md`](no-sketch.md).
+
 **Status: built** (2026-11-05), on `claude/sketch-shapes`; see *As built*
 at the end for every deviation. After `toolbar-groups.md`. The owner:
 *"give me better sketch tools, relations, trim, slot... all the usual"*.

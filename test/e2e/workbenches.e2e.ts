@@ -28,8 +28,8 @@ const LIAR = readFileSync(new URL("../fixtures/workbenches/liar.zerocad.js", imp
 
 /** Today's tray, button by button — what `part` must still be. */
 const PART_TRAY = ["select", "hand", "point", "line", "rectangle", "circle", "arc", "ellipse", "trim", "dimension",
-  "extrude", "revolve", "sketch"]; // dimension shows the relate group (dimension, constrain); trim the modify group since trim everything
-const SKETCH_TRAY = PART_TRAY.filter((t) => !["extrude", "revolve", "sketch"].includes(t));
+  "extrude", "revolve", "plane"]; // dimension shows the relate group (dimension, constrain); trim the modify group since trim everything
+const DRAWING_TRAY = PART_TRAY.filter((t) => !["extrude", "revolve", "plane"].includes(t));
 
 async function fresh(app: AppContext): Promise<void> {
   await app.page.evaluate(() => localStorage.clear());
@@ -100,12 +100,12 @@ test("the default workbench is part, and its tray is today's, button for button"
 
 test("switching to sketch from the logo menu: the tray and the menu change, typed names do not; a drawing made there extrudes in part", async () => {
   await fresh(app);
-  await menuRow(app, 'workbench("sketch")');
-  assert.deepEqual(await tray(app), SKETCH_TRAY);
-  assert.match(await app.page.$eval('.panel[data-panel="organiser"] .ptitle', (e) => e.textContent ?? ""), /organiser\s*· Sketch/);
+  await menuRow(app, 'workbench("drawing")');
+  assert.deepEqual(await tray(app), DRAWING_TRAY);
+  assert.match(await app.page.$eval('.panel[data-panel="organiser"] .ptitle', (e) => e.textContent ?? ""), /organiser\s*· Drawing/);
   // The menu shows the switcher with sketch current.
   await app.page.click("#logo");
-  assert.equal(await app.page.$eval("#appmenu [data-workbench='sketch']", (e) => e.getAttribute("aria-current")), "true");
+  assert.equal(await app.page.$eval("#appmenu [data-workbench='drawing']", (e) => e.getAttribute("aria-current")), "true");
   await shot(app, "sketch-tray-and-menu");
   await app.page.keyboard.press("Escape");
   // Draw in sketch: a rectangle by its tool's own typed form.
@@ -134,17 +134,17 @@ test("switching to sketch from the logo menu: the tray and the menu change, type
 
 test("the workbench is the document's: saved in its head, opened back, and no undo step", async () => {
   await fresh(app);
-  await app.type('workbench("sketch")');
+  await app.type('workbench("drawing")');
   await app.type("pt(1, 2)");
   const text = (await app.repl("save()")).value as string;
-  assert.equal(JSON.parse(text).workbench, "sketch");
+  assert.equal(JSON.parse(text).workbench, "drawing");
   assert.equal(JSON.parse(text).version, 23);
   await app.type('workbench("part")');
   await app.type("undo()");
   assert.equal((await app.repl("workbench()")).value, "part", "undo does not switch workbench back");
   await app.repl(`open(${JSON.stringify(JSON.stringify(JSON.parse(text)))})`);
-  assert.equal((await app.repl("workbench()")).value, "sketch", "opened in the workbench it was saved in");
-  assert.deepEqual(await tray(app), SKETCH_TRAY);
+  assert.equal((await app.repl("workbench()")).value, "drawing", "opened in the workbench it was saved in");
+  assert.deepEqual(await tray(app), DRAWING_TRAY);
 });
 
 test("Add workbench…: the manifest shown before anything runs, accepted, its tools on its tray, kept across a reload, shared back byte for byte, removed", async () => {
@@ -161,7 +161,7 @@ test("Add workbench…: the manifest shown before anything runs, accepted, its t
   // Its tools are on its own tray, not on part's.
   assert.deepEqual(await tray(app), PART_TRAY);
   await menuRow(app, 'workbench("pins")');
-  assert.deepEqual(await tray(app), [...SKETCH_TRAY, "pin"]);
+  assert.deepEqual(await tray(app), [...DRAWING_TRAY, "pin"]);
   // Drawn with its tool: a pin, picked by its cross.
   await app.type('arm("pin")');
   const [px, py] = await app.screenOf([20, 10, 0]);
@@ -218,8 +218,8 @@ test("a module pasted at the command line: its tool has a button on every tray, 
   await fresh(app);
   await app.type('defineModule("stamps", { tools: { stamp: class extends Tool { static summary = "Stamps a point"; name = "stamp"; onUp(p) { pt(...p.world); this.ctx.requestSolve(); this.ctx.finish(); } } } })');
   assert.deepEqual(await tray(app), [...PART_TRAY, "stamp"]);
-  await app.type('workbench("sketch")');
-  assert.deepEqual(await tray(app), [...SKETCH_TRAY, "stamp"]);
+  await app.type('workbench("drawing")');
+  assert.deepEqual(await tray(app), [...DRAWING_TRAY, "stamp"]);
   const listed = (await app.repl("modules()")).value as string[];
   assert.ok(listed.some((l) => /^stamps\s+tools stamp\s+\(typed\)/.test(l)), listed.join("\n"));
   await trayFits(app);
@@ -276,8 +276,8 @@ test("iPhone 13: switch workbench from the logo menu by touch; everything fits o
   await fresh(phone);
   assert.deepEqual(await tray(phone), PART_TRAY);
   await trayFits(phone);
-  await menuRow(phone, 'workbench("sketch")', true);
-  assert.deepEqual(await tray(phone), SKETCH_TRAY);
+  await menuRow(phone, 'workbench("drawing")', true);
+  assert.deepEqual(await tray(phone), DRAWING_TRAY);
   await trayFits(phone);
   await shot(phone, "phone-sketch-tray");
   await menuRow(phone, 'workbench("part")', true);
@@ -296,7 +296,7 @@ test("iPhone 13: Add workbench… by touch — the question, a tap on Add, its t
   await phone.page.tap("#wbconsent .wbyes");
   await settled(() => phone.log(), (l) => l.includes("added workbench pins"), "added");
   await menuRow(phone, 'workbench("pins")', true);
-  assert.deepEqual(await tray(phone), [...SKETCH_TRAY, "pin"]);
+  assert.deepEqual(await tray(phone), [...DRAWING_TRAY, "pin"]);
   await trayFits(phone);
   await phone.page.tap("#toolbar > button[data-tool='pin']");
   const f = await fingers(phone);

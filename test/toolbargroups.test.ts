@@ -55,7 +55,7 @@ test("the button list is thirteen today, with these names in this order — a gr
   // the sweep group's: still thirteen.
   assert.equal(buttons.length, 13);
   assert.deepEqual(buttons.map((b) => b.group ?? b.tools[0]),
-    ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "sweep", "revolve", "sketch"]);
+    ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "sweep", "revolve", "plane"]);
   assert.deepEqual(buttons.find((b) => b.group === "sweep")!.tools, ["extrude", "cut", "surface", "edge"]);
   assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "region"]);
   // The spline joins the ellipse there (docs/plans/spline.md): still thirteen.
@@ -83,7 +83,7 @@ test("grouping is the table: shapes, curves, modify and relate, in their order; 
   assert.equal(toolGroup("fillet"), "modify");
   assert.equal(toolGroup("constrain"), "relate");
   assert.deepEqual(TOOL_GROUPS.sweep, ["extrude", "cut", "surface", "edge"]);
-  for (const alone of ["select", "hand", "point", "line", "circle", "arc", "revolve", "sketch"]) {
+  for (const alone of ["select", "hand", "point", "line", "circle", "arc", "revolve", "plane"]) {
     assert.equal(toolGroup(alone), null, alone);
   }
   // Queued and not yet built: named by the table all the same, so the

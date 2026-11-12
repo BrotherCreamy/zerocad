@@ -30,8 +30,8 @@ features of the body; surfaces — sheets swept from curves, a loop's planar
 face or a body's face, changed only by operations (trim, extend, knit,
 offset, a fillet or chamfer between two, thicken into a solid), written to
 STEP as surface models — with
-sketching on a solid's face, a click inside it, to stack the next one on; the
-plane being sketched on drawn and named, with a chip beside the status saying
+drawing on a solid's face, a click inside it, to stack the next one on; the
+plane being drawn on drawn and named, with a chip beside the status saying
 where · what · next — `on e1's top · circle · drag the radius` — and a Done to
 end it — and no frame made for any of it unless you ask for one) is the
 **first standard library** built on that kernel, not the kernel's whole
@@ -128,7 +128,7 @@ src/arcgeom.ts           which way round an arc goes, in its own plane — one r
 src/projection.ts        each entity's shape on screen, and a pixel on it lifted back to the world
 src/workplane.ts         what a click lands on in 3D: the work plane, the default frame's, else the ground
 src/loops.ts             closed loops (joined by shared point or coin, never proximity), and which one a click is in
-src/sketchface.ts        the three points of a face a sketch plane on it is made of, +z toward you
+src/faceplane.ts         the three points of a face a plane to draw on it is made of, +z toward you
 src/faces.ts             a solid's faces from its live geometry (a revolve's swept): culled, sorted per face, lit from the eye
 src/modes.ts             which features make which body, and what a new one does by default (Add on a body, else New)
 src/bodies.ts            the bodies the kernel builds: the program sent, the last good answer drawn and picked, a fillet's preview
@@ -165,7 +165,7 @@ src/tools/extrude.ts      click inside regions, see the solids, ✓; they are ex
 src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are revolved
 src/tools/feature.ts      pick → preview → confirm, shared by the feature tools
 src/tools/selection.ts    the canvas's selection (names and regions), and a feature tool's picked regions
-src/tools/sketch.ts       click inside a face; workplane("a.b.c") on its own points is typed
+src/tools/plane.ts        the Plane tool: click inside a face; workplane("a.b.c") on its own points is typed
 src/tools/edit.ts         Edit e1: the feature dialog on a feature that exists — holes toggled, the depth changed
 src/tools/region.ts       the click-inside tools' shared region preview
 src/tools/regiontool.ts   the region tool: click a face, then faces to subtract (Add, ∩, New)

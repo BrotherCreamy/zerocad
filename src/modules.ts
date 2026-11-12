@@ -599,11 +599,28 @@ export function activeWorkbench(): string {
   return workbenches.has(active) ? active : DEFAULT_WORKBENCH;
 }
 
+/**
+ * Old names a workbench is still known by: `sketch` was the drawing
+ * workbench's until 2026-11-12 (docs/plans/no-sketch.md), and a file's head
+ * from before says it. Read by `workbenchName`, so `workbench("sketch")` typed
+ * and a saved `"workbench": "sketch"` both open the drawing workbench; never
+ * listed, never written back (a save writes the name the workbench has now).
+ */
+export const WORKBENCH_ALIASES: Readonly<Record<string, string>> = { sketch: "drawing" };
+
+/** `name` as the workbench it means now: itself, or the workbench an old name stands for; unchanged when neither is defined. */
+export function workbenchName(name: string): string {
+  if (workbenches.has(name)) return name;
+  const alias = Object.hasOwn(WORKBENCH_ALIASES, name) ? WORKBENCH_ALIASES[name] : null;
+  return alias !== null && workbenches.has(alias) ? alias : name;
+}
+
 export function setActiveWorkbench(name: string): void {
-  if (!workbenches.has(name)) {
+  const real = workbenchName(name);
+  if (!workbenches.has(real)) {
     throw new Error(`no workbench "${name}" — ${listWorkbenches().map((w) => JSON.stringify(w.name)).join(", ")}`);
   }
-  active = name;
+  active = real;
 }
 
 export function defineWorkbench(name: string, spec: { modules: string[]; label?: string }, origin: Workbench["origin"] = "added"): Workbench {
@@ -627,8 +644,9 @@ export function removeWorkbench(name: string): void {
   workbenches.delete(name);
 }
 
+/** The workbench `name` means — by its name, or by an old one (`WORKBENCH_ALIASES`) — or undefined. */
 export function getWorkbench(name: string): Workbench | undefined {
-  return workbenches.get(name);
+  return workbenches.get(workbenchName(name));
 }
 
 /** Built-in workbenches first, then added ones, each in definition order. */

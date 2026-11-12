@@ -37,7 +37,7 @@ import { stepExport } from "../src/step.ts";
 import { organiserSections, rowMenu } from "../src/organiser.ts";
 import { menuFor } from "../src/menu.ts";
 import { neocadScope } from "../src/replenv.ts";
-import { chamferFaceRefusal, chamferOfFace } from "../src/tools/sketch.ts";
+import { chamferFaceRefusal, chamferOfFace } from "../src/tools/plane.ts";
 import { cornerAt } from "../src/tools/fillet.ts";
 import { hitTest } from "../src/picking.ts";
 import { worldToScreen } from "../src/view.ts";
@@ -378,7 +378,7 @@ test("a kernel chamfer's face is refused as a sketch plane, saying why and what 
   assert.equal(chamferOfFace(m, "e1.lid"), null);
   assert.equal(chamferOfFace(m, "e1.m0"), null);
   assert.match(chamferFaceRefusal(e2), new RegExp(`that face is ${e2}'s — a chamfer the solid kernel cut along an edge`));
-  assert.match(chamferFaceRefusal(e2), /a chamfer between two walls is the sketch's own/);
+  assert.match(chamferFaceRefusal(e2), /a chamfer between two walls is the profile's own/);
   // The corner chamfer: a wall swept from a line, with points of its own.
   const line = chamferEdges(m, "e1", ["e1.m1|e1.m2"], 3);
   assert.ok(m.entities.get(line)?.kind === "line", "the sketch's chamfer line");

@@ -1,6 +1,8 @@
 # Plan: there is no sketch — geometry, planes it is drawn on, and groups it belongs to
 
-**Status: queued** (2026-11-12). The owner: *"There is no such thing as a
+**Status: built** (2026-11-12), branch `claude/no-sketch`, PR against
+`claude/resume-tasks-o7q02e`; see *As built* at the end for every decision
+and deviation. The owner: *"There is no such thing as a
 sketch. There are geometry groups (you can come up with a better name… reason
 I don't want to use sketch is it implied exclusivity, but I want geometry to
 be able to belong to multiple groups). A group is only fully defined when
@@ -76,3 +78,104 @@ active on-plane constraint."*
   is already the organiser's word and the owner's own in `groups.md`).
 - The "Sketch" workbench becomes "Drawing" rather than going.
 - The module id `sketch` stays in files.
+
+## As built (2026-11-12)
+
+Pictures 525–536 in `docs/images`, by mouse and on an iPhone 13 by finger;
+`test/nosketch.test.ts`, `test/organiser.test.ts`, `test/e2e/nosketch.e2e.ts`.
+
+1. **The word is gone from everything a person reads.** The "sketch" tool is
+   the **Plane** tool (`src/tools/plane.ts`, registered as `plane`, icon as
+   it was): its summary *"Draw on a face or Top, Front, Right: all you draw
+   stays on it"*, its how-lines ending *"Done … leaves the plane"*, its
+   next-step *"click a lit face or plane to draw on it"*. The face menu's
+   item is **Draw on this face**, first on the menu; the frame's is **Draw
+   on this**; the chip's menu header reads *drawing on e1's top*; `help()`
+   says a plane to draw on is the work plane, not a feature and not a
+   container. Error messages say *profile* or *drawing* ("its profile's
+   plane has collapsed"); the STEP export's wireframe set is named
+   `'curves'`. A source-level test greps every string literal in `src/` for
+   the word and a run-time one asks every tool name, summary and how-line,
+   module and workbench label, `help()`, the face and frame menus and the
+   chip's menu; the quoted module id `"sketch"` is the one exception, as
+   the spec allowed.
+2. **The old names still open what they did.** `arm("sketch")` is an alias
+   in `TOOL_ALIASES` beside `circle3` and `arc3`: it arms the plane tool and
+   the log says *armed: sketch — the plane tool, by its old name — a plane
+   to draw on, arm("plane", {})*. The "Sketch" workbench is **Drawing**
+   (id `drawing`); `workbench("sketch")` typed and a file whose head says
+   `"workbench": "sketch"` open it, through `WORKBENCH_ALIASES`
+   (`modules.ts`, read by `getWorkbench` and `setActiveWorkbench`), never
+   listed and never written back: a save says `drawing`. The module keeps
+   its id `sketch` with the label *"Drawing: curves, shapes, the curve
+   relations and the fillet"*; `ui({ modules })` and a workbench file naming
+   it are unchanged.
+3. **Code names where cheap**: `sketchPlaneRef` → `drawingPlaneRef`,
+   `sketchPlane` → `chosenPlane`, `sketchOnFaceCommand` →
+   `drawOnFaceCommand`, `sketchFrameFor` → `facePlaneFor`,
+   `holdOnSketchPlane` → `holdOnChosenPlane`, `SketchTool` → `PlaneTool`,
+   `sketchface.ts` → `faceplane.ts`, `tools/sketch.ts` → `tools/plane.ts`.
+   Not renamed: `sketchedit.ts`, `sketchgeom.ts`, `modules/sketch.ts` (the
+   module id's file), the e2e files named for their history, and every
+   comment that quotes the owner or names a plan file. The five plan files
+   (`sketch-edit`, `sketch-mode`, `sketch-on-face`, `sketch-relations`,
+   `sketch-shapes`) each carry one line at the top pointing here.
+4. **A group's definedness is a reading of the last diagnosis.**
+   `organiserSections(model, selection, free)` and `rowMenu(model, name,
+   selection, free)` take `Model.diagnose()`'s `free` set (main.ts hands
+   the one it draws the free ink from, so the dot and the canvas's blue
+   agree). A group row wears a dot before its count (`.odef`): filled when
+   no entity member is in `free`, hollow in the free ink when some are, a
+   faint dotted ring before any solve has said. Its tooltip says the count
+   — *1 of its 9 members can still move — Select what is free, on its menu,
+   picks them* — and the row's menu has **Select what is free**, typing
+   `select(<the members that move>)`, disabled with the reason when every
+   member is held or before a solve. The menu's header says *fully defined*
+   or *1 of 9 free* — which is also how a finger reads the count: a hold on
+   the dot is the row's hold (on a phone the marker and the eye each take a
+   finger's width, and the dot is what is left between them), and its
+   tooltip is a hover's. A relation in a group is counted neither way; a group
+   of relations alone has no reading. The see-through tree's group rows
+   wear the same dot. No new solve, no new relation, no new kernel call.
+5. **"N free" on the group is a count of members, not of freedoms.** The
+   spec's *"3 free"* read either way; the count that is cheap and that the
+   menu can act on is *how many members some motion still moves*, which is
+   exactly what *Select what is free* selects, so the two cannot disagree.
+   A count of a group's own degrees of freedom would need a rank with
+   everything outside the group pinned — a kernel question per group per
+   solve — and the owner said this is *"not a concern of mine now"*.
+   Vetoable; one line in the register.
+6. **The drawing's own count stays as it is**, `gaugePlanes` included (item
+   4 of the design): nothing changed there.
+7. **Guidance on a phone** (the package's second addition; picture 503): a
+   tool's summary says `{tap}` where its how-lines do, and
+   `toolSummary(name, hand)` fills it for the hand asking — the hover tip,
+   the chosen tip's finger, `tools()` typed as a mouse. Every line a tool
+   logs while running — a miss answered, a refusal — passes through the
+   engine's `ctx.log`, which fills `{tap}` for the hand last on the canvas
+   (`ToolEngine.pointing`), once, in the one place every tool's line goes.
+   Headless, with a test's own ctx, the placeholder is what the tool said
+   and the unit tests pin that form. A source scan refuses any literal in
+   `src/tools` that says "click" on a line that does not also name the
+   finger's word. **Picture 503 itself was a test artefact**: the hand was
+   already seeded from the device (`engine.pointing = coarse ? "finger" :
+   "mouse"`, main.ts, 2026-11-05), but that file's picture helper moves the
+   *mouse* off the drawing before every screenshot, and a mouse move sets
+   the hand to a mouse. Picture 531 is the same screen with no mouse: *tap
+   a thing, or hold and drag to box*. On a real phone no mouse event
+   arrives, so a person never saw 503's words.
+8. **The empty status readout** (the third addition; pictures 515 and 521)
+   **is the fade, by design.** `SOLVED` fades after `STATUS_FADE_MS` (3 s;
+   `statusFade`, `src/statusline.ts` line 34) and so does the count when
+   nothing agrees (`showDiagnosis`, `src/main.ts`, `line.fades`); the
+   stylesheet makes a faded status `display:none` (`index.html`, the
+   `#status[data-faded]` rule), text kept. Picture 510 shows SOLVED because
+   *4 agreeing* keeps the count, and the picture was taken within the
+   fade. Measured in `nosketch.e2e.ts`: shown as the operation lands, shown
+   again at the next, text still `SOLVED` and `data-faded` set 3.6 s on.
+   Nothing to fix; the test documents it.
+
+Left, and filed under *Next up*: a group's degrees of freedom as a count
+of its own; the picture helpers in `throughall.e2e.ts` and
+`filletsonething.e2e.ts` moving the mouse on a phone; a headless host with
+no engine reading `{tap}` raw.

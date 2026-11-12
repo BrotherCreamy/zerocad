@@ -23,8 +23,8 @@ import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Repl } from "../src/repl.ts";
 import { menuFor } from "../src/menu.ts";
-import { sketchFrameFor as facePlane, sketchOnFaceCommand } from "../src/sketchface.ts";
-import { SketchTool } from "../src/tools/sketch.ts";
+import { facePlaneFor as facePlane, drawOnFaceCommand } from "../src/faceplane.ts";
+import { PlaneTool } from "../src/tools/plane.ts";
 import { regionAtFor } from "./featurectx.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 import { alignView, orbitBy, viewAxes, worldToScreen, type View } from "../src/view.ts";
@@ -54,8 +54,8 @@ function zOf(m: Model, p: string | string[]): number[] {
   return planeBasis(m, ref)().n;
 }
 
-/** `sketchFrameFor` where the face has three points of its own to give — every face here but a circle's lid. */
-function sketchFrameFor(m: Model, loop: Loop, toward: number[]): [string, string, string] {
+/** `facePlaneFor` where the face has three points of its own to give — every face here but a circle's lid. */
+function facePlaneFor(m: Model, loop: Loop, toward: number[]): [string, string, string] {
   const p = facePlane(m, loop, toward);
   const pts = p.split(".");
   assert.equal(pts.length, 3, `three of the face's own points, not a circle's plane: ${p}`);
@@ -78,11 +78,11 @@ test("a tilted square: its first corner and the corners either side, in loop ord
   const [loop] = findLoops(m);
   const v = vertices(loop);
 
-  const front = sketchFrameFor(m, loop, t.uz);
+  const front = facePlaneFor(m, loop, t.uz);
   assert.deepEqual(front, [v[0], v[1], v[3]]);
   assert.ok(near(zOf(m, front), t.uz), "seen from +z, the plane's +z is the frame's");
 
-  const back = sketchFrameFor(m, loop, neg(t.uz));
+  const back = facePlaneFor(m, loop, neg(t.uz));
   assert.deepEqual(back, [v[0], v[3], v[1]], "the x-ref and y-ref swapped");
   assert.ok(near(zOf(m, back), neg(t.uz)), "seen from −z, the plane's +z is −z");
 
@@ -96,9 +96,9 @@ test("a tilted square: its first corner and the corners either side, in loop ord
   // Obliquely, only the side counts: a line of sight 80° off the normal still
   // gets the plane facing it.
   const oblique = t.uz.map((z, i) => Math.cos(1.4) * z + Math.sin(1.4) * t.ux[i]);
-  assert.ok(dot(zOf(m, sketchFrameFor(m, loop, oblique)), oblique) > 0);
-  assert.ok(dot(zOf(m, sketchFrameFor(m, loop, neg(oblique))), neg(oblique)) > 0);
-  assert.equal(sketchOnFaceCommand(m, loop, t.uz), `workplane(${JSON.stringify(front.join("."))})`);
+  assert.ok(dot(zOf(m, facePlaneFor(m, loop, oblique)), oblique) > 0);
+  assert.ok(dot(zOf(m, facePlaneFor(m, loop, neg(oblique))), neg(oblique)) > 0);
+  assert.equal(drawOnFaceCommand(m, loop, t.uz), `workplane(${JSON.stringify(front.join("."))})`);
 });
 
 test("a rectangle whose first three vertices are on one line — an edge drawn as two lines through a midpoint — skips past the middle one", async () => {
@@ -114,7 +114,7 @@ test("a rectangle whose first three vertices are on one line — an edge drawn a
   const loops = findLoops(m);
   assert.equal(loops.length, 1);
   assert.deepEqual(vertices(loops[0]).slice(0, 3), [p0, mid, p1], "the precondition: the first three are on one line");
-  const got = sketchFrameFor(m, loops[0], t.uz);
+  const got = facePlaneFor(m, loops[0], t.uz);
   assert.deepEqual(got, [p0, mid, p3], "the first corner, between the half-edge and the side");
   assert.ok(near(zOf(m, got), t.uz));
 });
@@ -130,7 +130,7 @@ test("a loop that starts at a point partway along an edge skips it: no corner th
   const [loop] = findLoops(m);
   assert.equal(vertices(loop)[0], mid, "the precondition: the loop starts on the straight");
   for (const toward of [t.uz, neg(t.uz)]) {
-    const got = sketchFrameFor(m, loop, toward);
+    const got = facePlaneFor(m, loop, toward);
     assert.equal(got[0], p1, "the origin is the first real corner");
     assert.deepEqual(got.slice(1).sort(), [mid, p2].sort(), "with its two neighbours");
     assert.ok(near(zOf(m, got), toward));
@@ -151,7 +151,7 @@ test("a whole circle's face is the circle itself — its own plane, whichever si
   assert.equal(facePlane(m, loop, neg(t.uz)), c, "a circle cannot be turned over as three points can");
   assert.ok(near(zOf(m, c), t.uz));
   assert.equal(m.entities.size, ents, "nothing made");
-  assert.equal(sketchOnFaceCommand(m, loop, t.uz), `workplane(${JSON.stringify(c)})`);
+  assert.equal(drawOnFaceCommand(m, loop, t.uz), `workplane(${JSON.stringify(c)})`);
   // Off its sketch's plane — every extruded circle's lid — it is still itself.
   const lifted = m.addCircle(m.addPoint(t.at(30, 5, 3)).name, 2, t.name).name;
   const lid = findLoops(m).find((l) => l.members[0].name === lifted)!;
@@ -169,7 +169,7 @@ test("a lens of two arcs has only two vertices: an arc's centre is the third poi
   m.addArc(c2, a, b, null, t.name);
   const loops = findLoops(m);
   assert.equal(loops.length, 1, "one lens");
-  const got = sketchFrameFor(m, loops[0], t.uz);
+  const got = facePlaneFor(m, loops[0], t.uz);
   assert.equal(new Set(got).size, 3);
   assert.ok(got.includes(c1) || got.includes(c2), `a centre among ${got}`);
   assert.ok(near(zOf(m, got), t.uz));
@@ -184,7 +184,7 @@ test("a region cut off by crossings: its crossings are no points, so the plane i
   const loops = findLoops(m);
   assert.equal(loops.length, 2);
   for (const [loop, toward] of [[loops[0], t.uz], [loops[1], neg(t.uz)]] as const) {
-    const got = sketchFrameFor(m, loop, toward);
+    const got = facePlaneFor(m, loop, toward);
     assert.ok(got.every((p) => m.entities.get(p)?.kind === "point"), `${got}: real points only`);
     assert.ok(got.every((p) => points.includes(p)), `${got}: the rectangle's own corners`);
     assert.ok(near(zOf(m, got), toward), "facing whoever looked");
@@ -217,7 +217,7 @@ test("refusals, by name: a D on a semicircle has no three points off one line; a
   const line = m.addLine(e, s).name;
   const [d] = findLoops(m);
   assert.deepEqual(d.members.map((x) => x.name).sort(), [arc, line].sort());
-  assert.throws(() => sketchFrameFor(m, d, t.uz), new RegExp(`loop of .*${line}.* has no three points off one line`));
+  assert.throws(() => facePlaneFor(m, d, t.uz), new RegExp(`loop of .*${line}.* has no three points off one line`));
 
   // (A circle whose frame had collapsed used to be refused here: a circle
   // carries its own normal now, and has no frame to collapse.)
@@ -227,7 +227,7 @@ test("refusals, by name: a D on a semicircle has no three points off one line; a
   const w = tiltedFrame(q);
   polygon(q, w, [[0, 0], [20, 0], [20, 20], [0, 20]]);
   const [sq] = findLoops(q);
-  assert.throws(() => sketchFrameFor(q, sq, w.ux), /edge-on to the view/);
+  assert.throws(() => facePlaneFor(q, sq, w.ux), /edge-on to the view/);
 
   // A 2D drawing is one plane already, and a 2D frame takes no y-ref.
   const two = new Model(2);
@@ -283,7 +283,7 @@ test("every face of a plate, clicked from outside: the lid, the base from below 
     const loop = clicked(m, view, world);
     const face = outward(m, loop, centroid);
     assert.ok(near(face.at, world, 1e-6), `${what}: the click found that face (its middle is ${face.at})`);
-    const z = zOf(m, sketchFrameFor(m, loop, viewAxes(view).toward));
+    const z = zOf(m, facePlaneFor(m, loop, viewAxes(view).toward));
     assert.ok(near(z, face.n, 1e-7), `${what}: +z ${z} is the outward normal ${face.n}`);
   }
 });
@@ -294,7 +294,7 @@ test("the Onshape sequence: a circle sketched on a wall and extruded a positive 
   const wall = t.at(20, 0, 5);
   const view = viewFrom(neg(t.uy), t.ux, wall);
   const loop = clicked(m, view, wall);
-  const [a, b, c] = sketchFrameFor(m, loop, viewAxes(view).toward);
+  const [a, b, c] = facePlaneFor(m, loop, viewAxes(view).toward);
 
   // What the tool types, typed: the work plane set to the wall's own points.
   // No frame is made (docs/plans/frameless-curves.md).
@@ -369,13 +369,13 @@ test("workplane(\"a.b.c\") on a face journals one entry, names the face and make
   const { m, t } = plate();
   const view = viewFrom(neg(t.uy), t.ux, t.at(20, 0, 5));
   const loop = clicked(m, view, t.at(20, 0, 5));
-  const command = sketchOnFaceCommand(m, loop, viewAxes(view).toward);
+  const command = drawOnFaceCommand(m, loop, viewAxes(view).toward);
   const before = m.journal.length;
   const ents = m.entities.size;
   const repl = new Repl(neocadScope({ model: m }));
   const r = await repl.eval(command);
   assert.equal(r.ok, true, String(r.error));
-  const [a, b, c] = sketchFrameFor(m, loop, viewAxes(view).toward);
+  const [a, b, c] = facePlaneFor(m, loop, viewAxes(view).toward);
   assert.deepEqual(m.journal.slice(before).map((j) => [j.op, j.args]), [["setWorkPlane", [`${a}.${b}.${c}`]]],
     "the work plane, by the face's own points — no frame");
   assert.equal(m.entities.size, ents);
@@ -403,19 +403,19 @@ function toolCtx(m: Model, view: View, log: string[], typed: string[]) {
 
 const info = (screen: [number, number]) => ({ world: [0, 0, 0], screen });
 
-test("the sketch tool: a click on nothing is refused aloud and it stays armed; a click inside a wall types workplane(\"a.b.c\") and finishes", async () => {
+test("the plane tool: a click on nothing is refused aloud and it stays armed; a click inside a wall types workplane(\"a.b.c\") and finishes", async () => {
   await loadKernel();
   const { m, t, centroid } = plate();
   const wall = t.at(20, 0, 5);
   const view = viewFrom(neg(t.uy), t.ux, wall);
   const log: string[] = [], typed: string[] = [];
   const ctx = toolCtx(m, view, log, typed);
-  const tool = new SketchTool(ctx);
+  const tool = new PlaneTool(ctx);
   assert.equal(tool.snaps, false, "it chooses a face, not a place");
 
   tool.onDown(info(worldToScreen(view, t.at(80, -40, 5))));
   // In 3D the ground's named planes are there to take too (docs/plans/sketch-mode.md), so the miss says so.
-  assert.match(log.join("\n"), /^sketch: click inside a lit face, or a lit plane — or choose Top, Front or Right in the options$/);
+  assert.match(log.join("\n"), /^plane: \{tap\} inside a lit face, or a lit plane — or choose Top, Front or Right in the options$/);
   assert.equal(ctx.finished, false);
   assert.deepEqual(typed, []);
 
@@ -437,13 +437,13 @@ test("headless, with no command line to type into, the tool throws rather than h
   const view = viewFrom(t.uz, t.ux, t.at(20, 15, 10));
   const ctx = toolCtx(m, view, [], []);
   const bare = { ...ctx, run: undefined, log: undefined } as unknown as ToolContext;
-  const tool = new SketchTool(bare);
+  const tool = new PlaneTool(bare);
   const frames = [...m.entities.values()].filter((e) => e.kind === "frame").length;
   assert.throws(() => tool.onDown(info(worldToScreen(view, t.at(20, 15, 10)))), /no command line here/);
   assert.equal([...m.entities.values()].filter((e) => e.kind === "frame").length, frames);
 });
 
-test("the menu: Sketch on this face only inside a region, typing the tool's own line; disabled with the reason where no plane can be made; absent in 2D", async () => {
+test("the menu: Draw on this face only inside a region, typing the tool's own line; disabled with the reason where no plane can be made; absent in 2D", async () => {
   await loadKernel();
   const { m, t } = plate();
   const wall = t.at(20, 0, 5);
@@ -451,16 +451,16 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   const loops = findLoops(m);
   const loop = loopAt(m, view, ...worldToScreen(view, wall), loops)!;
   const region = { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward, at: wall };
-  const item = menuFor(m, null, region).items.find((i) => i.label === "Sketch on this face");
-  assert.deepEqual(item?.action, { do: "run", command: sketchOnFaceCommand(m, loop, region.toward) });
-  assert.ok(!menuFor(m, null).items.some((i) => i.label === "Sketch on this face"), "not outside a region");
-  assert.ok(!menuFor(m, null, null).items.some((i) => i.label === "Sketch on this face"));
+  const item = menuFor(m, null, region).items.find((i) => i.label === "Draw on this face");
+  assert.deepEqual(item?.action, { do: "run", command: drawOnFaceCommand(m, loop, region.toward) });
+  assert.ok(!menuFor(m, null).items.some((i) => i.label === "Draw on this face"), "not outside a region");
+  assert.ok(!menuFor(m, null, null).items.some((i) => i.label === "Draw on this face"));
   // The rest of the empty-canvas menu is unchanged by it — but for Edit e1 and
   // Flip direction, since a wall is a face of a feature (docs/plans/explicit-
   // regions.md) — and the face's own items come first, under them the tools
   // (on an iPhone the tools filled the screen and hid them: solid-tools-intuitive.md, W15).
   const onFace = menuFor(m, null, region).items;
-  assert.deepEqual(onFace.slice(0, 4).map((i) => i.label), ["Sketch on this face", "Edit e1", "Flip direction", "Tools"]);
+  assert.deepEqual(onFace.slice(0, 4).map((i) => i.label), ["Draw on this face", "Edit e1", "Flip direction", "Tools"]);
   assert.deepEqual(onFace.slice(4), menuFor(m, null).items);
 
   // A D on a semicircle: shown, disabled, with the helper's own reason.
@@ -471,7 +471,7 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   n.addLine(e, s);
   const dl = findLoops(n);
   const off = menuFor(n, null, { loops: dl, index: 0, toward: u.uz, at: u.at(5, 1) }).items[0];
-  assert.equal(off.label, "Sketch on this face");
+  assert.equal(off.label, "Draw on this face");
   assert.equal(off.action.do, "disabled");
   assert.match((off.action as { why: string }).why, /no three points off one line/);
 
@@ -480,5 +480,5 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   const pts = [[0, 0], [10, 0], [10, 10]].map((p) => flat.addPoint(p).name);
   pts.forEach((p, i) => flat.addLine(p, pts[(i + 1) % 3]));
   const tl = findLoops(flat);
-  assert.ok(!menuFor(flat, null, { loops: tl, index: 0, toward: [0, 0, 1], at: [5, 1] }).items.some((i) => i.label === "Sketch on this face"));
+  assert.ok(!menuFor(flat, null, { loops: tl, index: 0, toward: [0, 0, 1], at: [5, 1] }).items.some((i) => i.label === "Draw on this face"));
 });

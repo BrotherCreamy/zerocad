@@ -294,7 +294,7 @@ test("the lid clicked with nothing armed is selected, and the sketch tool's butt
   const [sx, sy] = await app.screenOf(at);
   await clickAt(Math.round(sx), Math.round(sy));
   await shot("11-lid-selected", OUTSIDE);
-  await press("sketch", false);
+  await press("plane", false);
   await app.page.waitForTimeout(250);
   const typed = (await logLines()).slice(from).filter((l) => l.text.startsWith("> ") && !l.text.startsWith("> arm("));
   assert.equal(typed.length, 1, `one line: ${typed.map((l) => l.text)}`);

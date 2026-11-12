@@ -85,7 +85,7 @@ function surfaceArg(model: Model, op: string, s: unknown, what = "a surface"): s
  */
 export function noSuchSurface(model: Model, op: string, s: unknown): void {
   if (typeof s === "string" && /^s\d+$/.test(s) && !model.has(s)) {
-    throw new Error(`${op}: there is no surface ${s} — ls() lists the surfaces (the sketch's ${op} takes curves by name)`);
+    throw new Error(`${op}: there is no surface ${s} — ls() lists the surfaces (the curves' ${op} takes them by name)`);
   }
 }
 

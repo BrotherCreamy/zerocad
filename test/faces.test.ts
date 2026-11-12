@@ -391,10 +391,10 @@ test("a click on no region is refused out loud and the tool stays armed — and 
   const tool = new ExtrudeTool(ctx);
   const outside = worldToScreen(ABOVE, [80, 80, 0]);
   tool.onDown({ world: [80, 80, 0], screen: outside });
-  assert.match(lines[0], /^extrude: click inside a closed outline — the ones I can see are lit$/);
+  assert.match(lines[0], /^extrude: \{tap\} inside a closed outline — the ones I can see are lit$/);
   assert.equal(ctx.finished, false);
   assert.equal(m.features.size, 0);
-  assert.throws(() => new ExtrudeTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: outside }), /click inside a closed outline/);
+  assert.throws(() => new ExtrudeTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: outside }), /\{tap\} inside a closed outline/);
 });
 
 test("on a split region the extrude tool outlines the half under the cursor, and a click and a confirm extrude that half — the crossings made points first", async () => {
@@ -732,10 +732,10 @@ test("after the profile: nothing there is refused aloud, another region is toggl
   const at = (x: number, y: number) => worldToScreen(ABOVE, [x, y, 0]);
 
   tool.onDown({ world: [80, 80, 0], screen: at(80, 80) });
-  assert.match(log.at(-1)!, /^revolve: click inside a closed outline — the ones I can see are lit$/);
+  assert.match(log.at(-1)!, /^revolve: \{tap\} inside a closed outline — the ones I can see are lit$/);
   tool.onDown({ world: [15, 5, 0], screen: at(15, 5) });
   tool.onDown({ world: [80, 80, 0], screen: at(80, 80) });
-  assert.match(log.at(-1)!, /^revolve: now click a line, or a frame.s arm, to turn it about$/);
+  assert.match(log.at(-1)!, /^revolve: now \{tap\} a line, or a frame.s arm, to turn it about$/);
   // Inside the other block: picked as well — and inside it again, with no
   // axis yet to confirm about, dropped. Neither is a refusal.
   tool.onDown({ world: [15, 50, 0], screen: at(15, 50) });
@@ -745,7 +745,7 @@ test("after the profile: nothing there is refused aloud, another region is toggl
   assert.equal(log.length, 2, "toggling a region is not a refusal");
   // That line as the axis: refused, and the block stays chosen.
   tool.onDown({ world: [20, 25, 0], screen: at(20, 25) });
-  assert.match(log.at(-1)!, new RegExp(`^revolve: ${across} is not in its plane, or crosses it — click a lit one$`));
+  assert.match(log.at(-1)!, new RegExp(`^revolve: ${across} is not in its plane, or crosses it — \{tap\} a lit one$`));
   assert.equal(ctx.finished, false);
   // Hovering a line now shows it as the axis, dashed.
   tool.onMove({ world: [-5, 50, 0], screen: at(-5, 50) });

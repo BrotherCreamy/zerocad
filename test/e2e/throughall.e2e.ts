@@ -157,7 +157,7 @@ async function plateWithHole(a: AppContext, hand: Hand): Promise<State> {
   await hand.click(await a.screenOf([8, 5, 0]));
   await hand.confirm();
   // A circle on the lid, with the sketch tool on it as the owner draws one.
-  await say(a, 'arm("sketch")');
+  await say(a, 'arm("plane")');
   await hand.click(await a.screenOf([-15, 8, T]));
   await say(a, 'arm("circle")');
   await hand.drag(await a.screenOf([0, 0, T]), await a.screenOf([4, 0, T]));
@@ -267,7 +267,7 @@ async function upToFace(a: AppContext, hand: Hand, pictures: { held: string }): 
   await hand.click(await a.screenOf([PW + 20, 0, 0]));
   await hand.confirm();
   // A circle on the plate's top, extruded up to the block's lid.
-  await say(a, 'arm("sketch")');
+  await say(a, 'arm("plane")');
   await hand.click(await a.screenOf([-15, 8, T]));
   await say(a, 'arm("circle")');
   await hand.drag(await a.screenOf([0, 0, T]), await a.screenOf([4, 0, T]));

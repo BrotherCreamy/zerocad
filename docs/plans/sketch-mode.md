@@ -1,5 +1,10 @@
 # Plan: sketch on any plane or face, natively — on-plane relations as you draw, square to it when you start
 
+> **The word "sketch" is retired** (2026-11-12, the owner: *"There is no such
+> thing as a sketch"*): the tool is the Plane tool, the menu item "Draw on
+> this face", the workbench "Drawing". This file keeps its name and its words
+> as history; see [`no-sketch.md`](no-sketch.md).
+
 **Status: built** (2026-11-08), branch `claude/sketch-mode`, PR against
 `claude/resume-tasks-o7q02e`. The *Walkthrough* (what was measured before
 anything changed) and *As built* (what was decided) are at the bottom.
