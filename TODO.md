@@ -4,11 +4,11 @@ The working list, and the project's decision register. `STATUS.md` describes
 what exists; `CHANGELOG.md` is what already happened, newest first.
 
 **How work happens here:** the owner sets direction and can veto
-anything in the register below. Fable (the managing session) writes the specs
-in `docs/plans/` and reviews everything; Opus (the implementing session)
+anything in the register below. The managing session writes the specs in
+`docs/plans/` and reviews everything; an implementing session (a worker)
 builds from those specs. As of the kinematic-drag package, each work package
 runs in an **isolated worktree on its own branch and arrives as a PR against
-the working branch** — Fable reviews on the PR (a review comment plus merge,
+the working branch** — the manager reviews on the PR (a review comment plus merge,
 or plus close; GitHub does not allow formally approving a PR opened under
 your own identity), so the review record is visible on GitHub rather than
 buried in a chat log. Parallel workers only ever get disjoint specs; the e2e
@@ -3556,7 +3556,7 @@ are flagged as such.
         a unit-direction row has the same roots less the spurious one, and
         every old file reopens to the shape it was saved as.
 
-Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
+Queue for the workers, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
 - [x] **Touch targets that follow the interface size, and less air between

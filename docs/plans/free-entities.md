@@ -2,7 +2,7 @@
 
 **Status: shipped, pending review** (2026-09-01). Two commits, as planned:
 the model layer went first, implemented directly by the supervising session
-while Opus capacity was limit-blocked — only the command layer touches
+while worker capacity was limit-blocked — only the command layer touches
 `replenv.ts`, so the model half carried no conflict risk with box-select —
 and the command layer followed the worker/PR route on `claude/free-entities`.
 What was decided and discovered along the way is in `TODO.md`'s Done entry;
