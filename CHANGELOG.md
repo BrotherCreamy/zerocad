@@ -85,9 +85,25 @@ docs/plans/review-solver.md, whose *As built* has every measurement.
   same forty with a `par` across a corner: 874 ms the best seen before, 780
   as built) and its set is found sooner (507 → 197 ms). The spec has the
   table.
-- **Tests**: unit 2011 (was 1923): `test/directionrows.test.ts` (69),
-  `test/culprit.test.ts` (19). E2E: `reviewsolver.e2e.ts` (9, mouse and
-  iPhone 13), and `conflicts.e2e.ts` in the new words.
+- **With review-relations merged** (the entry below; it went in first, and
+  this was measured again on the two together). One relation among many is
+  the pair's rows, so it needed nothing: `par(l1, l2, l3, l4)` among four
+  free lines left them 41, 31, 89 and 123 long and leaves each as long as it
+  was, to 1.8e-9. **`corner`**, that package's angle between two walls'
+  lines, was a raw u·w − |u||w| cos row and left two free 60-long lines 69
+  and 89 long in 3D; it is `ang`'s row on the two rays out of the corner
+  now, and keeps them (1.3e-9). A conflict names a relation among many once,
+  with every member — `r5 par l1 l2 m1 — against r1` — and a line that
+  **joins** a relation makes the relation, as it now stands, the culprit; the
+  line leaving clears it. The join found a fault here: where the failing
+  solve folded a side, "one relation before any larger set" was asked only
+  of the relations naming the fold, and the status named the two far perps
+  where the corner's own would do. It is asked of the nearest dozen of all
+  of them now.
+- **Tests**: unit 2050 on the merged branch (1923 on the base, 2011 before
+  the merge): `test/directionrows.test.ts` (77), `test/culprit.test.ts`
+  (23). E2E: `reviewsolver.e2e.ts` (10, mouse and iPhone 13), and
+  `conflicts.e2e.ts` in the new words.
 
 ## 2026-11-12 — many at once is one relation among equals, and a wall is named by the line it is swept from
 

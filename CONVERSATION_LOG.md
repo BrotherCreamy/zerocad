@@ -163,6 +163,32 @@ page's model, because at that load the 500 ms bound ran out on a rectangle's
 extrude and the status read "against a set not found in time" — the bound
 doing its job, which has its own unit test.
 
+**review-relations went in first, and this was measured again on the two
+together.** Its author had said a relation among many would need no second
+edit, the rows being the pair's own inside one relation, and that held:
+`par` among four free lines left them 41, 31, 89 and 123 long on that branch
+and leaves each as it was on this one. What did need an edit was the row
+that branch added, `corner` — the angle between the lines two walls are
+swept from, u·w − |u||w| cos θ, written while this package was still
+removing every row of that shape. It is in `src/relations/`, so it was
+changed here rather than handed back: `ang`'s row on the two rays out of the
+corner.
+
+The culprit needed no change for a relation among many, because it is found
+by relation and never by block; and a `join` rewrites a relation's members,
+so "has not held as it stands" already says the joined relation made the
+conflict. Writing that test in 3D found something that was this package's
+own. The failing solve folded the rectangle's far side instead of stopping,
+the first ring the search tries is then the relations that name what folded,
+and the rule "one relation before any larger set" had been written against
+that ring. The answer — the two far corners' perps — is a true irreducible
+set and the wrong thing to read: the corner's own perp, alone, is outside
+the ring. The singles are asked of the nearest dozen of everything now.
+
+Not built: saying which member of a relation among many is the one that
+cannot hold. `r5 par l1 l2 m1 — against r1` fills three glyphs where one
+line is at fault. Filed.
+
 ## 2026-11-12 — one relation among equals, and a wall named by its line
 
 Review items 5 and 6, built on `claude/review-relations` from

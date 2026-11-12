@@ -125,7 +125,9 @@ machine's. Iterations and non-zeros do not depend on the load.
 Rows normalised: `par`, `perp`, `ang`, `col` (now a direction row and the
 second line's middle on the first), `on`, `sym` (points, lines, an arc's
 ends and centres), `tan` at a shared end (line–arc and arc–arc), `ang3`,
-and `perp(chord, e1)`'s edges (kept as a cosine). `dist` to a line and `tan`
+`corner` (review-relations' angle between two walls' lines; see *With
+review-relations merged* below), and `perp(chord, e1)`'s edges (kept as a
+cosine). `dist` to a line and `tan`
 to a circle or an ellipse were normalised already and now say which line
 they turn. `eq` and `sym`'s length row are about lengths and are as they
 were. Nothing in `src/kernel/` learned what a line is: it gained
@@ -302,20 +304,75 @@ moves 1.8e-3 as it regenerates — the same figure before and after
 - **Bug 74**: a conflict on a solid's edges drew nothing red, the glyphs
   being quiet with their anchors. A relation in a conflict is always drawn.
 
+### With review-relations merged (one relation among many; `corner`)
+
+review-relations (#91) went into the working branch first, so this branch
+merged it and was measured again on the result. "Before" in this section is
+that branch alone, which has the raw rows; the drawing is four free lines,
+none parallel to another, in 3D no three of their ends in a plane
+(`test/solver.measure.ts`, the two sections after the par pair's drag).
+
+| relation | before | as built | as built: worst change, of the length |
+|---|---|---|---|
+| `par(l1, l2, l3, l4)`, one relation, 2D | 60.133, 60.828, 55.317, 56.921 → 40.914, 30.846, 89.496, 122.998 | each as it was | 1.8e-9 |
+| the same, 3D | 60.663, 61.490, 56.214, 58.864 → 33.926, 41.947, 15.698, 99.296 | each as it was | 2.2e-10 |
+| `col(l1, l2, l3, l4)`, one relation, 2D | → 24.593, 23.456, 72.675, 99.472 | each as it was | 2.2e-9 |
+| the same, 3D | → 3.240, 43.508, 21.097, 92.748 | each as it was | 2.7e-10 |
+| `corner(l1, l2, 60°)`, 2D | 60.133, 60.828 → 61.459, 67.332 | each as it was | 1.1e-9 |
+| the same, 3D | 60.663, 61.490 → 68.597, 89.026 | each as it was | 1.3e-9 |
+| a drag of one end of one of four parallel lines: the worst of the three not touched | 54.120 → 28.975 (46% shorter) | 54.120 → 52.373 (3.2% shorter) | |
+
+All solved, before and after; 4 to 7 iterations before, 11 as built.
+
+- **A relation among many needed no edit.** Its rows are the pair's own,
+  each member with the first listed, inside one `model.relation`
+  (`relations/among.ts`), so they are the normalised rows and each says
+  which two lines it turns.
+- **`corner` did.** New in review-relations, it was u·w − |u||w| cos θ: the
+  shape this spec removes. It is now `ang`'s row on the two rays out of the
+  corner, says which lines it turns, and its gradient along either is zero
+  (`test/directionrows.test.ts`). The fixture that holds one
+  (`review-relations-wedge-v19`) reopens moving nothing.
+- **The culprit, with a relation among many.** One relation is one name
+  however many row blocks it owns, said with every member: `r5 par l1 l2 m1
+  — against r1`. A `join` changes a relation's members, so the relation as
+  it now stands has not held: it is the culprit of the conflict a join
+  makes, and `leave` clears it (`test/culprit.test.ts`, 2D and 3D; the e2e's
+  eighth test).
+- **A fault of this package's own, found by the join.** In 3D that failing
+  solve folded the far side rather than stopping; the search's first ring is
+  then the relations naming what folded, the two far corners' perps; and
+  "one relation before any larger set" was asked of that ring alone, so the
+  status read `against r8, r7` where the corner's own perp is the one a
+  person reads. The single relations are now asked of the nearest dozen of
+  all the others, whichever ring first clashed.
+- **Its three fixtures** (format 19, saved by the raw rows), opened and
+  solved, then jiggled as the table above — iterations before → as built:
+  `review-relations-v19` 0 → 0 opened (moved 0), kernel 9 → 7, model 9 → 7;
+  `review-relations-drift-v19` 2 → 2 opened (moved 4.3e-5 both: it is filed
+  that far off its relations, on purpose), kernel 9 → 6, model 9 → 13;
+  `review-relations-wedge-v19` 0 → 0 opened (moved 0), kernel 7 → 5, model
+  7 → 13. Times, best of three at the same load, model: 21.8 → 58.3 ms,
+  17.0 → 44.5 ms, 1.2 → 3.3 ms — the 2× to 3× of a drawing every length of
+  which was moved at once, as above.
+- **No format bump**: this package journals nothing new; the file's number
+  is review-relations' 20.
+
 ### Tests
 
-- `test/directionrows.test.ts` (69): the two free lines under eight
-  relations, 2D and 3D; the drag; where a sine or a cosine is flat; every
+- `test/directionrows.test.ts` (77): the two free lines under nine
+  relations, 2D and 3D; four free lines under one relation among them; the
+  drag; where a sine or a cosine is flat; every
   normalised row's gradient along its lines zero and equal to the finite
   differences', 2D and 3D; `perp(chord, e1)`; the rectangle and the prism to
   1e-9; a size no relation asked to change; a line drawn as a point; every
   fixture reopening to its shape.
-- `test/culprit.test.ts` (19): by addition, by `set`, an opened file, more
-  than one relation, past the budget, undo and redo, a feature's relations,
-  the status line and the palette.
+- `test/culprit.test.ts` (23): by addition, by `set`, an opened file, more
+  than one relation, past the budget, undo and redo, a relation among many
+  and a join, a feature's relations, the status line and the palette.
 - `test/conflicts.test.ts`: what read `collapsed` says which it is now; the
   triangle and the lid against its base still collapse and are still found.
-- `test/e2e/reviewsolver.e2e.ts` (9, mouse and iPhone 13) and
+- `test/e2e/reviewsolver.e2e.ts` (10, mouse and iPhone 13) and
   `test/e2e/conflicts.e2e.ts` in the new words.
 
 ### Pictures

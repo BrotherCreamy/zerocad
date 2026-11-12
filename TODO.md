@@ -56,6 +56,17 @@ otherwise.
     an arc's ends and centres), `tan` at a shared end (line–arc, arc–arc),
     `ang3`, and `perp(chord, e1)`'s edges. `on` and `sym` read the line's
     unit direction and are plain distances, with no multiplier.
+  - **And `corner`, which review-relations made** (the angle between two
+    walls' lines): it was a raw u·w − |u||w| cos row, merged in under this
+    package, and left two free lines 69 and 89 long. Changed here rather
+    than handed back, the rows in `src/relations/` being this package's.
+    Its fixture reopens moving nothing.
+  - **A relation among many is one culprit**, named once with every member
+    (`r5 par l1 l2 m1 — against r1`), and every member's glyph is filled —
+    the status does not say which member is the one that cannot.
+  - **A line joining a relation makes the relation the culprit**, as it now
+    stands: it held among two and has not held among three. Not "the line
+    that joined", which is not a relation and has no name to delete.
   - **`col` is a direction row and the second line's middle on the first**
     (blocks `|dir`, `|mid`; they were each end's wedge, `|start`, `|end`): an
     end's offset is still lowered by pulling that end in along its own line.
@@ -104,7 +115,10 @@ otherwise.
     was just `set`, though it cannot be deleted alone: it can be set back.
   - **One relation is tried before any larger set** (the nearest dozen): a
     rectangle's `par` disagrees with its own corner's perp alone and with
-    the two far ones together, and the one is what a person reads.
+    the two far ones together, and the one is what a person reads. The
+    dozen are the nearest of all the others, not of the ring that first
+    clashed: where the failing solve folded a side, that ring is the two
+    far perps (found by a `join`, in 3D).
   - **On a four-perp rectangle the set is that corner's one perp**, where
     the spec's e2e says "the two perps": one is the least. Delete it and the
     two far ones are named next.
@@ -2581,6 +2595,16 @@ are flagged as such.
           line it turns (`Model.addResidual`'s `turns`).
     - [ ] **`sym` of two lines about a mirror line of no length** divides by
           zero (`mirrored`, 2(d·u)/(u·u)); as it did before.
+    - [ ] **A culprit among many does not say which member**: `r5 par l1 l2
+          m1 — against r1` fills all three members' glyphs, where l2 is the
+          one that cannot be parallel. A trial of the relation less each
+          member in turn would find it (`leave` is what would then be
+          offered); not built.
+    - [ ] **review-relations' tests still pin their lines' lengths** with a
+          `dist` each, "so the solve turns them rather than shrinking one",
+          and say why (test/reviewrelations.test.ts; its e2e's lines made
+          parallel). They no longer need to. Left as written: they are that
+          package's, and its pictures were taken that way.
     - [ ] **A redone conflict in a file opened in conflict** singles out
           none, as the opened file did: nothing there had held.
     - [ ] **The status line of a conflict against several** wraps on a phone

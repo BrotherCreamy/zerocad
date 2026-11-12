@@ -408,6 +408,16 @@ The residual's form is not journalled, so no file changed: a unit-direction
 row has the roots the raw one had, less the collapsed one, and every fixture
 reopens to the shape it was saved as.
 
+**A new row that reads a line for its direction** is written the same way or
+it brings the bug back: `corner`, the angle between the lines two walls are
+swept from, arrived as u·w − |u||w| cos θ and left two free lines 69 and 89
+long. The form is `unit` of each line, the angle between them
+(`angleBetween`, `turnToParallel`, `turnToSquare`), times `rowLength` of
+`lengthBefore`, `fadeUnder` the floor, and the lines named as `turns`; and
+`test/directionrows.test.ts`'s `checkRows` asks of any row that its gradient
+along its lines is zero. A relation among many needs nothing: its rows are
+the pair's.
+
 ### A conflict names the relation that made it
 
 A minimal set is true and unhelpful: `r1 · r5 cannot all hold` leaves the
@@ -418,8 +428,15 @@ solve solved its part of the drawing (`settled`), and the one relation of a
 failed part that has not held — just added, or its value just `set` — is it.
 The search (`Model.conflicting`) is then only for what it cannot hold with:
 the culprit is in every trial, QuickXplain asks about the rest nearest
-first, and one relation is tried alone before any larger set. Past the
-search's bound the culprit is still named and its set is not.
+first, and one relation is tried alone before any larger set — the nearest
+dozen of all of them, whichever ring first clashed. Past the search's bound
+the culprit is still named and its set is not.
+
+The culprit is a relation, never a row block: one relation among many
+(`par("l1", "l2", "l3")`, relations/among.ts) owns a block for each member
+with the first and is named once, with every member. And "has held" is of
+the relation as it stands — the same call, the same arguments — so one a
+line has just joined has not, and is what made the conflict the join makes.
 
 None is singled out where none can be: a file opened in conflict (nothing in
 it has held here), or an edit of more than one relation. An undo and a redo

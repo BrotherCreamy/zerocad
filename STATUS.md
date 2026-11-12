@@ -13,7 +13,8 @@ etc).
 - **A direction relation turns a line and never scales it, and a conflict
   names the relation that made it** (docs/plans/review-solver.md, built;
   review items 1 and 3 of TODO.md's register). `par`, `perp`, `ang`, `col`,
-  `on`, `sym`, `tan` at a shared end, `ang3` and `perp(chord, e1)` read
+  `on`, `sym`, `tan` at a shared end, `ang3`, `corner` and `perp(chord, e1)`
+  — and so every relation among many, whose rows are the pair's — read
   their lines at **unit length** (`unit`, vec.ts) and are **the angle to
   turn through** (`turnToParallel`, `turnToSquare`, `angleBetween`), times
   how long the longer line was when the solve began (`Model.valueBefore`),
@@ -29,7 +30,8 @@ etc).
   relation of the failed part that has not held in a solve (`settled`),
   known without a search — and the least `set` it cannot hold with, or the
   set with none singled out for a file opened in conflict; `inheritHeld`
-  carries it across undo and redo. Said as `r7 par l1 l2 — against r1` in
+  carries it across undo and redo; a relation among many is one culprit,
+  and one a line just joined has not held. Said as `r7 par l1 l2 — against r1` in
   the status, the culprit's glyph filled red and its set's outlined in a
   quieter ink, and a `conflict` heading first in the constraints palette.
   Unit: `test/directionrows.test.ts`, `test/culprit.test.ts`; e2e:
