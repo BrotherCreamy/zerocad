@@ -295,6 +295,11 @@ export function syncTwins(model: Model): void {
 export function followWith(first: (model: Model) => boolean): void {
   defineFollower((model, after) => {
     const changed = first(model);
-    if (after !== "entity" || changed) syncTwins(model);
+    if (after === "entity" && !changed) return;
+    syncTwins(model);
+    // A twin just made may be what closes a profile — a `coin` typed on the
+    // lid joins the base's two ends through its twin — so `first` is asked
+    // once more, and the twins settled after it if it did anything.
+    if (first(model)) syncTwins(model);
   });
 }

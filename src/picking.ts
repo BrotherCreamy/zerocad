@@ -292,12 +292,17 @@ export function describeFeature(model: Model, f: FeatureEntry): string {
     const r = model.relations.get(f.angle);
     const value = r && typeof r.args[1] === "number" ? ` = ${round((r.args[1] * 180) / Math.PI)}°` : "";
     return `${f.name}  revolve of ${profile}, angle ${f.angle}${value} about ${f.axis}, `
-      + (f.twins.length === 0 ? "a full turn" : f.end === null ? "partial" : `end ${f.end}`);
+      + (f.twins.length === 0 ? "a full turn" : f.end === null ? "partial" : `end ${f.end}`)
+      + (f.unbuilt === undefined ? "" : ` — unbuilt: ${f.unbuilt}`);
   }
   const r = model.relations.get(f.depth);
   const value = r && typeof r.args[1] === "number" ? ` = ${round(r.args[1])}` : "";
+  // Why it makes no body, when it makes none (docs/plans/linked-profiles.md):
+  // open — an edge of its profile gone — or unbuilt, its depth deleted.
+  const state = f.unbuilt !== undefined ? ` — unbuilt: ${f.unbuilt}`
+    : f.open ? " — open: an edge of its profile is gone; draw it again, on either profile, and it closes" : "";
   // Only an old file's extrude has a lid frame to name (see `Expansion`).
-  return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}${f.top === undefined ? "" : `, lid ${f.top}`}`;
+  return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}${f.top === undefined ? "" : `, lid ${f.top}`}${state}`;
 }
 
 /**
@@ -353,7 +358,10 @@ export function describeRelation(r: RelationEntry): string {
     for (let i = 2; i + 1 < r.args.length; i += 2) if (r.args[i] !== r.args[i + 1]) pairs++;
     return `${r.name}  revolution ${arg(a)}${deg} about ${arg(r.args[0])}, ${pairs ? `${pairs} pairs` : "a full turn"}`;
   }
-  return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd();
+  // A linked twin says which relation it is the other end of (docs/plans/
+  // linked-profiles.md): set or delete either, and it is both.
+  const pair = r.twin ? `  ⇄ ${r.twin.of}` : "";
+  return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd() + pair;
 }
 
 function relationTag(model: Model, name: string): string {

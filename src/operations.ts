@@ -1838,7 +1838,7 @@ function sweptFrames(model: Model, frame: string, x: Expansion, given: unknown):
  * seeds, where a profile of free lines has no loop to be found, so a replay is
  * handed the profile and walks it by its joins.
  */
-export type Regenerated = [string, ProfileMember[][]];
+export type Regenerated = [string, ProfileMember[][]] | [string, ProfileMember[][], "open"];
 
 /** Every feature whose profile names one of `names` — whole, or a portion of it — in creation order. */
 export function featuresOnProfile(model: Model, names: readonly string[]): FeatureEntry[] {
@@ -1929,17 +1929,97 @@ export function regenerateNamed(model: Model, features: readonly string[], given
 /** A journal's (or a typed call's) list of regenerated features, checked for shape and copied. */
 export function givenRegenerated(list: unknown, op: string): Regenerated[] {
   const ok = Array.isArray(list)
-    && list.every((e) => Array.isArray(e) && e.length === 2 && typeof e[0] === "string" && Array.isArray(e[1]));
+    && list.every((e) => Array.isArray(e) && (e.length === 2 || (e.length === 3 && e[2] === "open")) && typeof e[0] === "string" && Array.isArray(e[1]));
   if (!ok) throw new Error(`${op}'s regenerated features are [feature, loops] pairs — the profile each was brought into step with`);
-  return (list as Regenerated[]).map(([name, loops]) => [name, loops]);
+  return (list as Regenerated[]).map(([name, loops, how]): Regenerated => (how === "open" ? [name, loops, how] : [name, loops]));
 }
 
 function regenerateGiven(model: Model, given: Regenerated[]): void {
-  for (const [name, loops] of given) {
+  for (const [name, loops, how] of given) {
     const f = model.featureOf(name);
+    if (how === "open" && f.kind === "extrude") {
+      rebuildOpen(model, f, loops);
+      continue;
+    }
     const profile = givenProfile(model, f.member, f.frame, loops, f.kind === "extrude" ? EXTRUDE : REVOLVE);
     rebuildFeature(model, f, planSweep(model, profile));
   }
+}
+
+/**
+ * A sweep plan for an extrude whose profile **no longer closes**
+ * (docs/plans/linked-profiles.md): its members each as they stand, end to
+ * end where they still meet, with no walk round to check. What `rebuildBody`
+ * needs to bring the other profile into step member for member — a trimmed
+ * line's twin re-pointed to the twin of its new end, that end given its twin
+ * and its wall — without the loop a solid needs.
+ */
+function planOpen(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, loops: ProfileMember[][]): SweepPlan {
+  if (!planeAxes(model, f.frame)) throw new Error(`"${f.frame}" has collapsed — it has no plane for a profile to lie in`);
+  const walked = loops.map((members) => members.map((m): Walked => {
+    const e = model.entities.get(memberName(m));
+    if (!e || !isProfileKind(e.kind)) throw new Error(`"${memberName(m)}" is not ${PROFILE_KINDS} — it cannot be part of a profile`);
+    const ends = chainEnds(model, m);
+    return { name: e.name, kind: e.kind as Walked["kind"], from: ends?.[0] ?? null, to: ends?.[1] ?? null, ends, part: typeof m !== "string" };
+  }));
+  return { frame: f.frame, loops, walked, classOf: joinClasses(model), crossings: null, toMake: [], made: new Map(), swept: [] };
+}
+
+/** An extrude rebuilt on a profile that does not close (`planOpen`), and left open. */
+function rebuildOpen(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, loops: ProfileMember[][]): ProfileMember[][] {
+  const out = rebuildFeature(model, f, planOpen(model, f, loops));
+  const { name, ...draft } = model.featureOf(f.name, "extrude");
+  model.rewriteFeature(name, { ...draft, open: true });
+  return out.loops;
+}
+
+/**
+ * Whether a feature named can be **left open** by an edit that takes its
+ * profile's closure away — a trim back from a corner — rather than refuse the
+ * edit: an extrude with its extrusion standing. The owner: *"reining in one
+ * side should trim on the other also"*; a trim that leaves the loop open is
+ * the same thing a deleted edge is, and that leaves the extrude open.
+ */
+export function canOpen(model: Model, feature: string): boolean {
+  const f = model.features.get(feature);
+  return f?.kind === "extrude" && model.relations.get(f.depth)?.op === "extrusion";
+}
+
+/**
+ * The features named brought into step with their profiles **as open**
+ * extrudes: each member's twin re-pointed or made, by `rebuildOpen`, and what
+ * to journal for each — `[name, loops, "open"]`, which a replay rebuilds the
+ * same way. What `trim` calls for a feature its change has opened.
+ */
+export function regenerateOpen(model: Model, features: readonly string[]): Regenerated[] {
+  const out: Regenerated[] = [];
+  for (const name of features) {
+    const f = model.featureOf(name, "extrude");
+    out.push([name, rebuildOpen(model, f, f.loops), "open"]);
+  }
+  return out;
+}
+
+/**
+ * **Closes every open extrude whose profile is a loop again as the drawing
+ * stands** — by any means: an end extended back to an edge, an arc drawn in.
+ * `relinkOpen` closes one by its joins alone, where the model's follower can
+ * run; this reads positions, as `regen` does, so it is the host's to call
+ * after a person's edit, and each closing is journalled as the `regen` it is.
+ * Returns the features closed.
+ */
+export function closeOpen(model: Model): string[] {
+  const closed: string[] = [];
+  for (const f of [...model.features.values()]) {
+    if (f.kind !== "extrude" || !f.open || f.unbuilt !== undefined) continue;
+    try {
+      regen(model, f.name);
+      closed.push(f.name);
+    } catch {
+      // not a loop yet
+    }
+  }
+  return closed;
 }
 
 /**
@@ -2416,13 +2496,18 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
       for (const loop of walked) {
         for (const m of loop) {
           if (m.from === null) continue;
-          const k = classKey(classOf, real(m.from));
-          if (walled.has(k)) continue;
-          walled.add(k);
-          const { base, twin } = byClass.get(k)!;
-          const w = oldWall.get(k);
-          const stands = w !== undefined && model.line(w).refs[0] === base && model.line(w).refs[1] === twin;
-          walls.push(made(stands ? w : model.addLine(base, twin).name));
+          // Each member's start, then its end: in a closed loop the end is the
+          // next member's start, so the order — and every name — is what it
+          // was; an open chain's last vertex (`planOpen`) gets its wall too.
+          for (const v of [m.from, m.to!]) {
+            const k = classKey(classOf, real(v));
+            if (walled.has(k)) continue;
+            walled.add(k);
+            const { base, twin } = byClass.get(k)!;
+            const w = oldWall.get(k);
+            const stands = w !== undefined && model.line(w).refs[0] === base && model.line(w).refs[1] === twin;
+            walls.push(made(stands ? w : model.addLine(base, twin).name));
+          }
         }
       }
     }

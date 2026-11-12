@@ -926,8 +926,37 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
    */
   const taken = new Map<string, number>();
 
+  // **A linked pair's dimension is drawn once** (docs/plans/linked-profiles.md):
+  // on whichever of the two profiles is nearer the viewer, so the one number
+  // is never written twice, one over the other, when a solid is looked at
+  // square-on. A mark with no number is drawn on both ends — a right angle
+  // is true of each profile and says so at each. Which end is decided by the
+  // first anchor's depth, and by sight: an end a solid hides gives way.
+  const quiet = new Set<string>();
+  const { toward } = viewAxes(view);
+  const seen = new Set<string>();
   for (const r of model.relations.values()) {
-    if (!shownGlyph(model, r.name)) continue;
+    if (seen.has(r.name) || (!r.twin && ![...model.relations.values()].some((x) => x.twin?.of === r.name))) continue;
+    const pair = model.linkedRelations(r.name);
+    for (const n of pair) seen.add(n);
+    const shown: { name: string; near: number; inSight: boolean }[] = [];
+    for (const n of pair) {
+      const x = model.relations.get(n)!;
+      try {
+        if (!shownGlyph(model, n) || labelOf(model, x) === null) continue;
+        const [a] = anchorsFor(model, view, x);
+        if (a) shown.push({ name: n, near: dot3(lift3(a.world), toward), inSight: inSight(occ, a.world) });
+      } catch {
+        // an end that cannot be laid out is not a candidate
+      }
+    }
+    if (shown.length < 2) continue;
+    const best = shown.reduce((p, c) => (c.inSight !== p.inSight ? (c.inSight ? c : p) : c.near > p.near + 1e-9 ? c : p));
+    for (const s of shown) if (s !== best) quiet.add(s.name);
+  }
+
+  for (const r of model.relations.values()) {
+    if (!shownGlyph(model, r.name) || quiet.has(r.name)) continue;
     let anchors: Anchor[];
     try {
       anchors = anchorsFor(model, view, r);
