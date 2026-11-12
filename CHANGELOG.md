@@ -67,7 +67,10 @@ over (desktop) or select (phone) a tool."* (docs/plans/tool-howto.md).
   which hold either way, and the picture wants retaking once that lands.
 - Tests: `test/toolhowto.test.ts` (15) and `test/e2e/toolhowto.e2e.ts` (12:
   eight under fingers — every tool on the tray and behind it chosen in turn —
-  one in landscape, three with a mouse). No existing test changed.
+  one in landscape, three with a mouse). No existing test's code changed
+  (harness.ts's opening comment carries the count, seventy-four). One of
+  them now says less than it reads: `tooltips.e2e.ts` asserts a tap "shows
+  no tooltip", true of `#tooltip` and silent about `#chosentip`.
 
 ## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
 
