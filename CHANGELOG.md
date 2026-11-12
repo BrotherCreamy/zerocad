@@ -9,6 +9,21 @@ decisions.
 
 ## 2026-11-12 — a fillet is one thing: the corner is kept as construction on both profiles, the solid's edge fillet is the sketch's, and anything can be construction
 
+*Merged into the working branch (`0b2560f`) on top of the through-all
+package; twenty-three conflicts, most of them the format literal (23
+stands, both packages' notes and old-file paths kept), the docs spliced
+newest-first. One meeting point in code, patched in the merge:
+`regenerateRounded` now hands a through-all `"end"` entry on and chooses
+every through-all end's far point again after a rounding, as
+`regenerateFound` does. The gate on the merge: typecheck 0; unit
+2136/2136 (load 7–12); kernel 11/11; the eighteen browser files the two
+packages touch — filletsonething, throughall, regen, deletion, dimensions,
+extrude, loops, organiser, reviewrelations, sketchedit, sketchmode,
+contextmenu, firstrun, tooloptions, solidtools, solidtoolsphone, camera,
+workbenches — 139/139. The full browser suite was run by the worker on the
+branch before the merge (828/833, the rest known and accounted for in its
+PR).*
+
 The owner: *"adding them to the originating chain/loop of a region of a body
 shouldn't break the body. The change should propagate through the entire
 hierarchy (yes: hierarchies do exist, but they are not timeline based). Also,
