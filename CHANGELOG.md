@@ -78,7 +78,14 @@ a container (docs/plans/no-sketch.md, with an *As built*).
   `nosketch.e2e.ts` (6, mouse and iPhone 13). Decisions in TODO.md's
   register; the alternatives in CONVERSATION_LOG.md.
 
-GATE_PLACEHOLDER
+Measured on the merge with gate-stability (`2f062ff`): typecheck 0; unit
+2145 of 2145 (load 3–8.5); kernel 11 of 11; browser 845 tests, 841 passed,
+2 picture skips, 2 failed — both expectations this package changed
+(`tools()` listing the `sketch` alias after `circle3`, panels.e2e.ts; a held
+tooltip under a finger saying *tap*, tooltips.e2e.ts), fixed and rerun 49 of
+49 in their two files at load 2.6–5. The full run took 28 minutes at load
+0.4→9.4→3.8, with another worker's suite beside it; the Android font-scale
+test, overlaylock's see-through tests and fits.e2e.ts all passed in it.
 
 ## 2026-11-12 — the gate made trustworthy again: four failures that were not the app's (and one that was, in the browser only)
 
