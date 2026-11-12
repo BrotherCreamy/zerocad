@@ -177,7 +177,12 @@ test("Through all on a stepped body: a boss on the plate, a hole from the boss's
   await shot("6-through-all-preview");
   await press("#options .oact button.ok");
   const args = await lastExtrude();
-  assert.deepEqual(args?.at(-1), { mode: "cut", into: "e1", end: "through" }, JSON.stringify(args));
+  // Journalled with the far vertex it found (docs/plans/through-all-relation.md): a corner of the plate's base, held on the cut's lid.
+  const opts = args?.at(-1) as { mode: string; into: string; end: string; to: unknown };
+  assert.deepEqual([opts.mode, opts.into, opts.end], ["cut", "e1", "through"], JSON.stringify(args));
+  assert.match(String(opts.to), /^p\d+$/, `held on a vertex of the plate: ${JSON.stringify(args)}`);
+  const held = await app.page.evaluate(() => [...(window as never as Neo).__neocad.model.relations.entries()].find(([n]) => n.endsWith("_through"))?.[0]);
+  assert.match(held ?? "", /^e\d+_through$/, "the relation, named for the cut");
   const [b] = await bodies();
   assert.ok(b.valid);
   const cut = b.features.at(-1)!;

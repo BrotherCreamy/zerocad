@@ -7,6 +7,59 @@ decisions.
 
 ---
 
+## 2026-11-12 — through all is a relation: the far vertex on the cut's lid, and up to face is the same relation the other way
+
+Review item 8, which the owner passed: *"Through all should be a relation to
+the far face's defining geometry."* His principles: *"correct relationships
+BETWEEN entities … bidirectional relationships everywhere by default"*, *"I
+should be able to pull on anything"*, *"hierarchies do exist, but they are
+not timeline based."* Spec: [`docs/plans/through-all-relation.md`](docs/plans/through-all-relation.md),
+with an *As built*. Pictures 510–521 in `docs/images`, mouse and iPhone 13.
+
+- **What was true before, measured** (`test/throughrelation.test.ts`'s first
+  three tests, `test/through.measure.ts`): a through-all cut's lid was held at
+  a number the solids layer worked out, read as a constant inside the
+  `extrusion` row. One way: the cut's far rim pulled, the plate moved
+  **0.000**. No row read the cut's lid and the plate together. Nothing was
+  listed. And a plate with a through hole in it **could not be dragged at
+  all** — a corner pulled 8 moved 0.000, along the plate and off it. Two
+  through cuts compounded: the second stood a tenth past the first one's
+  tool.
+- **Built**: a through-all extrude's lid is held by `onplane("p7", "e2.lid")`
+  — the far vertex of what its swept profile meets, named `e2_through`,
+  listed, marked at the vertex and on the cut's far rim, deletable (a blind
+  cut where it stood, one journalled step), named in a conflict. The
+  `extrusion` gives no length row while it stands; the lid is **on** the far
+  face, and the kernel builds a cut's tool a tenth past it. The plate set
+  deeper: 7 iterations and 8 ms where it took 35 and 63 (a hole and a pocket:
+  8 and 13 for 9 and 50). The corner dragged 8 moves 8.
+- **Up to face**: the end row's third choice and one press on the face —
+  `onplane(<lid point>, "e1:l2")`, `e2_upto`, held both ways for a flat face
+  parallel to the sketch; refused in words for one that is not; a round wall
+  or a face only the kernel knows placed at the press.
+- **Placed, not faked**: a round far side (a revolve) or nothing met leaves
+  an ordinary depth, labelled "through (placed)", with the log saying to set
+  the end again after a change.
+- **Chosen once, by an operation**: the call, `setEnd`, `regen` and `fillet`
+  journal the vertex they found (`{ end: "through", to: "p7" }`,
+  `setEnd("e2", "through", "p7")`, `[e2, [], "end", "p9"]` in a regenerated
+  list); a replay runs on seeds and searches nothing. A turn that leaves
+  another corner farther is said in the organiser's row ("short") with one
+  tap to take the far side again — never re-pointed inside a solve.
+- **Format 23**: a file from before replays its through cuts as they were
+  and, once its saved values are back, finds each far side once and writes
+  the `setEnd` at the journal's end; it re-saves in the new form and opens to
+  the same solid (`test/fixtures/through-v21`, by volume).
+- **The hook is gone**: `defineThroughReach`/`throughReach` are no more;
+  `lidReach` lives in relations/extrusion.ts and reads the model alone;
+  `src/farside.ts`, at the operations' height, says which vertex.
+- **Tried and kept out**: a cap's normal as a column of the row. It settled a
+  drag that had stalled — but let a contradicting dimension be met by sliding
+  the hole 150 along the plate and leaning the cut half a degree, SOLVED
+  where it is a conflict. The datum stays; both are in the register and
+  `CONVERSATION_LOG.md`.
+- **Slower where it moves at all**: a resize drag of a plate with a hole and
+  a pocket, twelve frames, 1.6 s where before the drag did nothing; filed.
 ## 2026-11-12 — a tool says how to use it: on a hover, and on a phone as it is chosen
 
 The owner, asked to try adding a parallel relation: *"I don't even know how

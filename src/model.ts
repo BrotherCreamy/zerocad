@@ -813,8 +813,10 @@ export interface ExtrudeFeature {
   /** What it does to a body, and which body. See `FeatureMode`. */
   mode?: FeatureMode;
   into?: string;
-  /** How it ends, when not blind — through all, or half each side of its sketch. See `Extent`. */
+  /** How it ends, when not blind — through all, up to a face, or half each side of its sketch. See `Extent`. */
   extent?: Extent;
+  /** The face it ends on, when `extent` is `"upto"` — as a relation writes one (`"e1:l2"`, `"e1.base"`, the kernel's `"e3.f0"`). */
+  upto?: string;
   /**
    * The region it stands on (`RegionEntry`, docs/plans/regions-as-operations.md):
    * what its profile is regenerated from when the region is edited. Every
@@ -990,22 +992,36 @@ export const FEATURE_MODES: readonly FeatureMode[] = ["new", "add", "cut", "inte
  * which is what a record with no `extent` is (docs/plans/solid-tools-intuitive.md;
  * the owner: *"I'm still not clear on how to use the extrude cut tool"*):
  *
- * - **through** — through all: past the far side of everything made before
- *   it, along the depth's sign. Relational: the lid is held there by the depth
- *   dimension, which reads how far that is off the live geometry every solve
- *   (`lidReach`), so a cut through a plate follows the plate when it is made
- *   deeper. The dimension's number keeps only its sign — which way.
+ * - **through** — through all: its lid on the far side of what it goes
+ *   through. **A relation, not a number** (docs/plans/through-all-relation.md,
+ *   the owner: *"correct relationships BETWEEN entities … bidirectional
+ *   relationships everywhere by default"*): the far vertex of the bodies its
+ *   swept profile meets, held on this extrude's lid by an ordinary
+ *   `onplane("p7", "e2.lid")` named for the record (`e2_through`,
+ *   `endName`) — visible, deletable, both ways. While that relation stands
+ *   the `extrusion` holds no length of its own (relations/extrusion.ts) and
+ *   the depth's number keeps only its sign, which way. Where the far side has
+ *   no vertex (a round one) or nothing is met, there is no relation: the end
+ *   is **placed**, an ordinary blind depth at the number the operation put
+ *   there, and the label says so.
+ * - **upto** — up to a face: the same relation the other way round, this
+ *   extrude's lid point on that face — `onplane(<lid point>, "e1:l2")`,
+ *   named `e2_upto` — for a flat face parallel to the sketch; placed, as
+ *   above, for a round face or one only the kernel knows. The record keeps
+ *   the face's name (`ExtrudeFeature.upto`) so a placed one can still say
+ *   what it was placed on.
  * - **symmetric** — half the depth each side of the sketch plane: the lid
  *   held at half the depth, the base cap drawn as far the other way (faces.ts)
  *   and built so (solids.ts). The dimension's number is the whole depth, as
  *   SolidWorks' mid plane and Onshape's symmetric both read it.
  *
- * A record's, journalled in the call's options (`{ end: "through" }`) like
- * its mode, so a replay builds it as it was made; changed afterwards by
- * `setEnd`. An extrude's only: a revolve's end is its angle.
+ * A record's, journalled in the call's options (`{ end: "through", to: "p7" }`)
+ * like its mode — with what it found resolved, since a replay searches
+ * nothing — and changed afterwards by `setEnd`. An extrude's only: a
+ * revolve's end is its angle.
  */
-export type Extent = "through" | "symmetric";
-export const EXTENTS: readonly Extent[] = ["through", "symmetric"];
+export type Extent = "through" | "symmetric" | "upto";
+export const EXTENTS: readonly Extent[] = ["through", "symmetric", "upto"];
 
 /** The extrude whose depth dimension `relation` is, or null — what a depth reads its end condition off. */
 export function extrudeOfDepth(model: Model, relation: string): ExtrudeFeature | null {
@@ -1014,30 +1030,49 @@ export function extrudeOfDepth(model: Model, relation: string): ExtrudeFeature |
 }
 
 /**
- * How far a through-all extrude's lid stands off its sketch, signed as its
- * depth: what the solids layer works out from the geometry made before it
- * (solids.ts, `throughReach`), registered there because only it knows a
- * feature's solid. Until it is, through all reads as blind.
+ * The name the relation holding a through or up-to-face extrude's end goes
+ * by: the record's, as its perpendicular's is (`e2_through`, `e2_upto`) —
+ * derived, so it claims no counter and an old file's later `r`s keep theirs.
  */
-type ThroughReach = (model: Model, f: ExtrudeFeature, depth: number) => number;
-let throughReach: ThroughReach | null = null;
-
-export function defineThroughReach(reach: ThroughReach): void {
-  throughReach = reach;
+export function endName(record: string, extent: "through" | "upto"): string {
+  return `${record}_${extent}`;
 }
 
 /**
- * Where an extrusion holds its lid, along the sketch's normal, for a depth
- * dimension of value `depth`: the depth itself (blind), half of it
- * (symmetric), or past everything made before (through). Asked by the
- * `extrusion` relation at every evaluation — so the lid follows what it reads
- * — and by the solids layer when it builds the solid the lid bounds.
+ * The relation an extrude's end is **held** by, or null: for a record that
+ * ends through all or up to a face, the `onplane` named for it, while it
+ * stands. Null for blind and symmetric, and for an end that is only *placed*
+ * (`Extent`). Structure alone — names, never positions — so the `extrusion`
+ * relation can ask it at every evaluation and the layers above agree with it.
  */
-export function lidReach(model: Model, relation: string, depth: number): number {
-  const f = extrudeOfDepth(model, relation);
-  if (!f?.extent) return depth;
-  if (f.extent === "symmetric") return depth / 2;
-  return throughReach ? throughReach(model, f, depth) : depth;
+export function endRelation(model: Model, f: ExtrudeFeature): RelationEntry | null {
+  if (f.extent !== "through" && f.extent !== "upto") return null;
+  const r = model.relations.get(endName(f.name, f.extent));
+  return r && r.op === "onPlane" ? r : null;
+}
+
+/**
+ * How an extrude ends, in three words a label can carry: `through all` and
+ * `up to e1:l2` while a relation holds the end, `through (placed)` and
+ * `up to e3.f0 (placed)` where none does and a depth stands in for it —
+ * null for blind and symmetric, whose label is the depth itself. Read off
+ * the structure, so the label cannot say held of an end that is not.
+ */
+export function endLabel(model: Model, f: FeatureEntry | undefined | null): string | null {
+  if (!f) return null;
+  if (f.kind !== "extrude" || (f.extent !== "through" && f.extent !== "upto")) return null;
+  const held = endRelation(model, f) !== null;
+  if (f.extent === "through") return held ? "through all" : "through (placed)";
+  return `up to ${f.upto ?? "a face"}${held ? "" : " (placed)"}`;
+}
+
+/** The extrude a relation holds the end of — `e2` for `e2_through` — or null. */
+export function extrudeOfEnd(model: Model, relation: string): ExtrudeFeature | null {
+  for (const f of model.features.values()) {
+    if (f.kind === "extrude" && (f.extent === "through" || f.extent === "upto") && endName(f.name, f.extent) === relation
+      && model.relations.has(relation)) return f;
+  }
+  return null;
 }
 
 /**
@@ -1050,7 +1085,7 @@ export function lidReach(model: Model, relation: string, depth: number): number 
  * back into an open extrude's profile is. The follower is told which. The
  * linked profiles' upkeep registers here (twins.ts): the model holds the
  * structure of a link and calls this, and knows nothing of what a twin is
- * made of, as `defineThroughReach` keeps it from knowing what a body is.
+ * made of.
  */
 type Follower = (model: Model, after: "relation" | "operation" | "entity") => void;
 let follower: Follower | null = null;

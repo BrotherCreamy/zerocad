@@ -33,7 +33,7 @@
 import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
 import { curveNormal, joinVars, unitDuals } from "./refs.ts";
-import { ORIGIN, lidReach } from "../model.ts";
+import { ORIGIN, endRelation, extrudeOfDepth } from "../model.ts";
 import { norm, vecSub } from "./vec.ts";
 
 /** Kinds a twin may be of, given its base's: the same, or (a whole circle's part) an arc for a circle. */
@@ -77,6 +77,33 @@ export function extrusionChord(model: Model, relation: string): number[] | null 
 }
 
 /**
+ * Where an extrusion holds its lid, along its chord, for a depth dimension of
+ * value `depth` — what its length row holds the chord to, and what the layers
+ * above ask (`reseatLid`, the solids layer's `extrudeSpan`):
+ *
+ * - **blind** (no end condition, or one that is only *placed*): the depth;
+ * - **symmetric**: half of it;
+ * - **held** — through all or up to a face, with the relation that holds it
+ *   standing (`endRelation`): the chord's own length **as it stands**, signed
+ *   as the depth. The extrusion says nothing of that length (see `extrusion`),
+ *   so the reach is wherever the relation to the other body has put the lid.
+ *
+ * Read off the model alone. It used to ask the solids layer how far every
+ * solid made before stood, through a hook, at every evaluation of the row
+ * (docs/plans/through-all-relation.md): a number that depended on another
+ * body's points and named none of them.
+ */
+export function lidReach(model: Model, relation: string, depth: number): number {
+  const f = extrudeOfDepth(model, relation);
+  if (!f?.extent) return depth;
+  if (f.extent === "symmetric") return depth / 2;
+  if (!endRelation(model, f)) return depth;
+  const chord = extrusionChord(model, relation);
+  const len = chord ? Math.hypot(...chord) : 0;
+  return len > 0 ? Math.sign(depth) * len : depth;
+}
+
+/**
  * Holds each `twin` at its `base` plus the one chord, and the chord as long as
  * the lid stands off its sketch.
  *
@@ -92,7 +119,9 @@ export function extrusionChord(model: Model, relation: string): number[] | null 
  *   chord's own direction all the way down. Its **sign** is where the twins
  *   are: seeded on the depth's side by the operation, and moved across by
  *   `set` when the depth's sign changes (operations.ts), so the side is the
- *   geometry's and no direction is read to keep it.
+ *   geometry's and no direction is read to keep it. **No row at all while
+ *   the end is held by a relation of its own** — through all, or up to a
+ *   face (see below).
  * - **Every other pair of points**: three residuals, `(t − b) − (t₀ − b₀)` —
  *   moved as the chord's twin is. Linear, nothing squared, both ways: a drag
  *   on any twin pulls its base and the chord, a drag on any base the rest.
@@ -110,10 +139,23 @@ export function extrusionChord(model: Model, relation: string): number[] | null 
  * +depth was seeded, and what an old file named — and holds nothing.
  *
  * **The lid stands where the extrude's end condition says** (`lidReach`): at
- * the depth for a blind extrude, at half of it for a symmetric one, and past
- * everything made before it for a through-all one — read at every evaluation,
- * by the relation's own name, so a lid through all follows the body it goes
- * through.
+ * the depth for a blind extrude and at half of it for a symmetric one — read
+ * at every evaluation, by the relation's own name, since the record is made
+ * after the relation and `setEnd` changes it later.
+ *
+ * **A through-all or up-to-face extrude has no depth of its own**
+ * (docs/plans/through-all-relation.md): its lid is held by a relation between
+ * entities — the far vertex of what it goes through on its lid
+ * (`e2_through`), or its lid point on a face (`e2_upto`) — and while that
+ * relation stands this one **gives no length row**: the chord stays the one
+ * translation every twin shares, square to the profile by `e2_perp`, and as
+ * long as the other body makes it. Asked at every evaluation, by names alone
+ * (`endRelation`), so the row is back the moment that relation goes — by
+ * `setEnd`, by a deletion, by a cascade that took its far point — and an
+ * extrude can never be left with neither. Until 2026-11-12 the row read the
+ * far side's distance as a constant through a hook into the solids layer:
+ * one way, a Jacobian that did not name what it depended on, and nothing to
+ * see or delete.
  *
  * 3D only: in 2D there is no direction out of the plane to offset along.
  * Refuses a depth of zero (a lid on its base is no solid) and anything not a
@@ -140,10 +182,12 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
   // The relation's own name, known once it is made: what the end condition is read by.
   let self = "";
   const reach = () => lidReach(model, self, depth);
+  /** Whether a relation of its own holds the lid — then the chord's length is that relation's to say. */
+  const held = () => { const f = extrudeOfDepth(model, self); return !!f && endRelation(model, f) !== null; };
   self = model.relation("extrusion", [frame, depth, ...pairs], () => {
     const datum = datumOf(model, frame);
     const c0 = [...model.point(chord.base).varIndices, ...model.point(chord.twin).varIndices];
-    model.addResidual(c0, (l) => [norm(vecSub(l.slice(3, 6), l.slice(0, 3))).sub(Math.abs(reach()))], `extrusion(${chord.base},${chord.twin})`);
+    model.addResidual(c0, (l) => (held() ? [] : [norm(vecSub(l.slice(3, 6), l.slice(0, 3))).sub(Math.abs(reach()))]), `extrusion(${chord.base},${chord.twin})`);
     /** The chord as Duals, from its pair's six locals at `at`. */
     const chordAt = (l: Dual[], at: number) => vecSub(l.slice(at + 3, at + 6), l.slice(at, at + 3));
     for (let i = 0; i < pairs.length; i += 2) {

@@ -10,6 +10,77 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-12 — through all is a relation: what was tried, what was measured, what was kept out
+
+Built on `claude/through-all-relation` from docs/plans/through-all-relation.md
+(review item 8). The register has the choices; this is the why, and the two
+things that were built, measured and taken out again.
+
+**The spec was made exact before any code.** It was written against the
+code before linked profiles and the solver package; read against 93abd3d,
+three of its sentences could not stand. "Both sides variables, exact
+Jacobian" — an `onplane` on a cap reads the cap's normal as a datum, so the
+row is exact in the two points and not in the lid's turn. "The search runs
+once, at replay" — a replay runs on seeds (operations.ts's own rule), where
+the far side cannot be found; so every operation that chooses a far point
+journals it, and an old file's through cuts are given theirs after the saved
+values are back, not at the step. And "made before" had a fourth fault the
+list did not have: a second through cut read the first one's tool as a body
+and stood a tenth past *that* — measured, 1.4 and 2.94 past the far face of
+a 14-deep plate. These went into the spec as a section of their own, then
+into the code.
+
+**Reproduced first, and one thing more.** The three faults the spec lists
+were written as tests on the base and failed there: the plate moved 0.000,
+no row read both bodies, nothing was listed. The measurement file found a
+fourth: on the base, a plate with a through hole could not be dragged — a
+corner pulled 8 moved 0.000, along the plate and off it, in both scenes. The
+reach's constant, re-read inside the row, left the first frame unsolved and
+every frame after it filtered out as the stuck part. Nobody had dragged a
+plate with a hole in it under a test.
+
+**The cap's normal as a column, built and taken out.** The up-to-face test
+dragged a boss's lid 5 against a block whose base is on the frame and whose
+depth is 42: nothing can give but the pull. With the normal a datum the
+solve stalled: 6e-4 off after two hundred iterations, improving five per
+cent a call, the stationary point of a wrong Jacobian. So `readPlane` was
+given the chord's six variables and the unit chord as Duals; the drag
+settled in two iterations. Then the conflict test turned SOLVED: `dist` 15
+on a through cut's chord through a plate 10 thick was met by sliding the
+hole 150 along the plate's top (nothing holds it in the plane) and leaning
+the cut half a degree against its `par` — a unit angle row, no length in it,
+0.014 a row, under the offender threshold. Scaling the perpendicular's
+curve-normal rows by the chord's length moved the slide to 280 and the lean
+to the `par` instead. With the plate pinned by `fix` the hole still slid. The
+lever is real geometry: an angle row costs the same whatever the arm, and a
+free translation makes the arm as long as the solve likes. Rejected, not
+because the exact row is wrong — it is right — but because the row that
+should refuse the lean is an angle, and that is review-solver's `k = 1` for
+normal rows, which is not this package's to change under a through cut. The
+datum stays, the stall is filed with the lever, and the fix for both is
+written where it goes (TODO.md, *Next up*).
+
+**The relation is not the record's.** The first cut had `e2_through` in the
+feature's `names`, as `e1_perp` is not; a relation a record names is
+background to the conflict search (`removable`), and the spec wants it named
+in a conflict. So it is found by its derived name, like `e1_perp`, and goes
+with the record only where the lid has no three points to re-hold it on
+(`reholdFaces`, linked-profiles' rule, unchanged).
+
+**Where the length row goes, and why lazily.** The extrusion's length row
+is not removed when an end is held; the block gives no row while
+`endRelation` finds one. The alternative — rebuilding the extrusion without
+its row — leaves a cascade that takes the far vertex, or a `del` of the
+relation, able to leave an extrude with neither row nor relation. Asked by
+name at every evaluation, the row is back the moment the relation is gone,
+by any road.
+
+**The shear.** With the normal a column, two scenes whose profiles had only
+`onplane`s — `plate()`'s and a hand-drawn pocket's — sheared into slivers
+when pulled through their lids: every length well above ε·L, every
+perpendicular met because the edges had turned parallel. The tools never
+draw such a profile (a rectangle is four perps), so the tests were given
+what the tools give; the collapse check's blindness to angles is filed.
 ## 2026-11-12 — "there is no such thing as a sketch"
 
 Asked whether the status's free count should include a flat drawing's

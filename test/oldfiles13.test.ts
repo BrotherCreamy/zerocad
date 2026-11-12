@@ -131,7 +131,7 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     sameGeometry(m, solvedGeometry(name, want), 1e-6, "regenerated");
 
     const once = save(m);
-    assert.equal(JSON.parse(once).version, 21);
+    assert.equal(JSON.parse(once).version, 23);
     const back = open(once);
     assert.equal(save(back), once, "re-saves stably as the current format");
     sameGeometry(back, solvedGeometry(name, want), 1e-6, "reopened");
@@ -164,7 +164,7 @@ test("a fresh document's file is the current format (17), its curves frameless, 
   m.addCircle(m.addPoint([1, 2, 0]).name, 4);
   const text = save(m);
   const saved = JSON.parse(text);
-  assert.equal(saved.version, 21);
+  assert.equal(saved.version, 23);
   assert.deepEqual(saved.journal[1], { op: "addCircle", args: ["p1", 4, null, "c1"] });
   assert.deepEqual(saved.values.normals, { c1: [0, 0, 1] });
   assert.equal(save(open(text)), text);

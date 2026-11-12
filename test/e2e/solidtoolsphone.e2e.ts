@@ -187,7 +187,9 @@ test("on an iPhone: a circle on the lid, Cut held out of the extrude's button, â
   assert.equal(await app.page.$eval('#options select.obeside[data-option="end"]', (x) => (x as HTMLSelectElement).value), "through");
   await shot("7-through-all-preview");
   await tapButton("#options .oact button.ok");
-  assert.deepEqual((await lastExtrude())?.at(-1), { mode: "cut", into: "e1", end: "through" });
+  const opts = (await lastExtrude())?.at(-1) as { mode: string; into: string; end: string; to: unknown };
+  assert.deepEqual([opts.mode, opts.into, opts.end], ["cut", "e1", "through"]);
+  assert.match(String(opts.to), /^p\d+$/, "through all is held on a vertex of the plate (docs/plans/through-all-relation.md)");
   await type('set("d1.value", 16)'); // the plate deeper: still through
   b = await faces();
   assert.ok(b.valid && b.faces.includes("e3.m0") && !b.faces.includes("e3.lid"), `still through: ${b.faces} ${(await app.log()).slice(-900)}`);

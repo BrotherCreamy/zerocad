@@ -27,7 +27,7 @@
 // `hitTest` at all. They live a layer up because they are UI drawn over the
 // drawing rather than part of it — the same reason snapping ignores them.
 
-import { ORIGIN, type AxisName, type Entity, type FeatureEntry, type Model, type ProfileMember, type RelationEntry } from "./model.ts";
+import { ORIGIN, endLabel, endRelation, type AxisName, type Entity, type FeatureEntry, type Model, type ProfileMember, type RelationEntry } from "./model.ts";
 import { screenAngle, withinSweep } from "./intersect.ts";
 import { frameArmPx, frameArms, frameMarker } from "./framemarker.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
@@ -301,8 +301,13 @@ export function describeFeature(model: Model, f: FeatureEntry): string {
   // open — an edge of its profile gone — or unbuilt, its depth deleted.
   const state = f.unbuilt !== undefined ? ` — unbuilt: ${f.unbuilt}`
     : f.open ? " — open: its profile no longer closes; draw or extend the missing edge back, on either profile, and it is a solid again" : "";
+  // How it ends, when not at its depth — and whether a relation holds that
+  // end or it is only placed (docs/plans/through-all-relation.md).
+  const ends = endLabel(model, f);
+  const held = endRelation(model, f);
+  const end = ends === null ? "" : `, ${ends}${held ? ` (${held.name})` : ""}`;
   // Only an old file's extrude has a lid frame to name (see `Expansion`).
-  return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}${f.top === undefined ? "" : `, lid ${f.top}`}${state}`;
+  return `${f.name}  extrude of ${profile}, depth ${f.depth}${ends === null ? value : ""}${end} along ${f.frame}${f.top === undefined ? "" : `, lid ${f.top}`}${state}`;
 }
 
 /**

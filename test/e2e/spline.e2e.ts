@@ -97,7 +97,7 @@ async function savedRoundTrip(app: AppContext): Promise<void> {
   const before = await app.repl("save()");
   assert.equal(before.ok, true, before.error ?? "");
   const text = before.value as string;
-  assert.match(text, /"version": 21/);
+  assert.match(text, /"version": 23/);
   assert.match(text, /"splines"/, "the control points saved");
   const was = JSON.stringify(await splines(app));
   await app.type("pt(0, 0); pt(5, 5)"); // something to lose

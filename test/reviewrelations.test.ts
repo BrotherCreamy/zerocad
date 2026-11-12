@@ -672,7 +672,7 @@ test("a format-19 file's stars reopen as the separate relations they were, and i
   const text = await fixture("review-relations-v19.neocad.json");
   const was = JSON.parse(await fixture("review-relations-v19.geometry.json")) as Geometry;
   assert.equal(JSON.parse(text).version, 19);
-  assert.equal(VERSION, 21);
+  assert.equal(VERSION, 23);
   const m = open(text);
   // Every point where that build had it, before and after a solve.
   const worst = () => Math.max(...Object.entries(was.points).map(([p, at]) => len(sub(m.coords(p), at))));
@@ -714,7 +714,7 @@ test("a format-19 file's stars reopen as the separate relations they were, and i
   assert.equal(gone.filter((n) => copy.relations.has(n) === false && /^r/.test(n)).length, 6, "three pars and three eqs went with the first line");
   // Re-saved: the current version, no place left in it, and the same again from there.
   const saved = save(m);
-  assert.equal(JSON.parse(saved).version, 21);
+  assert.equal(JSON.parse(saved).version, 23);
   assert.ok(!/"e\d+\.m\d+"/.test(saved), "no wall is written by its place");
   assert.equal(save(open(saved)), saved, "stable");
   const twice = open(saved);

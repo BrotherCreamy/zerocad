@@ -26,8 +26,9 @@
 
 import { isBlendFeature, type BlendFeature, type FeatureEntry, type Model } from "./model.ts";
 import { describeSurface, surfaceChains, surfaceDetail, surfaceNameOf } from "./surfaces.ts";
-import { memberName } from "./model.ts";
+import { endRelation, memberName } from "./model.ts";
 import { regionText } from "./operations.ts";
+import { stopsShort } from "./farside.ts";
 import { chainsOf, modeOf } from "./modes.ts";
 import type { Menu, MenuItem } from "./menu.ts";
 import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
@@ -58,6 +59,14 @@ export interface OrganiserRow {
   openCommand: string | null;
   /** A body's chain, its features' names in order — what the see-through tree hangs under it (`organiserTree`). */
   chain?: string[];
+  /**
+   * Something the row says is wrong that one tap puts right
+   * (docs/plans/through-all-relation.md): a through-all extrude that no
+   * longer goes through — `e2 stops short of p9` — and the command that
+   * chooses its far side again. Drawn in the open marker's place, which a
+   * feature leaves empty.
+   */
+  fix?: { command: string; summary: string };
 }
 
 export interface OrganiserSection {
@@ -76,6 +85,24 @@ export interface OrganiserSection {
 
 function quoted(name: string): string {
   return JSON.stringify(name);
+}
+
+/**
+ * What a through-all extrude's row offers when it no longer goes through:
+ * the words — `e2 stops short of p9` — and the command that takes the far
+ * side again. Null while it goes through, and for every other feature.
+ */
+export function shortOf(model: Model, f: FeatureEntry): { command: string; summary: string } | null {
+  if (f.kind !== "extrude" || f.extent !== "through") return null;
+  let short: ReturnType<typeof stopsShort>;
+  try {
+    short = stopsShort(model, f, (endRelation(model, f)?.args[0] as string | undefined) ?? null);
+  } catch {
+    return null;
+  }
+  if (!short) return null;
+  const past = short.past ?? "what it goes through";
+  return { command: `setEnd(${quoted(f.name)}, "through")`, summary: `${f.name} stops short of ${past} — tap to take the far side again` };
 }
 
 /** The eye over a set of names, by what is hidden; a feature hidden by name counts as all of it. */
@@ -117,11 +144,16 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // (docs/plans/linked-profiles.md): *open* — an edge of its profile gone,
     // its surviving walls drawn as surfaces — or *unbuilt*, its depth or
     // angle deleted. Said in a word after the kind; `ls()` gives the reason.
-    const state = f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : "";
+    // **And when it has stopped going through** (docs/plans/through-all-relation.md):
+    // a through-all end is held on the vertex that was farthest when it was
+    // set, and is never re-pointed inside a solve — so when a turn or a new
+    // body leaves something farther, the row says so and offers the one tap.
+    const short = f.kind === "extrude" && f.unbuilt === undefined && !f.open ? shortOf(model, f) : null;
+    const state = f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : short ? " · short" : "";
     return {
       name: f.name, detail: (mode === "new" ? f.kind : `${f.kind} · ${mode}`) + state, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
-      open: null, openCommand: null,
+      open: null, openCommand: null, ...(short ? { fix: short } : {}),
     };
   });
   // Fillets and chamfers are features too (docs/plans/solid-fillets.md), each
@@ -319,11 +351,13 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
   if (model.surfaces.has(name)) return surfaceMenu(model, name);
   const f = model.features.get(name) ?? model.blends.get(name);
   if (f) {
+    const short = f.kind === "extrude" ? shortOf(model, f) : null;
     return {
       header: f.kind === "fillet" || f.kind === "chamfer"
         ? `${name}  ${f.kind} of ${f.edges.length} edge${f.edges.length === 1 ? "" : "s"} of ${f.into}`
-        : `${name}  ${f.kind}, ${f.owns.length} made`,
+        : short ? short.summary.replace(" — tap to take the far side again", "") : `${name}  ${f.kind}, ${f.owns.length} made`,
       items: [
+        ...(short ? [{ label: "Go through again", action: { do: "run" as const, command: short.command } }] : []),
         { label: `Edit ${name}`, action: { do: "run", command: `edit(${quoted(name)})` } },
         { label: "Delete", action: { do: "run", command: `del(${quoted(name)})` } },
       ],
@@ -604,6 +638,11 @@ export class Organiser {
     // the slot empty so the names line up.
     if (r.openCommand !== null) {
       row.appendChild(this.button("oopen", r.open ? "●" : "○", r.openCommand, () => openTip(r)));
+    } else if (r.fix) {
+      // What is wrong with it, and the one tap that puts it right, where a group's marker would be.
+      const fix = r.fix;
+      row.dataset.fix = "";
+      row.appendChild(this.button("oopen ofix", "↧", fix.command, () => ({ name: "Go through again", summary: fix.summary, command: fix.command })));
     } else {
       const slot = document.createElement("span");
       slot.className = "oopen slot";

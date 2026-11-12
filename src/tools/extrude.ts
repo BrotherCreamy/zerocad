@@ -67,7 +67,7 @@ import { featureFaces } from "../faces.ts";
 import { sub3, unit3 } from "../vec3.ts";
 import { niceStep } from "../activeplane.ts";
 
-import { DEPTH_OPTION, END_OPTION, FeatureTool, MODE_OPTION, callText, featureOptions, foundRegion } from "./feature.ts";
+import { DEPTH_OPTION, END_OPTION, FeatureTool, MODE_OPTION, callText, featureOptions, foundRegion, uptoPickAt, type UptoPick } from "./feature.ts";
 import type { FeatureOptions } from "../operations.ts";
 import { RegionSelection, leftOut } from "./selection.ts";
 
@@ -108,6 +108,9 @@ export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, w
   }];
 }
 
+/** What an up-to-face end still wants, said the same way wherever it is asked. */
+const UPTO_ASK = "up to face: press the face it ends on";
+
 export class ExtrudeTool extends FeatureTool {
   // Negative is allowed — the other way along +z, as the typed call takes it,
   // and what the panel's ⇅ types; zero is no solid at all.
@@ -137,6 +140,12 @@ export class ExtrudeTool extends FeatureTool {
   private drag: { from: [number, number]; start: number; dir: [number, number]; perUnit: number; step: number } | null = null;
   /** The depth a drag of the handle has reached, laid over the options until it is let go. */
   private dragged: number | null = null;
+  /**
+   * Up to face (docs/plans/through-all-relation.md): the face the end row's
+   * one extra press landed on. Asked for once a region is picked and the end
+   * row says Up to face; kept until the picks go.
+   */
+  protected upto: UptoPick | null = null;
 
   protected values(): Record<string, unknown> {
     const v = super.values();
@@ -176,9 +185,11 @@ export class ExtrudeTool extends FeatureTool {
 
   protected plan(values: Record<string, unknown>): FeatureStep[] | null {
     if (!this.picks.size) return null;
+    // Up to face with no face yet is not a plan: `wanting` says what is missing.
+    if (values.end === "upto" && !this.upto) return null;
     const depth = this.depthOf(values);
     const typed = !!this.ctx.perform;
-    const options = featureOptions(values);
+    const options = featureOptions(values, this.upto);
     // Two clicks inside one named region are one region, extruded once.
     const seen = new Set<string>();
     return this.picks.regions.flatMap((r, i) => {
@@ -192,11 +203,12 @@ export class ExtrudeTool extends FeatureTool {
   }
 
   protected picksKey(): string {
-    return this.picks.key();
+    return `${this.picks.key()}${this.upto ? `>${this.upto.face}@${this.upto.at?.join(",") ?? ""}` : ""}`;
   }
 
   protected wanting(): string | null {
-    return null; // nothing picked is the only way to be short of an extrude
+    // Nothing picked is the only other way to be short of an extrude.
+    return this.picks.size && this.values().end === "upto" && !this.upto ? UPTO_ASK : null;
   }
 
   onMove(p: PointerInfo): void {
@@ -235,6 +247,7 @@ export class ExtrudeTool extends FeatureTool {
     this.drag = null;
     this.dragged = null;
     this.under = null;
+    this.upto = null;
     return this.picks.clear();
   }
 
@@ -245,7 +258,23 @@ export class ExtrudeTool extends FeatureTool {
       this.under = null;
       return;
     }
+    // Up to face: with a region picked and no face yet, this press is the
+    // face — before it is read as a region, since a face of a solid is where
+    // regions are. A press on a face that is in no region takes it again.
     const hit = this.ctx.regionAt?.(p.screen) ?? null;
+    if (this.values().end === "upto" && this.picks.size && (!this.upto || !hit)) {
+      const face = uptoPickAt(this.ctx, p.screen);
+      if (face) {
+        this.upto = face;
+        this.guide(`up to ${face.face} — ✓ to ${this.verb}`);
+        this.ctx.requestRender();
+        return;
+      }
+      if (!this.upto) {
+        this.guide(UPTO_ASK);
+        return;
+      }
+    }
     if (!hit) {
       this.guide(missedRegion(this.ctx.model));
       return;
@@ -290,7 +319,7 @@ export class ExtrudeTool extends FeatureTool {
   private renderHandle(r: RenderContext): void {
     this.handle = null;
     const p = this.previewed();
-    if (!p?.model || this.values().end === "through") return;
+    if (!p?.model || this.values().end === "through" || this.values().end === "upto") return;
     const ui = r.ui ?? 1;
     let lid: number[] | null = null, base: number[] | null = null;
     for (const name of p.features) {
@@ -458,7 +487,8 @@ export function cutWay(m: Model, region: RegionHit, depth: number, end: unknown)
   }
   const plane = planeAxes(m, profile.frame);
   if (!plane) return { way: 1, reaches: false };
-  const reach = end === "through" ? drawingSpan(m) : end === "symmetric" ? Math.abs(depth) / 2 : Math.abs(depth);
+  // Up to a face reaches as far as through all may: the call turns it toward its face itself.
+  const reach = end === "through" || end === "upto" ? drawingSpan(m) : end === "symmetric" ? Math.abs(depth) / 2 : Math.abs(depth);
   const found = materialWay(m, plane, profile.loops, r.at, reach);
   return end === "symmetric" ? { way: 1, reaches: found.reaches } : found;
 }
@@ -514,7 +544,9 @@ export class CutTool extends ExtrudeTool {
     const depth = typeof d === "number" && Number.isFinite(d) && d !== 0 ? d : DEFAULT_DEPTH;
     const typed = !!this.ctx.perform;
     const end = values.end;
-    const options: FeatureOptions = { mode: "cut", ...(end === "through" || end === "symmetric" ? { end } : {}) };
+    // Up to face with no face yet is not a plan (`wanting` asks for it).
+    if (end === "upto" && !this.upto) return null;
+    const options: FeatureOptions = { mode: "cut", ...(featureOptions(values, this.upto) ?? {}) };
     const seen = new Set<string>();
     return this.picks.regions.flatMap((r, i) => {
       const named = namedRegionAt(this.ctx.model, r);
