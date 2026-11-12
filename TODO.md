@@ -2490,6 +2490,20 @@ are flagged as such.
           many are the pair's, so the fix there is the fix here; the
           spanning set (each with the first) should be measured again once
           the rows are normalised — a chain may then be as good.
+    - [ ] **Two e2e tests fail on the base branch too, on the machine this
+          was built on** (measured 2026-11-12 on a fresh clone of
+          `claude/resume-tasks-o7q02e`, none of this package in it).
+          *Android's font scale, measured* (android.e2e.ts) fails every
+          time: Chromium 153, launched with
+          `--blink-settings=accessibilityFontScaleFactor=1.3`, reads
+          `env(preferred-text-scale)` as 1 on an empty page. The baseline
+          this package was given says it passed, so something under the
+          suite moved. *Pixel 7 portrait: see-through from the menu*
+          (overlaylock.e2e.ts) fails 2 runs of 4 with four suites on four
+          cores: `.otail .tline:last-child: some ink to sample (0 pixels)`
+          — the log's newest line shot before it was drawn, by the look of
+          it; the other four ways (mouse, iPhone, landscape) passed every
+          run.
 
 - [x] **A click on a face draws on the ground; nothing says where a click
   will land** (the owner, 2026-11-09: *"when i make a rectangular prism, i

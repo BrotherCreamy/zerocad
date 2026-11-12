@@ -84,7 +84,31 @@ tell. Free lines made parallel are still met by shortening as well as by
 turning (the first palette picture showed it); that is review item 1, another
 package's, and its fix lands under these rows.
 
-Typecheck 0 · unit **TBD** · kernel 11/11 · e2e **TBD**.
+Tests, one full run of the four steps of `npm run test:all` on the final
+code, with three other packages' suites running on the same four cores (load
+average 17–28): typecheck 0 · unit 1923 → 1950 (+27, the new file), 1948
+passed · kernel 11/11 · e2e 789 → 796 (+7, the new file), 790 passed, 2
+picture skips as before. What did not pass, each run again alone:
+
+- unit, *the cost: the check on every solve…* (conflicts.test.ts): a
+  2000 ms wall-clock budget, measured at 2255 ms under that load. Alone, three
+  times: passed, passed, failed (still under load); and three times more:
+  passed, failed, passed.
+- unit, *a conflict on an extruded drawing names the user's relations…*
+  (profilesheld.test.ts): alone 3 of 3.
+- e2e, two files that asserted the format's number, 19 (camera.e2e.ts,
+  lidframe.e2e.ts): the number is 20 now; they and the six others that said
+  19 were corrected and run again, 56 of 56.
+- e2e, *Pixel 7 portrait: see-through from the menu* (overlaylock.e2e.ts):
+  `some ink to sample (0 pixels)`. Alone 1 of 3 here — and 2 of 4 on a fresh
+  clone of the base branch, with none of this work in it: the same message.
+  A flake under load that was there before; filed.
+- e2e, *Android's font scale, measured* (android.e2e.ts): fails alone 3 of 3
+  — and fails the same on a fresh clone of the base branch. The browser on
+  this machine reads `env(preferred-text-scale)` as 1 when launched with
+  `--blink-settings=accessibilityFontScaleFactor=1.3`, on an empty page with
+  no app at all (three launches). Nothing in this change is near it; filed
+  for whoever knows what changed under the suite since the baseline.
 
 ## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
 
