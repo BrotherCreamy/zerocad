@@ -353,30 +353,36 @@ test("save and open: the same file back, byte for byte, both solids in it", asyn
   assert.deepEqual(all.map((x) => [x.name, x.value]), [["e1", 35], ["e2", 10]]);
 });
 
-test('del("e2", "e1") takes both solids and leaves the sketch — the same entities, not moved by the deletion', async () => {
+// Until linked profiles this took both solids' lids and walls and left only
+// the sketch, the lid's circle free of everything that had named the lid's
+// corners. Nothing is owned now (docs/plans/linked-profiles.md, item 4): the
+// two records go, and every entity either made stays — each solid's two
+// profiles and the chords between them — so what held the circle to the
+// lid's corners still holds it.
+test('del("e2", "e1") takes both records and leaves every entity — each solid\'s two profiles and its chords — not moved by the deletion', async () => {
   const before = await app.model();
   const bossCentre = before.circles.at(-2)!.center; // the circle drawn on the lid, before its twin
+  const held = (await app.repl(`model.relationsNaming("${before.circles.at(-2)!.name}").filter((r) => r.op !== "extrusion").length`)).value as number;
   await app.type('del("e2", "e1")');
   assert.deepEqual(await features(), []);
   const now = JSON.parse(await saved());
   const was = JSON.parse(beforeExtrude);
-  // The sketch's entities, and nothing of either solid — except the circle
-  // drawn on the lid and its centre. The circle stands on no frame now
-  // (docs/plans/frameless-curves.md): what held it to the lid — its onplane
-  // and par, and the work plane — named the lid's corners and went with
-  // them, and the circle stays, free, where it was drawn. (It used to go with
-  // the frame the sketch tool made on those corners.)
   const after = await app.model();
   const boss = after.circles.find((c) => c.center === bossCentre);
   assert.ok(boss, "the lid's circle stays");
-  assert.equal((await app.repl("model.workPlane")).value, null, "the work plane, which named the lid, is cleared");
-  assert.deepEqual(((await app.repl(`model.relationsNaming("${boss.name}").length`)).value), 0, "and nothing holds the circle any more");
-  assert.deepEqual(Object.keys(now.values.points).sort(), [...Object.keys(was.values.points), bossCentre].sort());
+  assert.deepEqual(Object.keys(after.points).sort(), Object.keys(before.points).sort(), "not one point went with either record");
+  assert.deepEqual(after.lines.map((l) => l.name).sort(), before.lines.map((l) => l.name).sort(), "nor a line: both lids, and the walls");
+  assert.deepEqual(after.circles.map((c) => c.name).sort(), before.circles.map((c) => c.name).sort(), "nor the boss's far rim");
+  for (const n of Object.keys(was.values.points)) assert.ok(n in now.values.points, `${n}, the sketch's, is there`);
+  // The lid's corners are still there, so what named them — the circle's par to their plane — still does.
+  assert.equal((await app.repl(`model.relationsNaming("${boss.name}").length`)).value, held, "what held the circle to the lid's corners still holds it");
+  assert.equal((await app.repl('[...model.relations.values()].filter((r) => r.op === "extrusion" || /_perp$/.test(r.name)).length')).value, 0,
+    "the depths and the perpendiculars went with their records");
   // Compared with just before the deletion, not with before the extrude: the
   // tools draw an undimensioned sketch, and the solves since were free to move
   // it within its own freedom (a corner wandered 1e-5 during the `set`). What
-  // the deletion must not do is move it at all.
-  for (const n of Object.keys(was.values.points)) {
+  // the deletion must not do is move anything at all.
+  for (const n of Object.keys(before.points)) {
     assert.ok(dist3(now.values.points[n], before.points[n]) < 1e-9, `${n} did not move`);
   }
   assert.equal(await app.status(), "SOLVED");

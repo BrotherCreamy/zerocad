@@ -2500,6 +2500,10 @@ are flagged as such.
     - [ ] **Marks are doubled in hidden-line and wire views**: eight `⊥`
           pairs on a block (docs/images/443). On a phone that is crowded; a
           mark could be drawn on the nearer end only, as a dimension is.
+          And a twin's mark sits on the lid's edge, where it wins the pick
+          over the solid's own edge under it: `solidfillets.e2e.ts` hovered
+          the middle of the plate's right lid edge and got `r6_e1`, and now
+          hovers off the middle.
     - [ ] **A `set` of a profile dimension on a block nothing holds tilts
           it**: a free 40 × 25 × 10 block, `set` of the 40 to 55, leaves the
           base corners at z = +4.2, −4.1, −4.1, +4.2. Measured the same on

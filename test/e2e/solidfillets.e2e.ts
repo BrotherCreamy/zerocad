@@ -123,9 +123,14 @@ const W = 40, H = 25, T = 10, R = 3;
 const plateVolume = 2 * W * 2 * H * T;
 /** A filleted straight edge of length L removes (4 − π)/4 · r² · L. */
 const filletCut = (r: number, len: number) => ((4 - Math.PI) / 4) * r * r * len;
-/** The plate's front edge on its lid (y = −H, z = T), its middle — and the right one (x = W). */
+/**
+ * The plate's front edge on its lid (y = −H, z = T), its middle — and the
+ * right one (x = W), off its middle: the rectangle's relations have their
+ * twins on the lid now (docs/plans/linked-profiles.md), and a twin's mark
+ * sits at the middle of the lid's right edge, where it would win the pick.
+ */
 const FRONT: [number, number, number] = [0, -H, T];
-const RIGHT: [number, number, number] = [W, 0, T];
+const RIGHT: [number, number, number] = [W, H * 0.45, T];
 const BACK: [number, number, number] = [0, H, T];
 const LEFT: [number, number, number] = [-W, H * 0.6, T];
 
