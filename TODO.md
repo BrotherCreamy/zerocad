@@ -582,6 +582,19 @@ otherwise.
   - **The status does not open the palette**: `4 agreeing` is text. A tap
     on it that typed `ui({ show: "constraints" })` would be one line; not
     done, to keep the status's buttons the relation-selecting kind.
+- **There is no sketch (the owner, 2026-11-12):** *"There is no such thing
+  as a sketch. There are geometry groups (you can come up with a better
+  name… reason I don't want to use sketch is it implied exclusivity, but I
+  want geometry to be able to belong to multiple groups). A group is only
+  fully defined when every element within the group is fully defined.
+  Should be trivial to calculate this stuff but it's not a concern of mine
+  now."* The model already is this (a group is a set, an entity in any
+  number of them, `groups.md`); the **word** is still in the tool, the face
+  menu, `help()`, a workbench and code names, and goes:
+  `docs/plans/no-sketch.md`, queued. A group's definedness (every member
+  fully defined) is the last item there, after the renaming. The question
+  of whether the drawing's `N free` counts a flat drawing's freedom to leave
+  its plane is **closed**: not a concern now; left as it is.
 - **Decided by the owner (2026-11-12), to build** — each in its spec:
   - *"I should be able to pull on anything."* A free body moves when a point
     held to its face is pulled (#89's both-ways `onplane`); nothing is made
@@ -614,7 +627,8 @@ otherwise.
   - Edge snap on a face keeps `on` + `onplane` (*"Do what you think is
     best"*). Left for now by the owner, not decided: faces in the wire
     view, the palette's start state and height, a tap on the status count.
-  - **Open with the owner**: whether the status counts a flat drawing's
+  - ~~Open with the owner~~ (closed 2026-11-12, "not a concern of mine
+    now"; see *There is no sketch* above): whether the status counts a flat drawing's
     freedom to leave its plane (it does not today — `gaugePlanes`).
 
 - **Reviewed against the owner's principle (2026-11-09; CONVERSATION_LOG has
