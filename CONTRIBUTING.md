@@ -48,7 +48,11 @@ npm run test:all    # all of the above
 ```
 
 `npm run test:e2e` starts and stops its own dev server, or reuses one you
-already have running. `test/e2e/pwa.e2e.ts` also runs `build:pwa` into a
+already have running. It watches the one it started: if the server dies
+mid-run (it has, under four workers' load) the run says so in a banner —
+when, how, what it last wrote — restarts it on the same port, and says
+again at the end which failures to run alone before believing; a third
+death stops the run. `test/e2e/pwa.e2e.ts` also runs `build:pwa` into a
 temporary folder and serves it under a sub-path itself, so the hosted build
 is tested on every run with nothing left in `dist-pwa/`.
 

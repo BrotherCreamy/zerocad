@@ -91,11 +91,15 @@ class DevServer {
     if (this.stopping || child !== this.child) return;
     const how = signal ? `killed by ${signal}` : `exited with code ${code}`;
     const when = new Date().toISOString().slice(11, 19);
-    const tail = this.stderr.length ? `\n  it last wrote:\n    ${this.stderr.slice(-8).join("\n    ")}` : "\n  it wrote nothing to stderr";
+    const tail = this.stderr.length ? `\n#   it last wrote:\n#     ${this.stderr.slice(-8).join("\n#     ")}` : "\n#   it wrote nothing to stderr";
     const death = `${when}: the dev server at ${this.url} ${how}`;
     this.deaths.push(death);
     const again = this.restarts < 2;
-    console.error(`\n#\n# THE DEV SERVER DIED — ${death}.${tail}\n#   every "no dev server at ${this.url}" from the tests around this moment is this one event, not the app;`
+    // What the files in flight say (measured, the server SIGKILLed under a
+    // run): "no dev server at", and, once it is back, "Execution context was
+    // destroyed" or "Cannot find context" — vite's client reconnects and
+    // reloads the page under the test.
+    console.error(`\n#\n# THE DEV SERVER DIED — ${death}.${tail}\n#   every "no dev server at ${this.url}", "Execution context was destroyed" or "Cannot find context" from the tests around this moment is this one event, not the app;`
       + (again ? `\n#   it is being started again on the same port (restart ${this.restarts + 1} of 2).\n#\n` : "\n#   it has died three times in this run; the tests are being stopped, since every failure after this would be its.\n#\n"));
     if (!again) {
       this.onGivenUp?.();
@@ -151,10 +155,12 @@ async function main(): Promise<number> {
     const code = await new Promise<number>((resolve) => tests.on("exit", (code) => resolve(code ?? 1)));
     if (server?.deaths.length) {
       console.error(`\n#\n# THE DEV SERVER DIED DURING THIS RUN${givenUp ? ", AND THE TESTS WERE STOPPED" : ""}:\n#   ${server.deaths.join("\n#   ")}`
-        + `\n#   Failures reading "no dev server at ${url}" are that, not the app. Run the files that failed again alone before believing them.\n#\n`);
-      return 1;
+        + `\n#   Failures around those moments reading "no dev server at ${url}", "Execution context was destroyed" or "Cannot find context" are that, not the app.`
+        + "\n#   Run the files that failed again alone before believing them.\n#\n");
     }
-    return code;
+    // A death the tests outlived is said, above, and is not a failure of
+    // theirs: a file that ran against the restarted server had its server.
+    return givenUp ? 1 : code;
   } finally {
     server?.stop();
   }
