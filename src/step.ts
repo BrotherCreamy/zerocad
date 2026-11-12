@@ -453,9 +453,9 @@ function write(bodies: Body[], curves: LooseCurve[], o: StepOptions): string {
     // The sketch beside the solids: a wireframe representation in the same
     // context, related to the solids' so a reader that follows the product
     // finds both.
-    const set = d.add(`GEOMETRIC_CURVE_SET('sketch',${list(curves.map((c) => ref(loose(d, c))))})`);
-    const wire = d.add(`GEOMETRICALLY_BOUNDED_WIREFRAME_SHAPE_REPRESENTATION('sketch',${list([ref(origin), ref(set)])},${ref(context)})`);
-    d.add(`SHAPE_REPRESENTATION_RELATIONSHIP('sketch','',${ref(rep)},${ref(wire)})`);
+    const set = d.add(`GEOMETRIC_CURVE_SET('curves',${list(curves.map((c) => ref(loose(d, c))))})`);
+    const wire = d.add(`GEOMETRICALLY_BOUNDED_WIREFRAME_SHAPE_REPRESENTATION('curves',${list([ref(origin), ref(set)])},${ref(context)})`);
+    d.add(`SHAPE_REPRESENTATION_RELATIONSHIP('curves','',${ref(rep)},${ref(wire)})`);
   }
 
   return [

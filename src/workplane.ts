@@ -21,7 +21,7 @@
 // than holding a point to a plane it is not on.
 //
 // The plane the user **chose** — the work plane or the default frame, never the
-// origin by default — is a second question (`sketchPlane`): it is the one
+// origin by default — is a second question (`chosenPlane`): it is the one
 // snapping keeps to and points are held on, as they were held on the default
 // frame before. A drawing with no plane chosen is not "sketching on the
 // ground", so its snaps reach everything and its points stay free.
@@ -106,7 +106,7 @@ export function isFacePlane(model: Model, ref: string | null | undefined): ref i
  * where clicks land, not a sketch), a 2D model (whose frames have no plane to
  * offer that is not the whole world), or a plane collapsed so far it has none.
  */
-export function sketchPlane(model: Model): Plane | null {
+export function chosenPlane(model: Model): Plane | null {
   const ref = model.workPlane ?? model.defaultFrame;
   if (model.dim !== 3 || ref == null) return null;
   try {
@@ -116,15 +116,15 @@ export function sketchPlane(model: Model): Plane | null {
   }
 }
 
-/** The plane reference `sketchPlane` reads, or null. */
-export function sketchPlaneRef(model: Model): string | null {
+/** The plane reference `chosenPlane` reads, or null. */
+export function drawingPlaneRef(model: Model): string | null {
   return model.dim === 3 ? model.workPlane ?? model.defaultFrame : null;
 }
 
 /** The plane a click lands on in this model, seen through this view. See the top of the file. */
 export function workingPlane(model: Model, view: View): Plane {
   if (model.dim !== 3) return cameraPlane(view);
-  return sketchPlane(model) ?? planeOfRef(model, model.drawingPlane()) ?? cameraPlane(view);
+  return chosenPlane(model) ?? planeOfRef(model, model.drawingPlane()) ?? cameraPlane(view);
 }
 
 /**

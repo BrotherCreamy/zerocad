@@ -89,9 +89,9 @@ function turn(a: number[], b: number[], c: number[]): number {
  * Throws, with the reason, in a model that is not 3D, for a loop seen exactly
  * edge-on, and when no three of the loop's points are off one line.
  */
-export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): string {
+export function facePlaneFor(model: Model, loop: Loop, toward: number[]): string {
   if (model.dim !== 3) {
-    throw new Error("a sketch plane on a face is a 3D plane — a 2D drawing is one plane already");
+    throw new Error("a plane to draw on a face is a 3D plane — a 2D drawing is one plane already");
   }
   const facing = (n: number[]): number => {
     const len = Math.hypot(...n);
@@ -175,8 +175,8 @@ function members(loop: Loop): string {
  * The command that starts a sketch on `loop`: `workplane("a.b.c")` — the work
  * plane set to the face and looked at square-on — typed by the sketch tool and
  * the "Sketch on this face" menu item alike, so the two cannot set different
- * planes of one face. Throws as `sketchFrameFor` does.
+ * planes of one face. Throws as `facePlaneFor` does.
  */
-export function sketchOnFaceCommand(model: Model, loop: Loop, toward: number[]): string {
-  return `workplane(${JSON.stringify(sketchFrameFor(model, loop, toward))})`;
+export function drawOnFaceCommand(model: Model, loop: Loop, toward: number[]): string {
+  return `workplane(${JSON.stringify(facePlaneFor(model, loop, toward))})`;
 }

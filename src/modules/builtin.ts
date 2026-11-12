@@ -30,7 +30,9 @@ for (const name of ["core", "sketch", "solids", "surfaces", "dimensions", "files
  * workbench defined without `constraints` has no palette.
  */
 defineWorkbench("part", { label: "Part", modules: ["core", "sketch", "solids", "surfaces", "dimensions", "step", "files", "organiser", "constraints", "interface"] }, "builtin");
-defineWorkbench("sketch", { label: "Sketch", modules: ["core", "sketch", "dimensions", "files", "organiser", "constraints", "interface"] }, "builtin");
+// "drawing" was "sketch" until 2026-11-12 (docs/plans/no-sketch.md); a file or
+// a typed line naming "sketch" still means it (`WORKBENCH_ALIASES`, modules.ts).
+defineWorkbench("drawing", { label: "Drawing", modules: ["core", "sketch", "dimensions", "files", "organiser", "constraints", "interface"] }, "builtin");
 // Surfaces (docs/plans/surfaces.md): the part's modules exactly — surfacing is
 // done beside solids, and the round and chamfer tools that fillet surfaces are
 // the solids module's — named for the owner to find it by. Vetoable (TODO.md).

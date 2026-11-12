@@ -2057,7 +2057,7 @@ async function main() {
     },
     // Each tool's own words (`static summary`, `static how`), handed in: the
     // toolbar knows nothing of the tools.
-    summary: toolSummary,
+    summary: (tool) => toolSummary(tool, tipHand),
     how: (tool) => toolHow(tool, tipHand, howOptions(tool)),
     chosen: (tool, button, siblings) => { choosing = lastPointer === "touch" ? { tool, button, siblings } : null; },
     key: (tool) => TOOL_KEYS[tool] ?? null,
@@ -2111,7 +2111,7 @@ async function main() {
       else controls.push(box(el));
     }
     const again = tipsShown.has(c.tool);
-    const tip = { ...toolTip(c.tool, toolSummary(c.tool), null, toolHow(c.tool, "finger", howOptions(c.tool))), also: groupAlso(c.siblings, c.tool) };
+    const tip = { ...toolTip(c.tool, toolSummary(c.tool, "finger"), null, toolHow(c.tool, "finger", howOptions(c.tool))), also: groupAlso(c.siblings, c.tool) };
     // A fingertip that lifted off the tray is over the tray, which the tip
     // keeps a gap off already: asking a fingertip's clearance of it as well
     // only narrowed the tip by a character and wrapped a line more (looked
@@ -2814,8 +2814,10 @@ async function main() {
   }
 
   /** `workbench(name)` and the logo menu's switcher. A tool off the new tray is put down. */
-  function switchWorkbench(name: string): string {
-    setActiveWorkbench(name);
+  function switchWorkbench(asked: string): string {
+    setActiveWorkbench(asked);
+    // An old name (`workbench("sketch")`) is answered with the name it has now.
+    const name = activeWorkbench();
     const armed = engine.armed?.name;
     if (armed && !onWorkbench(name, armed)) engine.cancel();
     modulesChanged();
@@ -2833,7 +2835,8 @@ async function main() {
    */
   function afterOpen(text: string) {
     const head = savedHead(text);
-    const bench = head.workbench && getWorkbench(head.workbench) ? head.workbench : DEFAULT_WORKBENCH;
+    // By the name the workbench has now: a file saved in "sketch" opens in "drawing" (docs/plans/no-sketch.md).
+    const bench = head.workbench && getWorkbench(head.workbench) ? getWorkbench(head.workbench)!.name : DEFAULT_WORKBENCH;
     if (bench !== activeWorkbench()) { setActiveWorkbench(bench); modulesChanged(); }
     if (!head.missing.length) { waitingDocument = null; return; }
     waitingDocument = text;

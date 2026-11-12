@@ -26,7 +26,7 @@ import { chordPair, extrusion, extrusionChord, lidReach } from "./relations/extr
 import { FULL_TURN, axisReader, isFullTurn, revolution, seatTurned, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, featurePlane, framePlaneAxes, planeAxes } from "./curveplane.ts";
-import { sketchFrameFor } from "./sketchface.ts";
+import { facePlaneFor } from "./faceplane.ts";
 import {
   describeLoop, findLoops, heldOnCurves, insideLoop, isVirtual, joinClasses, loopAround, memberLabel, parallel, type Held,
   type Loop, type LoopMember,
@@ -912,13 +912,13 @@ interface ProfileWords {
 const EXTRUDE: ProfileWords = {
   op: "extrude",
   narrowed: (m) => `extrude(${JSON.stringify(m)}, depth, "f1")`,
-  needsFrame: "an extrude runs along a sketch frame's +z",
+  needsFrame: "an extrude runs along its profile's plane, +z",
 };
 
 const REVOLVE: ProfileWords = {
   op: "revolve",
   narrowed: (m) => `revolve(${JSON.stringify(m)}, axis, angle, "f1")`,
-  needsFrame: "a revolve's end face lies on its sketch frame turned",
+  needsFrame: "a revolve's end face lies on its profile's plane turned",
 };
 
 /**
@@ -1033,7 +1033,7 @@ function framesByPreference(model: Model): string[] {
  * 2. else a frame the loop lies in, then one parallel to it — the default
  *    first and the origin last, so a loop drawn level runs along the origin's
  *    +z and a loop on a user's frame along that frame's, as they always did;
- * 3. else the loop's own plane (`sketchFrameFor`): three of its points, facing
+ * 3. else the loop's own plane (`facePlaneFor`): three of its points, facing
  *    `toward` (the viewer, so a positive depth comes out at them; headless the
  *    loop's own normal, loops.ts's — up for anything drawn level), or a whole
  *    circle's own plane. It used to be a frame of those three points, made by
@@ -1051,14 +1051,14 @@ export function orientingPlane(model: Model, loop: Loop, toward: number[] = loop
     // facing away gives way to the loop's own, facing `toward`.
     const away = model.planeKind(drawing) === "curve" && dot3(planeAxes(model, drawing)!.n, toward) < 0;
     if (!away) return drawing;
-    return sketchFrameFor(model, loop, toward);
+    return facePlaneFor(model, loop, toward);
   }
   if (loop.plane.frame !== null && !model.isConstruction(loop.plane.frame)) return loop.plane.frame;
   for (const f of framesByPreference(model)) {
     const axes = framePlaneAxes(model, f);
     if (axes && parallel(axes.n, loop.plane.normal)) return f;
   }
-  return sketchFrameFor(model, loop, toward);
+  return facePlaneFor(model, loop, toward);
 }
 
 /**
@@ -1095,7 +1095,7 @@ function foundLoop(model: Model, member: string, frame: string | null, words: Pr
   }
   if (mine.length > 1) {
     const list = mine.map((i) => describeLoop(all[i], all)).join("; ");
-    throw new Error(`"${member}" is in ${mine.length} loops — ${list}. Name the frame of the sketch it is in `
+    throw new Error(`"${member}" is in ${mine.length} loops — ${list}. Name the frame of the profile it is in `
       + `(${words.narrowed(member)}), name a member only one of them has, or click inside the `
       + `region with the ${words.op} tool`);
   }
@@ -1221,7 +1221,7 @@ function memberText(m: ProfileMember): string {
  */
 function givenProfile(model: Model, member: string, frame: string | null | undefined, loops: unknown,
                       words: ProfileWords): Profile {
-  if (typeof frame !== "string") throw new Error("a profile given as loops needs the frame it is sketched on");
+  if (typeof frame !== "string") throw new Error("a profile given as loops needs the frame it is drawn on");
   model.planeKind(frame);
   const isMember = (m: unknown) => typeof m === "string" || (m !== null && typeof m === "object" && !Array.isArray(m)
     && ["name", "from", "to"].every((k) => typeof (m as Record<string, unknown>)[k] === "string"));
@@ -2117,7 +2117,7 @@ function sweptFrames(model: Model, frame: string, x: Expansion, given: unknown):
   }
   const list = given == null ? [frame] : given;
   if (!Array.isArray(list) || !list.length || list[0] !== frame || !list.every((f) => typeof f === "string")) {
-    throw new Error(`an old revolve's turned frames are a list of frame names, its sketch frame "${frame}" first`);
+    throw new Error(`an old revolve's turned frames are a list of frame names, its profile's frame "${frame}" first`);
   }
   for (const f of list) model.frame(f);
   return [...new Set(list as string[])];
@@ -3171,7 +3171,7 @@ function throughTo(model: Model, f: ExtrudeFeature, held?: string | null): EndTo
 function uptoTo(model: Model, f: ExtrudeFeature, face: string, at: readonly number[] | null): { face: string; to?: number; turn: boolean } {
   const ahead = faceAhead(model, f, face, at);
   const d = model.relationOf(f.depth).args[1] as number;
-  if (!(Math.abs(ahead.off) > 1e-9)) throw new Error(`"${ahead.face}" is in ${f.name}'s own sketch plane — an extrude up to it would have no depth`);
+  if (!(Math.abs(ahead.off) > 1e-9)) throw new Error(`"${ahead.face}" is in ${f.name}'s own profile plane — an extrude up to it would have no depth`);
   const turn = ahead.off < 0;
   if (ahead.kind === "held") return { face: ahead.face, turn };
   return { face: ahead.face, to: Math.sign(d) * ahead.off, turn: false };
@@ -4387,7 +4387,7 @@ export function holeLoop(model: Model, f: FeatureEntry, member: string, r: Featu
   const n = planeAxes(model, f.frame)!.n;
   const level = withIt.filter((i) => parallel(all[i].plane.normal, n));
   if (!level.length) {
-    throw new Error(`${member}'s loop is not parallel to ${f.name}'s sketch frame ${f.frame} — a hole lies in the plane `
+    throw new Error(`${member}'s loop is not parallel to ${f.name}'s profile frame ${f.frame} — a hole lies in the plane `
       + `of the outline it is cut through: draw it on ${f.frame}, or extrude it on its own`);
   }
   const others = level.filter((i) => i !== outline);
@@ -4730,7 +4730,7 @@ export function construction(model: Model, ...args: unknown[]): string[] {
       const held = curves.filter((n) => f.loops[0].some((m) => memberName(m) === n));
       if (!held.length || (!alone && f.kind === "extrude" && canUnsweep(model, f.name, going))) continue;
       throw new Error(`"${held[0]}" is part of ${f.name}'s outline — ${f.kind === "extrude" ? "its extrude cannot lose it and stand" : "a revolve cannot stand open"}. `
-        + `del("${f.name}") keeps the sketch and removes the solid; then it can be construction`);
+        + `del("${f.name}") keeps the profile and removes the solid; then it can be construction`);
     }
     for (const pt of changed.filter((n) => model.entities.get(n)?.kind === "point")) {
       const cuts = (m: ProfileMember) => typeof m !== "string" && (m.from === pt || m.to === pt);
@@ -4866,7 +4866,7 @@ export function set(model: Model, path: string, value: number, turning = false):
   const ended = entry.op === "extrusion" ? extrudeOfDepth(model, name) : null;
   const turned = ended !== null && value !== 0 && Math.sign(value) !== Math.sign(entry.args[1] as number);
   if (live && turned && !turning && ended.extent === "upto" && endRelation(model, ended)) {
-    throw new Error(`${name} only says which way ${ended.name} goes — it ends on ${ended.upto}, which is on this side of its sketch. `
+    throw new Error(`${name} only says which way ${ended.name} goes — it ends on ${ended.upto}, which is on this side of its profile. `
       + `setEnd("${ended.name}", "blind") first, or end it on a face the other way`);
   }
   const out = model.asOperation("set", [path, value], () => {

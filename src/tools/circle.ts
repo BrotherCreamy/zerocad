@@ -71,7 +71,7 @@ const SAME_POINT_EPS = 1e-6;
 
 export class CircleTool extends Tool {
   static readonly options: OptionSpecs = { ...DRAWING_OPTIONS, method: methodOption(CIRCLE_METHODS) };
-  static readonly summary = "Draws a circle: drag out from its centre, or click 3 points or edges";
+  static readonly summary = "Draws a circle: drag out from its centre, or {tap} 3 points or edges";
   static readonly how: How = (o) =>
     o.method === "centre" ? ["Press at the centre and drag out to the rim.", "Locked to centre · radius: the options unlock it."]
       : o.method === "3pt" ? ["{Tap} three points for it to pass through.", "Locked to 3 points: the options unlock it."]
@@ -217,11 +217,11 @@ export class CircleTool extends Tool {
     if (this.method === "tangent") {
       const curve = this.tangible(touchedCurve(m, p.snap));
       if (!curve) {
-        guide(this.ctx, `${this.name}: click on a line, circle or arc for it to touch — it is locked to tangent`);
+        guide(this.ctx, `${this.name}: {tap} on a line, circle or arc for it to touch — it is locked to tangent`);
         return;
       }
       if (this.clicks.some((c) => touchedCurve(m, c.snap) === curve)) {
-        guide(this.ctx, `${this.name}: it already touches ${curve} — click another line or circle`);
+        guide(this.ctx, `${this.name}: it already touches ${curve} — {tap} another line or circle`);
         return;
       }
     }
@@ -276,8 +276,8 @@ export class CircleTool extends Tool {
       // works. Said as guidance: the click missed, nothing is wrong.
       const collinear = !circumcircle(first.world, second.world, p.world);
       guide(this.ctx, collinear
-        ? `${this.name}: those three are on one line — click the third off it`
-        : `${this.name}: no circle near those touches them all — click somewhere else`);
+        ? `${this.name}: those three are on one line — {tap} the third off it`
+        : `${this.name}: no circle near those touches them all — {tap} somewhere else`);
       this.ctx.requestRender();
       return;
     }

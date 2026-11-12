@@ -1,5 +1,5 @@
 // The **solids** module (docs/plans/workbenches.md): extrude, revolve and
-// sketch on a face; the feature edit dialog; and the operations a file replays
+// the plane to draw on; the feature edit dialog; and the operations a file replays
 // for them — `extrude`, `revolve`, `regen`. The bodies kernel (src/solids/,
 // the Worker) is the host's (main.ts constructs its client); this module is
 // what the command line and the tray know of solids.
@@ -22,24 +22,24 @@ defineRebuild("chamferSetback", (m, a) => void chamferSetback(m, a[0] as number)
 import { svg } from "../tools/icons.ts";
 import { CutTool, ExtrudeTool } from "../tools/extrude.ts";
 import { RevolveTool } from "../tools/revolve.ts";
-import { SketchTool } from "../tools/sketch.ts";
+import { PlaneTool } from "../tools/plane.ts";
 import { EditExtrudeTool, EditRevolveTool } from "../tools/edit.ts";
 import { EdgeChamferTool, EdgeFilletTool, EditChamferTool, EditFilletTool } from "../tools/blend.ts";
 
 defineModule("solids", {
-  label: "Solids: extrude, revolve, sketch on a face, bodies, fillets and chamfers of their edges",
+  label: "Solids: extrude, revolve, the plane to draw on, bodies, fillets and chamfers of their edges",
   tools: {
     extrude: ExtrudeTool,
     // Extrude's cut, a tool of its own (docs/plans/solid-tools-intuitive.md): into
     // the material by default, typed as the extrude it is.
     cut: CutTool,
     revolve: RevolveTool,
-    sketch: SketchTool,
+    plane: PlaneTool,
     // A dialog armed on a feature (`edit("e1")`), never from the tray.
     "edit extrude": { ctor: EditExtrudeTool, listed: false },
     "edit revolve": { ctor: EditRevolveTool, listed: false },
     // A body's edges rounded or bevelled (docs/plans/solid-fillets.md), on the
-    // modify button beside the sketch's corner fillet — no button of their own,
+    // modify button beside the profile's corner fillet — no button of their own,
     // so an iPhone's column keeps its thirteen.
     round: EdgeFilletTool,
     chamfer: EdgeChamferTool,
@@ -70,11 +70,11 @@ defineModule("solids", {
     revolve: svg("revolve", `<rect x="5.75" y="6.75" width="4.5" height="3.5" rx="1"/>` +
       `<path d="M13.5 8.5A5.5 5.5 0 1 1 8 3"/><path d="M6.6 1.4 8.6 3 6.6 4.6"/>`),
     // A plane in perspective with a pencil on it: drawing on a face.
-    sketch: svg("sketch", `<path d="M1.5 13.5h9l4-4h-3"/><path d="M1.5 13.5l4-4h1.5"/>` +
+    plane: svg("plane", `<path d="M1.5 13.5h9l4-4h-3"/><path d="M1.5 13.5l4-4h1.5"/>` +
       `<path d="M6.5 10.5l1-3L13 2l2 2-5.5 5.5zM11.5 3.5l2 2"/>`),
     // A block's end seen a little from the side, its top front edge rounded
     // (the edge chamfer's bevelled): the solid's fillet, told from the
-    // sketch's flat quarter-round corner beside it by the depth.
+    // profile's flat quarter-round corner beside it by the depth.
     round: svg("round", `<path d="M2 14h8V8.5A4 4 0 0 0 6 4.5H2z"/><path d="M6 4.5l3-2.5h1A4 4 0 0 1 14 6v5.5L10 14"/><path d="M10 8.5l4-2.5"/>`),
     chamfer: svg("chamfer", `<path d="M2 14h8V8L6.5 4.5H2z"/><path d="M6.5 4.5 9.5 2h1L14 5.5v6L10 14"/><path d="M10 8l4-2.5"/>`),
   },
@@ -109,14 +109,14 @@ defineModule("solids", {
   help: [
     'solids     extrude(region, depth?, frame?) — a solid of a region (see',
     '           regions), or of the face a member bounds — its whole inside, a',
-    "           region made for it on the way (rg1) — along its sketch frame's +z:",
+    "           region made for it on the way (rg1) — along its profile's plane's +z:",
     '           a feature e1, a lid of twins and walls held by one depth',
     '           dimension (set("d9.value", 40) moves the lid). frame picks the',
     "           loop when the member is in several. The extrude tool does it by",
     '           pointing: arm("extrude", { depth: 20 }), click inside regions',
     "           (several), see the solids, then ✓ or Enter — it types one",
     '           extrude("l1", 20) here a region, the shortest line naming it.',
-    "           A sketch on the ground runs along the origin's +z; one on the work",
+    "           A profile on the ground runs along the origin's +z; one on the work",
     "           plane along it; one in no frame's plane along its own, three of",
     '           its corners facing you ("p1.p2.p4"). No frame is made for any of',
     "           them. Revolve does the same.",
@@ -196,7 +196,7 @@ defineModule("solids", {
     '           arm("revolve", { angle }), click inside regions, then the axis,',
     "           then ✓ or Enter. The fillet tool: two lines, or their corner.",
     "           A feature follows its profile: fillet a corner of an extruded",
-    "           or revolved sketch and the lid (or end face) is rounded too,",
+    "           or revolved profile and the lid (or end face) is rounded too,",
     "           keeping every twin and wall whose corner is still there.",
     '           regen("e1") does the same for a profile you changed by hand —',
     "           a line drawn across it. Neither adds a hole: a feature on a",
@@ -207,7 +207,7 @@ defineModule("solids", {
     "           it, shift adds one, a box selects every edge it holds.",
     '           fillet("e1", ["e1.lid|e1.m0", …], 3) rounds them: a feature',
     "           (e3) in e1's chain, after what it rounds — except an edge",
-    "           between two walls, a profile corner swept, which is the sketch's",
+    "           between two walls, a profile corner swept, which is the profile's",
     "           own fillet of that corner (see fillet above: one thing, both",
     "           profiles, nothing deleted); its faces are e3.f0,",
     "           e3.f1 … (one per edge named); its radius a dimension",

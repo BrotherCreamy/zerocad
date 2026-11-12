@@ -53,7 +53,7 @@ export class OffsetTool extends FeatureTool {
     distance: { default: DEFAULT_OFFSET, unit: "length", check: (v) => ((v as number) > 0 ? null : "must be more than 0") },
     construction: { default: false },
   };
-  static readonly summary = "Offsets a curve or chain: click it, choose a side, ✓ — or drag it";
+  static readonly summary = "Offsets a curve or chain: {tap} it, choose a side, ✓ — or drag it";
   static readonly how: How = [
     "{Tap} a curve: its whole chain comes with it.",
     "Drag beside it to pull the copy out.",
@@ -163,7 +163,7 @@ export class OffsetTool extends FeatureTool {
       return;
     }
     if (!this.chain.length) {
-      this.guide("click a line, arc or circle — the chain it is in is offset");
+      this.guide("{tap} a line, arc or circle — the chain it is in is offset");
       return;
     }
     this.pressed = true;

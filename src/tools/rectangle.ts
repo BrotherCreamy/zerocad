@@ -43,7 +43,7 @@
 import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { perpendicular } from "../relations/geometry.ts";
 import { coplanar } from "../relations/basic.ts";
-import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnChosenPlane, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Plane } from "../view.ts";
 
@@ -124,10 +124,10 @@ export class RectangleTool extends Tool {
     const [bAt, dAt] = otherCorners(from.world, p.world, from.plane);
     const a = placePoint(this.ctx, from, undefined, on);
     const b = m.addPoint(bAt).name;
-    const bHeld = holdOnSketchPlane(m, b, on);
+    const bHeld = holdOnChosenPlane(m, b, on);
     const c = placePoint(this.ctx, p, undefined, on);
     const d = m.addPoint(dAt).name;
-    const dHeld = holdOnSketchPlane(m, d, on);
+    const dHeld = holdOnChosenPlane(m, d, on);
     const ab = m.addLine(a, b);
     const bc = m.addLine(b, c);
     const cd = m.addLine(c, d);

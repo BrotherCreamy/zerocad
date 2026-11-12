@@ -1,23 +1,27 @@
-// Sketch mode: choose a plane, and everything drawn after is held on it
-// (docs/plans/sketch-mode.md; the owner: *"I need a way to natively sketch on a
-// plane without it being a special feature. It should just add 'on plane'
-// relations to each entity as it gets sketched. Also when I select this mode
-// it should go normal to the plane/face."*).
+// The Plane tool: choose a plane to draw on, and everything drawn after is
+// held on it (docs/plans/sketch-mode.md, docs/plans/no-sketch.md; the owner:
+// *"I need a way to natively sketch on a plane without it being a special
+// feature. It should just add 'on plane' relations to each entity as it gets
+// sketched. Also when I select this mode it should go normal to the
+// plane/face."* and later *"There is no such thing as a sketch."*).
 //
-// **Sketch mode is a mode, not a feature.** It is the work plane set — a plane
-// reference held as document state, `workplane(…)`, which makes nothing
-// (docs/plans/frameless-curves.md) — the view turned square to it, and every
-// drawing tool holding each point it makes on it with one ordinary `onPlane`
-// (tools/place.ts). The chip says where (`on e1's top`), its ⟂ looks at the
-// plane again, its Done (or Escape with nothing in hand) leaves it.
+// **A chosen plane is a mode, not a feature, and not a container.** It is the
+// work plane set — a plane reference held as document state, `workplane(…)`,
+// which makes nothing (docs/plans/frameless-curves.md) — the view turned
+// square to it, and every drawing tool holding each point it makes on it with
+// one ordinary `onPlane` (tools/place.ts). The chip says where (`on e1's
+// top`), its ⟂ looks at the plane again, its Done (or Escape with nothing in
+// hand) leaves it. Nothing drawn there belongs to the plane: it is geometry
+// with an `onplane` relation, in whatever groups it is in. The tool was named
+// "sketch" until 2026-11-12; `arm("sketch")` is kept as an alias (tool.ts).
 //
 // **What this tool picks**, nearest first, as the extrude tool's gesture is:
 //
 //   * **a face**: a loop under the cursor (`regionAt`: the innermost loop under
 //     the click, then the nearest) — a solid's lid, a wall turned toward the
-//     viewer, a revolve's end face and a plain sketch loop alike; three of its
+//     viewer, a revolve's end face and a plain closed loop alike; three of its
 //     own points, ordered so the plane's normal faces the viewer (out of a
-//     solid, see ../sketchface.ts), or a round face's own circle. Held by the
+//     solid, see ../faceplane.ts), or a round face's own circle. Held by the
 //     feature's points, so it follows the solid;
 //   * **a flat face the kernel made** that no loop bounds — a chamfer's — by a
 //     frame made at it (../kernelplane.ts): a plain frame, not a feature, and
@@ -33,7 +37,7 @@
 // (`ctx.run`) rather than the model, because the camera is not the model's and
 // `workplane` already knows how to turn it: so the log shows the call, the
 // journal holds what the typed call journals, and it is one undo step, all
-// because it *is* the typed call. The "Sketch on this face" menu item types the
+// because it *is* the typed call. The "Draw on this face" menu item types the
 // same line for a face.
 //
 // While it is armed every face it could take is lit faintly, as the extrude
@@ -44,7 +48,7 @@ import { Tool, press, type Hand, type PointerInfo, type RegionHit, type RenderCo
 import { REGION_GREEN, drawRegion, lightRegions, missedRegion, regionKey } from "./region.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
-import { sketchOnFaceCommand } from "../sketchface.ts";
+import { drawOnFaceCommand } from "../faceplane.ts";
 import { refind } from "./selection.ts";
 import { loopAround } from "../loops.ts";
 import { kernelFacePlane, kernelPlaneCommand } from "../kernelplane.ts";
@@ -71,16 +75,16 @@ type Under =
   | { kind: "kernel"; command: string; outline: number[][] }
   | { kind: "named"; plane: Named };
 
-export class SketchTool extends Tool {
-  static readonly summary = "Sketch on a face or Top, Front, Right: all you draw stays on it";
+export class PlaneTool extends Tool {
+  static readonly summary = "Draw on a face or Top, Front, Right: all you draw stays on it";
   static readonly how: How = [
     "{Tap} a lit face — or Top, Front or Right in the options.",
     "The view turns to it; what you draw is held on it.",
-    "Done, at the top beside its name, leaves the sketch.",
+    "Done, at the top beside its name, leaves the plane.",
   ];
   /**
    * The ground's planes, one tap each (docs/plans/sketch-mode.md): pressing
-   * one sketches on it at once. Never remembered — the next sketch starts by
+   * one draws on it at once. Never remembered — the next choice starts by
    * picking again, not on the last plane chosen.
    */
   static readonly options: OptionSpecs = {
@@ -92,7 +96,7 @@ export class SketchTool extends Tool {
       remember: false,
     },
   };
-  readonly name = "sketch";
+  readonly name = "plane";
   // It chooses a plane, not a place: a snap marker would promise a vertex the
   // click does not go to.
   readonly snaps = false;
@@ -102,7 +106,7 @@ export class SketchTool extends Tool {
   private scale = 1;
 
   next(hand: Hand): string {
-    return `${press(hand)} a lit face or plane to sketch on it`;
+    return `${press(hand)} a lit face or plane to draw on it`;
   }
 
   onMove(p: PointerInfo): void {
@@ -113,10 +117,10 @@ export class SketchTool extends Tool {
   }
 
   /**
-   * Armed with a choice already made, it sketches at once — there is nothing to
-   * preview or confirm: a named plane from the options panel (`arm("sketch",
-   * { on: "front" })`), a face selected on the canvas, a frame or three points
-   * selected. After the line that armed it has run, not inside it: the plane
+   * Armed with a choice already made, it takes the plane at once — there is
+   * nothing to preview or confirm: a named plane from the options panel
+   * (`arm("plane", { on: "front" })`), a face selected on the canvas, a frame
+   * or three points selected. After the line that armed it has run, not inside it: the plane
    * is typed as a line of its own, as a click would type it.
    */
   onArmed(): void {
@@ -125,20 +129,20 @@ export class SketchTool extends Tool {
     const given = this.ctx.preselected?.[0];
     const picked = this.ctx.prenamed ?? [];
     if (!named && !given && !picked.length) return;
-    // A task, not a microtask: the arming line's own answer ("armed: sketch")
+    // A task, not a microtask: the arming line's own answer ("armed: plane")
     // is logged a few microtasks after it ran, and the plane belongs after it.
     setTimeout(() => {
       try {
         if (named) { this.type(workplaneLine(NAMED_PLANES[named].ref)); return; }
         if (given) {
           const hit = refind(this.ctx.model, given);
-          if (hit) this.sketchOn(hit);
+          if (hit) this.drawOn(hit);
           return;
         }
         const line = selectedPlane(this.ctx.model, picked, this.toward);
         if (line) this.type(line);
       } catch {
-        // Headless, with nobody to tell: nothing sketched, the tool armed.
+        // Headless, with nobody to tell: no plane taken, the tool armed.
       }
     }, 0);
   }
@@ -154,16 +158,16 @@ export class SketchTool extends Tool {
       }
       // In 3D the named planes are always there to take; a 2D drawing has only its loops.
       this.refuse(new Error(this.ctx.model.dim === 3
-        ? "click inside a lit face, or a lit plane — or choose Top, Front or Right in the options"
+        ? "{tap} inside a lit face, or a lit plane — or choose Top, Front or Right in the options"
         : missedRegion(this.ctx.model)));
       return;
     }
-    if (under.kind === "face") this.sketchOn(under.hit);
+    if (under.kind === "face") this.drawOn(under.hit);
     else if (under.kind === "kernel") this.type(under.command);
     else this.type(workplaneLine(NAMED_PLANES[under.plane].ref));
   }
 
-  /** What a click at `screen` would sketch on: a face first, then a flat kernel face no loop bounds, then a named plane. */
+  /** What a press at `screen` would draw on: a face first, then a flat kernel face no loop bounds, then a named plane. */
   private at(screen: [number, number]): Under | null {
     let hit = this.ctx.regionAt?.(screen) ?? null;
     const solid = this.ctx.solids?.faceAt(screen) ?? null;
@@ -172,9 +176,9 @@ export class SketchTool extends Tool {
     // the region answer there is the lid seen through a chamfer or a round
     // that is in front of it. Where the kernel's face under the pixel is not
     // in that loop's plane, the kernel's face is what is seen (found: a click
-    // on a chamfer sketched on the lid).
+    // on a chamfer drawn on the lid).
     if (hit && solid && this.skeletonLoop(hit) && !inPlane(hit, solid)) {
-      if (!solid.planar) return null; // a round: no plane to sketch on
+      if (!solid.planar) return null; // a round: no plane to draw on
       const around = loopAround(this.ctx.model, solid.at, hit.loops);
       hit = around ? { ...hit, index: hit.loops.indexOf(around), at: solid.at } : null;
     }
@@ -195,11 +199,11 @@ export class SketchTool extends Tool {
   /**
    * The chamfer whose own face is under the pixel — the kernel's cut of a
    * body's edge (`BlendFeature`), by its record's name — or null. That face is
-   * **not sketched on** (the register's review item 7, docs/plans/
+   * **not drawn on** (the register's review item 7, docs/plans/
    * fillets-one-thing.md): nothing in the model lies on it, so a plane made
    * there was held by nothing and stayed behind when the solid moved. A
-   * chamfer of a profile's corner is the sketch's now, its face a wall swept
-   * from a line, and that is sketched on like any wall and follows.
+   * chamfer of a profile's corner is the profile's now, its face a wall swept
+   * from a line, and that is drawn on like any wall and follows.
    */
   private chamferAt(screen: [number, number]): string | null {
     const hit = this.ctx.solids?.faceAt(screen) ?? null;
@@ -252,10 +256,10 @@ export class SketchTool extends Tool {
     return out;
   }
 
-  private sketchOn(hit: RegionHit): void {
+  private drawOn(hit: RegionHit): void {
     let command: string;
     try {
-      command = sketchOnFaceCommand(this.ctx.model, hit.loops[hit.index], hit.toward);
+      command = drawOnFaceCommand(this.ctx.model, hit.loops[hit.index], hit.toward);
     } catch (e) {
       this.refuse(e);
       return;
@@ -268,7 +272,7 @@ export class SketchTool extends Tool {
     if (!this.ctx.run) {
       // Not a miss: a host with no command line. A refusal, and headless it throws.
       if (!this.ctx.log) throw new Error("there is no command line here to type workplane(…) into");
-      this.ctx.log("sketch: there is no command line here to type workplane(…) into");
+      this.ctx.log("plane: there is no command line here to type workplane(…) into");
       return;
     }
     this.under = null;
@@ -282,7 +286,7 @@ export class SketchTool extends Tool {
   private refuse(e: unknown): void {
     this.ctx.requestRender();
     if (!this.ctx.log) throw e;
-    this.ctx.log(`sketch: ${e instanceof Error ? e.message : e}`, "guide");
+    this.ctx.log(`plane: ${e instanceof Error ? e.message : e}`, "guide");
   }
 
   onCancel(): void {
@@ -350,11 +354,11 @@ export function chamferOfFace(model: Model, face: string): string | null {
   return model.blends.get(record)?.kind === "chamfer" ? record : null;
 }
 
-/** Why a chamfer's own face is not sketched on, and what is. */
+/** Why a chamfer's own face is not drawn on, and what is. */
 export function chamferFaceRefusal(chamfer: string): string {
-  return `that face is ${chamfer}'s — a chamfer the solid kernel cut along an edge. Nothing in the model lies on it, so a sketch there `
-    + "would be held by nothing and left behind when the solid moves. Sketch on a face beside it, or on a plane you make "
-    + "(three points on the solid: plane(p1, p2, p3)); a chamfer between two walls is the sketch's own, and its face is sketched on like any wall";
+  return `that face is ${chamfer}'s — a chamfer the solid kernel cut along an edge. Nothing in the model lies on it, so a drawing there `
+    + "would be held by nothing and left behind when the solid moves. Draw on a face beside it, or on a plane you make "
+    + "(three points on the solid: plane(p1, p2, p3)); a chamfer between two walls is the profile's own, and its face is drawn on like any wall";
 }
 
 /** Whether a kernel face under the pixel lies in the plane of the loop a region hit found there. */
@@ -365,7 +369,7 @@ function inPlane(hit: RegionHit, solid: { at: number[]; normal: number[] }): boo
     && Math.abs(dot3(sub3(lift3(solid.at), plane.origin), plane.normal)) < 1e-6 * size;
 }
 
-/** The line that sketches on a plane reference. */
+/** The line that draws on a plane reference. */
 function workplaneLine(ref: string): string {
   return `workplane(${JSON.stringify(ref)})`;
 }
@@ -379,7 +383,7 @@ function keyOf(u: Under | null): string {
 }
 
 /**
- * The plane a selection names, as the line that sketches on it, or null: one
+ * The plane a selection names, as the line that draws on it, or null: one
  * frame (its own plane), or three points not on one line — `"a.b.c"`, ordered
  * so its normal faces `toward` (the viewer), as a face's three are.
  */

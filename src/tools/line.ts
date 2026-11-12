@@ -98,7 +98,7 @@ interface Aim {
 
 export class LineTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
-  static readonly summary = "Draws lines: click the start, then the end of each in turn";
+  static readonly summary = "Draws lines: {tap} the start, then the end of each in turn";
   static readonly how: How = [
     "{Tap} the start, then the end of each line in turn.",
     "Start or end on a point or a line to join it.",

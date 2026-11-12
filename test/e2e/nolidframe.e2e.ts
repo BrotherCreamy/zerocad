@@ -196,7 +196,7 @@ test("a cylinder's top, sketched on with the sketch tool: the work plane is the 
   // The top facing the camera (the boxes' view is turned up toward it), the
   // sketch tool clicked on it, off its centre point.
   await centreOn(m1.points[top]);
-  await app.type("sketch");
+  await app.type("plane");
   await clickAt(...await app.screenOf(m1.points[top].map((c, i) => c + (i === 0 ? 6 : 0))));
   const log = await app.log();
   const typed = log.match(/> workplane\("(c\d+)"\)/);

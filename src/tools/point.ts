@@ -10,7 +10,7 @@ import { Tool, defineTool, press, type Hand, type PointerInfo, type How } from "
 import { placePoint } from "./place.ts";
 
 export class PointTool extends Tool {
-  static readonly summary = "Places a point where you click";
+  static readonly summary = "Places a point where you {tap}";
   static readonly how: How = [
     "{Tap} where the point goes.",
     "On a line, a circle or a point, it is held there.",

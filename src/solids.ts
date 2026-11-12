@@ -609,7 +609,7 @@ function profileWalks(model: Model, f: FeatureEntry): Walk[] {
 
 function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>): Body[] {
   const plane = featurePlane(model, f);
-  if (!plane) throw new Error("its sketch plane has collapsed");
+  if (!plane) throw new Error("its profile's plane has collapsed");
   const { start, depth } = extrudeSpan(model, f);
   // The lid is the profile moved by the depth along the plane's normal — the
   // definition the extrusion dimension holds the twins to, so the lid is
@@ -685,7 +685,7 @@ function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" 
 
 function revolveBodies(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }>): Body[] {
   const plane = featurePlane(model, f);
-  if (!plane) throw new Error("its sketch plane has collapsed");
+  if (!plane) throw new Error("its profile's plane has collapsed");
   const theta = model.relations.get(f.angle)?.args[1];
   if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) throw new Error("it has no angle");
   const axis = axisReader(model, f.axis).read();
@@ -1035,7 +1035,7 @@ export function kernelProfile(model: Model, plane: { u: number[]; n: number[] } 
   { at: KernelPlacement; profile: KernelProfile; local: (p: number[]) => [number, number]; n: number[] } {
   const n = plane ? unit3(plane.n) : null;
   const x = plane && n ? unit3(sub3(plane.u, n.map((c) => c * dot3(plane.u, n)))) : null;
-  if (!n || !x) throw new Error("its sketch plane has collapsed");
+  if (!n || !x) throw new Error("its profile's plane has collapsed");
   const y = cross3(n, x);
   const first = loops[0]?.[0];
   if (first === undefined) throw new Error("its profile is empty");

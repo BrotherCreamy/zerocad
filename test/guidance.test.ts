@@ -19,7 +19,7 @@ import { worldToScreen, type View } from "../src/view.ts";
 import { edgeOn, litRegions, missedRegion, regionKey } from "../src/tools/region.ts";
 import { ExtrudeTool } from "../src/tools/extrude.ts";
 import { RevolveTool, revolveAxes } from "../src/tools/revolve.ts";
-import { SketchTool } from "../src/tools/sketch.ts";
+import { PlaneTool } from "../src/tools/plane.ts";
 import { FilletTool } from "../src/tools/fillet.ts";
 import { regionAtFor } from "./featurectx.ts";
 import { Circle3Tool } from "./lockedtools.ts";
@@ -127,17 +127,23 @@ test("the origin's own arms are axes a revolve is offered — it is a frame with
 });
 
 // --- what is said -----------------------------------------------------------------
+//
+// A tool's guidance says `{tap}` where the press goes, as its how-lines do
+// (docs/plans/no-sketch.md): the engine fills it for the hand on the canvas —
+// "click" under a mouse, "tap" under a finger — in the one place every tool's
+// line passes (`ToolEngine`'s ctx.log). Headless, with a test's own ctx, the
+// placeholder is what the tool said, and these tests pin that.
 
-test("extrude and sketch, a click on no region: guidance, the tool still armed — and, with nothing closed at all, what to do first", async () => {
+test("extrude and plane, a click on no region: guidance, the tool still armed — and, with nothing closed at all, what to do first", async () => {
   await loadKernel();
   const { m } = holed();
-  for (const Tool of [ExtrudeTool, SketchTool]) {
+  for (const Tool of [ExtrudeTool, PlaneTool]) {
     const ctx = toolCtx(m, ABOVE);
     const tool = new Tool(ctx);
     tool.onDown(at([90, 90, 0]));
     // The sketch tool can take the ground's named planes as well as a face (docs/plans/sketch-mode.md), so its miss says so.
-    const missed = tool.name === "sketch" ? "click inside a lit face, or a lit plane — or choose Top, Front or Right in the options"
-      : "click inside a closed outline — the ones I can see are lit";
+    const missed = tool.name === "plane" ? "{tap} inside a lit face, or a lit plane — or choose Top, Front or Right in the options"
+      : "{tap} inside a closed outline — the ones I can see are lit";
     assert.deepEqual(ctx.said, [{ line: `${tool.name}: ${missed}`, outcome: "guide" }]);
     assert.equal(ctx.finished, false, `${tool.name} stays armed`);
   }
@@ -145,11 +151,11 @@ test("extrude and sketch, a click on no region: guidance, the tool still armed �
   axisFrame(bare);
   const ctx = toolCtx(bare, ABOVE);
   new ExtrudeTool(ctx).onDown(at([0, 0, 0]));
-  assert.deepEqual(ctx.said, [{ line: "extrude: no closed outline yet — draw one, then click inside it", outcome: "guide" }]);
-  assert.equal(missedRegion(bare), "no closed outline yet — draw one, then click inside it");
+  assert.deepEqual(ctx.said, [{ line: "extrude: no closed outline yet — draw one, then {tap} inside it", outcome: "guide" }]);
+  assert.equal(missedRegion(bare), "no closed outline yet — draw one, then {tap} inside it");
   // Headless there is no one to guide, and a caller: it throws the same words.
   assert.throws(() => new ExtrudeTool({ ...toolCtx(m, ABOVE), log: undefined }).onDown(at([90, 90, 0])),
-    /click inside a closed outline/);
+    /\{tap\} inside a closed outline/);
 });
 
 test("revolve: a miss, then a profile, then a miss for the axis, then an axis it would not turn about — each guidance, the profile kept", async () => {
@@ -166,9 +172,9 @@ test("revolve: a miss, then a profile, then a miss for the axis, then an axis it
   ctx.pickResult = { name: across, kind: "line", distance: 0 };
   tool.onDown(at([30, 40, 0]));
   assert.deepEqual(ctx.said, [
-    { line: "revolve: click inside a closed outline — the ones I can see are lit", outcome: "guide" },
-    { line: "revolve: now click a line, or a frame's arm, to turn it about", outcome: "guide" },
-    { line: `revolve: ${across} is not in its plane, or crosses it — click a lit one`, outcome: "guide" },
+    { line: "revolve: {tap} inside a closed outline — the ones I can see are lit", outcome: "guide" },
+    { line: "revolve: now {tap} a line, or a frame's arm, to turn it about", outcome: "guide" },
+    { line: `revolve: ${across} is not in its plane, or crosses it — {tap} a lit one`, outcome: "guide" },
   ]);
   assert.equal(ctx.finished, false);
 });
@@ -187,11 +193,11 @@ test("fillet: nothing, the wrong kind, the same line, lines that do not meet —
   click({ name: hole, kind: "circle", distance: 0 });
   click({ name: lines[2], kind: "line", distance: 0 });
   assert.deepEqual(ctx.said.map((s) => s.line), [
-    "fillet: click a line — fillet wants two lines that share a corner",
+    "fillet: {tap} a line — fillet wants two lines that share a corner",
     `fillet: ${hole} is a circle — fillet wants two lines that share a corner`,
-    `fillet: now click a line that meets ${lines[0]}`,
-    `fillet: that is ${lines[0]} again — click the line it shares a corner with`,
-    `fillet: ${hole} is a circle — click a line that meets ${lines[0]}`,
+    `fillet: now {tap} a line that meets ${lines[0]}`,
+    `fillet: that is ${lines[0]} again — {tap} the line it shares a corner with`,
+    `fillet: ${hole} is a circle — {tap} a line that meets ${lines[0]}`,
     `fillet: ${lines[0]} and ${lines[2]} do not meet — fillet wants two lines that share a corner`,
   ]);
   assert.ok(ctx.said.every((s) => s.outcome === "guide"));
@@ -208,7 +214,7 @@ test("the 3-point tools, three clicks on one line: guidance, the first two kept"
     const ctx = toolCtx(m, ABOVE);
     const tool = new Tool(ctx);
     for (const x of [0, 10, 25]) tool.onDown({ world: [x, 0], screen: [0, 0] });
-    assert.deepEqual(ctx.said, [{ line: `${tool.name}: those three are on one line — click the third off it`, outcome: "guide" }]);
+    assert.deepEqual(ctx.said, [{ line: `${tool.name}: those three are on one line — {tap} the third off it`, outcome: "guide" }]);
     tool.onDown({ world: [5, 8], screen: [0, 0] });
     assert.equal(ctx.finished, true, `${tool.name}: the obvious next click works`);
   }

@@ -123,7 +123,7 @@ export function removeFrom(model: Model, g: unknown, ...names: unknown[]): strin
  */
 export function ungroup(model: Model, g: unknown): string[] {
   if (typeof g === "string" && model.features.has(g)) {
-    throw new Error(`"${g}" is a feature, not a group — del("${g}") removes the solid and keeps its sketch`);
+    throw new Error(`"${g}" is a feature, not a group — del("${g}") removes the solid and keeps its profile`);
   }
   if (typeof g !== "string") throw new Error("ungroup takes the name of a group");
   const entry = model.groupOf(g);

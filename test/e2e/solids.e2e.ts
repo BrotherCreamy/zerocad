@@ -114,7 +114,7 @@ test("a plate, drawn and extruded: a body of one feature, drawn as it always was
 });
 
 test("a circle sketched on the top, extruded Cut through: a hole — in the numbers and in the picture", { skip }, async () => {
-  await app.type("sketch");
+  await app.type("plane");
   await clickAt(...await app.screenOf([W - 8, H - 8, T]));
   assert.match((await app.repl("model.workPlane")).value as string, /^p\d+\.p\d+\.p\d+$/, "sketching on the lid");
   await app.type("circle");
@@ -151,7 +151,7 @@ test("a circle sketched on the top, extruded Cut through: a hole — in the numb
 
 test("a circle sketched on the side, extruded with the default: Add — a boss, the side found on the kernel's body", { skip }, async () => {
   await app.type('lookAt("f1"); orbit(-0.25, -1.2); zoom(1.2)');
-  await app.type("sketch");
+  await app.type("plane");
   await clickAt(...await app.screenOf(SIDE));
   const plane = (await app.repl("model.workPlane")).value as string;
   assert.match(plane, /^p\d+\.p\d+\.p\d+$/, `on the near wall: ${plane}`);

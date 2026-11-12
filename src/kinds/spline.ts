@@ -126,7 +126,7 @@ export function checkSpline(model: Model, points: unknown, closed?: unknown): vo
     throw new Error(shut ? "a closed spline goes through each point once — it closes on its first by itself"
       : "a spline goes through each point once — a curve back through a point is two splines, or a closed one");
   }
-  if (!entityKind("spline")) throw new Error("the spline is the sketch module's, and it is not loaded");
+  if (!entityKind("spline")) throw new Error("the spline is the drawing module's, and it is not loaded");
 }
 
 /**
@@ -275,7 +275,7 @@ export function checkBSpline(model: Model, points: unknown, knots: unknown): voi
     throw new Error(`a spline of ${n} control points takes ${n + DEGREE + 1} knots, rising, its first ${DEGREE + 1} and last ${DEGREE + 1} each one value — got ${JSON.stringify(knots)}`);
   }
   if (model.dim < 2) throw new Error(`a spline is a curve — a ${model.dim}D model has no room to bend one`);
-  if (!entityKind("bspline")) throw new Error("the spline is the sketch module's, and it is not loaded");
+  if (!entityKind("bspline")) throw new Error("the spline is the drawing module's, and it is not loaded");
 }
 
 /**

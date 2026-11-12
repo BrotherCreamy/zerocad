@@ -162,7 +162,7 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
       box: (() => { const r = el.getBoundingClientRect(); return [r.width, r.height]; })(),
     })));
   assert.deepEqual(buttons.map((b) => b.tool), tools, "the registry, in its order");
-  assert.ok(tools.includes("extrude") && tools.includes("revolve") && tools.includes("sketch"), "the solid tools included");
+  assert.ok(tools.includes("extrude") && tools.includes("revolve") && tools.includes("plane"), "the solid tools included");
   for (const b of buttons) {
     assert.equal(b.glyph, b.tool, `${b.tool}: its own glyph — every one here is a built-in`);
     assert.equal(b.text, "", "and no words on its face");

@@ -18,7 +18,7 @@ async function loadKernel() {
   await ensureKernelLoaded(await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url)));
 }
 
-const TOOLS = ["point", "line", "rectangle", "circle", "arc", "fillet", "extrude", "revolve", "sketch"];
+const TOOLS = ["point", "line", "rectangle", "circle", "arc", "fillet", "extrude", "revolve", "plane"];
 
 test("no tool is unavailable in any model: 2D or 3D, a default frame or none", async () => {
   await loadKernel();

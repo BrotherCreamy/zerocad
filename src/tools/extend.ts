@@ -28,7 +28,7 @@ interface Hover {
 }
 
 export class ExtendTool extends Tool {
-  static readonly summary = "Extends a line or arc to the next curve: click near the end";
+  static readonly summary = "Extends a line or arc to the next curve: {tap} near the end";
   static readonly how: How = [
     "{Tap} a line or an arc near the end to lengthen.",
     "It grows to the next curve in its way.",
@@ -68,7 +68,7 @@ export class ExtendTool extends Tool {
     const h = this.look(p);
     this.hover = h;
     if (!h) {
-      this.guide("click a line or an arc, near the end to lengthen");
+      this.guide("{tap} a line or an arc, near the end to lengthen");
       return;
     }
     if (!h.reach) {

@@ -460,7 +460,7 @@ test("the region tool: a click makes a region, a click inside subtracts (the def
   assert.equal(tool.held, "rg1", "inside a region with none in hand: that one, taken in hand, nothing typed");
   assert.equal(m.regions.size, 2);
   click(200, 200);
-  assert.match(said.at(-1)!, /^region: click inside a closed outline/);
+  assert.match(said.at(-1)!, /^region: \{tap\} inside a closed outline/);
 });
 
 test("the region tool types what a user could have, one line each — and armed on a region by edit(\"rg1\")", async () => {

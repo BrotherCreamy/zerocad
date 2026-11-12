@@ -183,7 +183,7 @@ test("sketch armed with a face preselected sketches on it at once — typing the
     onSolveRender: () => {}, onRenderOnly: () => {}, onRun: (c) => { typed.push(c); },
   });
   e.selected.only(hitAt(m, [35, 0, 0]));
-  e.arm("sketch");
+  e.arm("plane");
   assert.deepEqual(typed, [], "not inside the line that armed it");
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(typed.length, 1);

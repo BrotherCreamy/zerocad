@@ -31,7 +31,7 @@ import { Repl } from "../src/repl.ts";
 import { frameBasis } from "../src/relations/refs.ts";
 import { curveFrame } from "../src/curveplane.ts";
 import { arcSamples } from "../src/arcgeom.ts";
-import { sketchFrameFor, sketchOnFaceCommand } from "../src/sketchface.ts";
+import { facePlaneFor, drawOnFaceCommand } from "../src/faceplane.ts";
 import { tiltedFrame } from "./frames.ts";
 import { baseOf, polygon, ring } from "./profiles.ts";
 
@@ -257,8 +257,8 @@ test("sketch on a cylinder's top: the work plane is the lid's own circle — not
   // No three points of its own — and none needed: the rim carries its own
   // normal, so its plane is the rim itself. It used to be a frame made through
   // the centre with two points held on the rim (docs/plans/frameless-curves.md).
-  assert.equal(sketchFrameFor(m, lid, t.uz), rim);
-  const command = sketchOnFaceCommand(m, lid, t.uz);
+  assert.equal(facePlaneFor(m, lid, t.uz), rim);
+  const command = drawOnFaceCommand(m, lid, t.uz);
   assert.equal(command, `workplane(${JSON.stringify(rim)})`);
   const ents = m.entities.size;
   const before = m.journal.length;

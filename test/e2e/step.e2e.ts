@@ -106,7 +106,7 @@ test("typed, exportStep(\"bracket\", { curves: true }) downloads bracket.step wi
   isStep(text);
   assert.equal(text.match(new RegExp(`TRIMMED_CURVE\\('${line}'`, "g"))?.length, 1, `the loose line, by its name ${line}`);
   assert.equal(text.match(/TRIMMED_CURVE\(/g)?.length, 1, "and none of the solid's own edges");
-  assert.match(await app.log(), /downloaded bracket\.step: e1 \(1 body\); 1 sketch curve/);
+  assert.match(await app.log(), /downloaded bracket\.step: e1 \(1 body\); 1 loose curve/);
   assert.deepEqual(app.pageErrors, []);
 });
 

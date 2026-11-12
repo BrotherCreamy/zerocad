@@ -122,7 +122,7 @@ test("the origin cannot be deleted — by the primitive or by del — and the me
   assert.throws(() => del(m, ORIGIN));
   const menu = menuFor(m, { name: ORIGIN, kind: "frame", distance: 0, axis: "z" });
   assert.ok(!menu.items.some((i) => i.label === "Delete"), menu.items.map((i) => i.label).join(", "));
-  assert.ok(menu.items.some((i) => i.label === "Sketch on this"));
+  assert.ok(menu.items.some((i) => i.label === "Draw on this"));
 });
 
 test("the origin is drawn and picked as a frame: its +z arm is what a revolve about origin.z clicks", () => {

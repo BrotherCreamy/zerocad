@@ -30,7 +30,7 @@ import { glyphSymbol } from "../src/glyphs.ts";
 import { findSnap } from "../src/snapping.ts";
 import { isFacePlane, planeNormalRef, planeOfRef } from "../src/workplane.ts";
 import { chipParts, chipText, landingLabel } from "../src/modechip.ts";
-import { CurvePlane, holdCurve, holdOnSketchPlane, placePoint } from "../src/tools/place.ts";
+import { CurvePlane, holdCurve, holdOnChosenPlane, placePoint } from "../src/tools/place.ts";
 import { CircleTool } from "../src/tools/circle.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import { LineTool } from "../src/tools/line.ts";
@@ -329,12 +329,12 @@ test("a shape begun on a face is laid out on it: the rim dragged over the ground
   const ground = new CurvePlane(ctx, "circle");
   ground.begin(onGround);
   assert.equal(ground.plane, "origin");
-  assert.equal(holdOnSketchPlane(m, m.addPoint([70, 20, 0]).name, "origin"), null);
+  assert.equal(holdOnChosenPlane(m, m.addPoint([70, 20, 0]).name, "origin"), null);
   const c = m.addCircle(m.addPoint([70, 20, 0]).name, 3, [0, 0, 1]);
   assert.deepEqual(holdCurve(m, c.name, c.center, "origin"), []);
   // A face holds, chosen or not.
   const q = m.addPoint([60, 5, 5]).name;
-  assert.ok(holdOnSketchPlane(m, q, wall));
+  assert.ok(holdOnChosenPlane(m, q, wall));
   assert.deepEqual(heldOn(m, q), [wall]);
 });
 

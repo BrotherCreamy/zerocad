@@ -50,7 +50,7 @@ export class SlotTool extends Tool {
       check: (v) => ((v as number) >= 0 ? null : "is 0 (chosen by the gesture) or more"),
     },
   };
-  static readonly summary = "Draws a slot: drag between its two centres, then click its width";
+  static readonly summary = "Draws a slot: drag between its two centres, then {tap} its width";
   static readonly how: How = (o) => [
     "Press at one end's centre, drag to the other's.",
     typeof o.width === "number" && o.width > 0 ? "Its width is the one set in the options." : "Then {tap} to one side to set its width.",

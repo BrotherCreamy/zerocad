@@ -75,7 +75,7 @@ test("the sketch tool clicked on the lid: the lid tinted, the chip says on e1's 
   assert.deepEqual(await chip(app), { where: "", what: "select", next: "click a thing, or drag to box", guiding: false },
     "no plane: the chip's first part is empty — drawing on the ground is not a mode");
   assert.equal((await tint(app, [0, 0, 20]))[3], 0, "and nothing is tinted");
-  await app.page.click('#toolbar button[data-tool="sketch"]');
+  await app.page.click('#toolbar button[data-tool="plane"]');
   assert.equal((await chip(app)).next, "click a lit face or plane to sketch on it");
   const [x, y] = await app.screenOf([0, 0, 20]);
   await clickAt(app, x, y);
@@ -161,11 +161,11 @@ test("the plane's part opens its menu: Look at, Change…, Done — each a comma
   await app.page.click("#mode .where");
   await app.page.waitForTimeout(150);
   const items = await app.page.$$eval("#ctxmenu .item", (els) => els.map((el) => [el.firstElementChild?.textContent ?? "", el.querySelector(".cmd")?.textContent ?? ""]));
-  assert.deepEqual(items, [["Look at", 'lookAt("p5.p6.p8")'], ["Change…", 'arm("sketch")'], ["Done", "workplane(null)"]]);
+  assert.deepEqual(items, [["Look at", 'lookAt("p5.p6.p8")'], ["Change…", 'arm("plane")'], ["Done", "workplane(null)"]]);
   await shot(app, "plane-menu");
   await app.page.click("#ctxmenu .item >> text=Change…");
   await app.page.waitForTimeout(150);
-  assert.equal((await app.model()).activeTool, "sketch");
+  assert.equal((await app.model()).activeTool, "plane");
 });
 
 test("a miss is answered in the chip's third part — muted, the tool armed — and not in the status's note", async () => {
@@ -226,7 +226,7 @@ for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
         const c = document.getElementById("cv")!.getBoundingClientRect();
         return [r.x + r.width / 2 - c.x, r.y + r.height / 2 - c.y] as [number, number];
       });
-      await f.tap(...await middle('#toolbar button[data-tool="sketch"]'));
+      await f.tap(...await middle('#toolbar button[data-tool="plane"]'));
       await phone.page.waitForTimeout(250);
       const [lx, ly] = await phone.screenOf([2, 2, 10]);
       await phone.at(lx, ly);

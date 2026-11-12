@@ -78,7 +78,7 @@ export class PatternTool extends FeatureTool {
 
   protected wanting(): string | null {
     if (!this.set.length) return null;
-    if (this.circularNow() && this.centre === null) return "now click the centre — a point, or a circle or arc for its centre";
+    if (this.circularNow() && this.centre === null) return `now {tap} the centre — a point, or a circle or arc for its centre`;
     return "set a step that is not nothing in the options panel";
   }
 
@@ -111,7 +111,7 @@ export class PatternTool extends FeatureTool {
       const e = hit ? model.entities.get(hit.name) : undefined;
       const c = e?.kind === "point" ? e.name : e && (e.kind === "circle" || e.kind === "arc") ? e.center : null;
       if (!c) {
-        this.guide("click the centre: a point, or a circle or arc for its centre");
+        this.guide("{tap} the centre: a point, or a circle or arc for its centre");
         return;
       }
       if (c === this.centre) {
@@ -123,7 +123,7 @@ export class PatternTool extends FeatureTool {
       return;
     }
     if (!hit || !COPIES.has(hit.kind)) {
-      this.guide(this.set.length ? "click more to pattern, or ✓" : "click a line, arc, circle or point to pattern");
+      this.guide(this.set.length ? "{tap} more to pattern, or ✓" : "{tap} a line, arc, circle or point to pattern");
       return;
     }
     this.set = this.set.includes(hit.name) ? this.set.filter((n) => n !== hit.name) : [...this.set, hit.name];

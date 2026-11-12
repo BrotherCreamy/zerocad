@@ -73,7 +73,7 @@ export class DimensionTool extends Tool {
     // drawing a tap was aimed at (sketchrelations.e2e). `measureOf(…)`, typed,
     // says the reading and makes nothing.
   };
-  static readonly summary = "Dimensions what you click, a solid's faces too; a click places it";
+  static readonly summary = "Dimensions what you {tap}, a solid's faces too; a {tap} places it";
   static readonly how: How = [
     "{Tap} what to measure: a line, a circle, two points…",
     "Then {tap} empty space to place it.",
@@ -137,8 +137,8 @@ export class DimensionTool extends Tool {
       const plan = this.planned(p.screen);
       if (!plan) {
         this.guide(this.picks.length
-          ? `${this.picks.join(" and ")} make no dimension — click a vertex, an edge, a face, a line, a circle or two points`
-          : "click what to dimension: a vertex, an edge or a face of a solid; a line, a circle, two points, two lines");
+          ? `${this.picks.join(" and ")} make no dimension — {tap} a vertex, an edge, a face, a line, a circle or two points`
+          : "{tap} what to dimension: a vertex, an edge or a face of a solid; a line, a circle, two points, two lines");
         return;
       }
       this.settled = this.commit(plan);

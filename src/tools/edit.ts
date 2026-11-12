@@ -62,7 +62,7 @@ export function editSteps(feature: string, toggled: readonly number[][], value: 
     const loop = loopAround(m, at, r.all);
     const i = loop ? r.all.indexOf(loop) : -1;
     if (i < 0 || depthBelow(r.all, i, r.outline) === 0) {
-      throw new Error(`a loop clicked is not inside ${feature}'s outline any more — click it again`);
+      throw new Error(`a loop picked is not inside ${feature}'s outline any more — {tap} it again`);
     }
     const k = r.holes.indexOf(i);
     const n = k >= 0 ? unholeNaming(m, f, r, k + 1) : holeNaming(m, f, r, i);
@@ -127,7 +127,7 @@ abstract class EditTool extends FeatureTool {
   onArmed(): void {
     if (this.feature) return;
     this.ctx.finish();
-    this.guide(`${this.name} opens on a feature: edit("e1"), or right-click a solid's face → Edit e1`);
+    this.guide(`${this.name} opens on a feature: edit("e1"), or Edit e1 on a solid's face's menu`);
   }
 
   replaces(): readonly string[] {
@@ -229,7 +229,7 @@ abstract class EditTool extends FeatureTool {
       return;
     }
     if (i === null || depthBelow(r.all, i, r.outline) === 0) {
-      this.guide(`click a loop inside ${f.name}'s outline to cut it through or fill it — ✓ or Enter when done`);
+      this.guide(`{tap} a loop inside ${f.name}'s outline to cut it through or fill it — ✓ or Enter when done`);
       return;
     }
     const at = this.toggledLoops(r).indexOf(i);
@@ -285,7 +285,7 @@ export class EditRevolveTool extends EditTool {
       check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
     },
   };
-  static readonly summary = "Changes a revolve: click holes in or out, or change the angle";
+  static readonly summary = "Changes a revolve: {tap} holes in or out, or change the angle";
   static readonly how: How = [
     "Change the angle in the options.",
     "{Tap} an outline inside it to make or fill a hole.",

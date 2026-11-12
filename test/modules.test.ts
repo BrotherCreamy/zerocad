@@ -34,7 +34,7 @@ test("the built-in modules load in order, and the tables are filled from them in
   // The tray: core's tools, then the sketch module's, then the solids', then the surfaces' (docs/plans/surfaces.md).
   // The spline after the ellipse, on the curves button (docs/plans/spline.md).
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "spline", "fillet",
-    "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "cut", "revolve", "sketch", "round", "chamfer",
+    "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "cut", "revolve", "plane", "round", "chamfer",
     "surface", "edge"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "spline", "fillet"]);
@@ -93,12 +93,12 @@ test("a group extended by two modules keeps both lists, in module order; removin
 
 test("the workbenches: part is today's toolbar exactly, sketch is core and sketch", () => {
   // surfaces (docs/plans/surfaces.md) is the part's modules: surfacing is done beside solids.
-  assert.deepEqual(listWorkbenches().map((w) => w.name), ["part", "sketch", "surfaces"]);
+  assert.deepEqual(listWorkbenches().map((w) => w.name), ["part", "drawing", "surfaces"]);
   assert.deepEqual(workbenchTools("part"), listTools());
   assert.deepEqual(workbenchTools("surfaces"), listTools());
-  assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse",
+  assert.deepEqual(workbenchTools("drawing"), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse",
     "spline", "fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain"]);
-  assert.equal(onWorkbench("sketch", "extrude"), false);
+  assert.equal(onWorkbench("drawing", "extrude"), false);
 });
 
 test("the extension point is real: the five files the spec names never mention the ellipse", async () => {
