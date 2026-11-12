@@ -126,6 +126,15 @@ whatever the other workers were doing.
   apart, the banner each time, the files after it green against the
   restarted server, the two in flight failed with the signatures the
   banner now names.
+
+**The gate.** Before the merge with the working branch, at load 22–29:
+typecheck 0; unit 2081 of 2081; kernel 11 of 11; e2e 812 tests, 810 pass,
+2 picture skips, 0 fail. After it (through-all #94 and tool-howto #90 in),
+at load 6–13: typecheck 0; unit 2120 of 2120; kernel 11 of 11; e2e 831
+tests, 826 pass, 2 skips, 3 fail — sketchmodephone's three, the first
+*'select' !== 'sketch'* (the phone's first tap after the sketch button
+lost, the touch harness's known loss, filed) and the other two downstream
+of it in the same page; the file alone, three times: 3 of 3.
 ## 2026-11-12 — through all is a relation: the far vertex on the cut's lid, and up to face is the same relation the other way
 
 Review item 8, which the owner passed: *"Through all should be a relation to

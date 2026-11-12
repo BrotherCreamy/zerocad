@@ -2863,7 +2863,10 @@ are flagged as such.
           `24 !== 25` at load 35–45, two of five ways in each of two base
           runs; the cause is the touch harness's, filed under the touch
           density entry: a lift acknowledged after `LONG_PRESS_MS` reads as
-          a long-press). Not this package's; measured and left.
+          a long-press). The same loss took sketchmodephone's first tap
+          (*'select' !== 'sketch'*, and two tests downstream of it) once in
+          the final full run at load 9–13; alone 3 of 3. Not this
+          package's; measured and left.
     - [ ] **The search's 500 ms on a phone under load** (the entry under
           review-relations) is unchanged; what changed is that no unit test
           asserts *what* is named on the product's clock any more
