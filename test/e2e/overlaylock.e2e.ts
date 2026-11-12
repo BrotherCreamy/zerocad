@@ -174,6 +174,20 @@ async function grab(app: AppContext, box: Box, css: string): Promise<number[][]>
 }
 
 /**
+ * **The log's tail is sampled as a fresh line is drawn — its fade held.**
+ * A tail line is whole for 3 s and gone at 10 (logtail.ts), by a CSS
+ * animation; the four shots of one sample are four screenshots, and under
+ * load (four suites on four cores) one screenshot took 1.7 s, once 7.7 s —
+ * so the line was sampled at opacity 0.5, or shot after it had gone, and A
+ * and B agreed at every pixel: "some ink to sample (0 pixels)", 2 runs of 2
+ * on the base. The line's contrast when a person reads it is the fresh
+ * line's, so the fade is held off (opacity 1, as the keyframes' first 30 %
+ * draw it) for the length of the sample and no longer; the mouse test of
+ * the fade itself, further down, does not go through here.
+ */
+const FRESH = ".otail .tline{animation:none !important}";
+
+/**
  * **The contrast of text against what it is read on**, sampled: the text's
  * box shot as drawn (A), and again with its glyphs' fill taken away but its
  * halo left (B) — so B at each pixel is what is behind the ink there. The ink
@@ -181,21 +195,48 @@ async function grab(app: AppContext, box: Box, css: string): Promise<number[][]>
  * anti-aliased edges); the contrast is WCAG's ratio between A and B at those,
  * the median taken. The same with the halo off too (C, D) says what the halo
  * is worth. `ground` is D's median luminance: what the text is over.
+ *
+ * Sampled once what is behind the text is what the test put there (`over`:
+ * the dark ground, or a light lid) — polled, not slept: the lid is drawn
+ * once the solid is built and the view has caught up, and a 300 ms sleep
+ * read the dark ground under it at load 45. And if the element is gone by
+ * the end of the sample (a tail line that aged out during four slow shots:
+ * the fade is held, its removal at 10 s is not), the caller's `renew` says
+ * it again and the sample is taken afresh, three times at most.
  */
-async function contrast(app: AppContext, selector: string, fill: string): Promise<{ halo: number; bare: number; ground: number }> {
-  const box = await app.page.$eval(selector, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-  assert.ok(box.w > 4 && box.h > 4, `${selector} is drawn: ${JSON.stringify(box)}`);
+async function contrast(app: AppContext, selector: string, fill: string, over: "ground" | "lid", renew?: () => Promise<void>): Promise<{ halo: number; bare: number; ground: number }> {
   const noFill = `${fill}{-webkit-text-fill-color:transparent !important;color:transparent !important}`;
   const noHalo = `${fill}{text-shadow:none !important}`;
-  const [A, B, C, D] = [await grab(app, box, ""), await grab(app, box, noFill), await grab(app, box, noHalo), await grab(app, box, noFill + noHalo)];
-  const core = (X: number[][], Y: number[][]) => {
-    const d = X.map((p, i) => Math.hypot(p[0] - Y[i][0], p[1] - Y[i][1], p[2] - Y[i][2]));
-    const top = Math.max(...d);
-    const ink = d.map((v, i) => [v, i] as const).filter(([v]) => v >= 0.6 * top && v > 0).map(([, i]) => i);
-    assert.ok(ink.length >= 6, `${selector}: some ink to sample (${ink.length} pixels)`);
-    return median(ink.map((i) => ratio(X[i], Y[i])));
-  };
-  return { halo: core(A, B), bare: core(C, D), ground: median(D.map(luminance)) };
+  const overIt = (g: number) => (over === "ground" ? g < 0.02 : g > 0.3);
+  const boxOf = () => app.page.$eval(selector, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const there = () => app.page.$eval(selector, () => true).catch(() => false);
+  for (let attempt = 1; ; attempt++) {
+    await app.page.waitForSelector(selector, { timeout: 10_000 });
+    const box = await boxOf();
+    assert.ok(box.w > 4 && box.h > 4, `${selector} is drawn: ${JSON.stringify(box)}`);
+    // What the text is over, polled until it is what the test drew there.
+    const groundNow = async () => median((await grab(app, box, FRESH + noFill + noHalo)).map(luminance));
+    const deadline = Date.now() + 8000;
+    let ground = await groundNow();
+    while (!overIt(ground) && Date.now() < deadline) {
+      await app.page.waitForTimeout(100);
+      ground = await groundNow();
+    }
+    const [A, B, C, D] = [await grab(app, box, FRESH), await grab(app, box, FRESH + noFill), await grab(app, box, FRESH + noHalo), await grab(app, box, FRESH + noFill + noHalo)];
+    if (!(await there()) && renew && attempt < 3) {
+      console.log(`  ${selector} went while it was being sampled (attempt ${attempt}): said again`);
+      await renew();
+      continue;
+    }
+    const core = (X: number[][], Y: number[][]) => {
+      const d = X.map((p, i) => Math.hypot(p[0] - Y[i][0], p[1] - Y[i][1], p[2] - Y[i][2]));
+      const top = Math.max(...d);
+      const ink = d.map((v, i) => [v, i] as const).filter(([v]) => v >= 0.6 * top && v > 0).map(([, i]) => i);
+      assert.ok(ink.length >= 6, `${selector}: some ink to sample (${ink.length} pixels)`);
+      return median(ink.map((i) => ratio(X[i], Y[i])));
+    };
+    return { halo: core(A, B), bare: core(C, D), ground: median(D.map(luminance)) };
+  }
 }
 
 // ---- the suite, one way at a time -------------------------------------------------
@@ -364,11 +405,15 @@ for (const way of WAYS) {
 
     // **Contrast**: over the dark ground — the view turned away from the model — then over a light lid.
     await lookAlong(app, [0.2, -0.3, 1], 0.05, [5000, 5000]);
-    await app.type("solve()"); // a fresh line for the log's tail
-    await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    await app.page.waitForTimeout(250);
+    // A fresh line for the log's tail; what `contrast` calls to say one
+    // again if the line aged out of the tail while it was being sampled.
+    const sayAgain = async () => {
+      await app.type("solve()");
+      await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    };
+    await sayAgain();
     for (const [sel, fill] of SAMPLES) {
-      const c = await contrast(app, sel, fill);
+      const c = await contrast(app, sel, fill, "ground", sayAgain);
       console.log(`  ${way.name} — ${sel} over the ground (${c.ground.toFixed(3)}): ${c.halo.toFixed(2)}:1 with the halo, ${c.bare.toFixed(2)}:1 without`);
       assert.ok(c.ground < 0.02, `${way.name}: ${sel} is over the dark ground (${c.ground})`);
       assert.ok(c.halo >= 4.5, `${way.name}: ${sel} over the ground at ${c.halo.toFixed(2)}:1`);
@@ -380,12 +425,10 @@ for (const way of WAYS) {
       const b = (window as never as { __neocad: { bodies?: { settled: boolean } } }).__neocad.bodies;
       return !b || b.settled;
     }, undefined, { timeout: 20_000 });
-    await app.type("solve()");
-    await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    await app.page.waitForTimeout(300);
+    await sayAgain();
     await shot(app, `${slug}-over-a-light-lid`);
     for (const [sel, fill] of SAMPLES) {
-      const c = await contrast(app, sel, fill);
+      const c = await contrast(app, sel, fill, "lid", sayAgain);
       console.log(`  ${way.name} — ${sel} over the lid (${c.ground.toFixed(3)}): ${c.halo.toFixed(2)}:1 with the halo, ${c.bare.toFixed(2)}:1 without`);
       assert.ok(c.ground > 0.3, `${way.name}: ${sel} is over a light lid (${c.ground})`);
       assert.ok(c.halo >= 4.5, `${way.name}: ${sel} over a light lid at ${c.halo.toFixed(2)}:1`);
