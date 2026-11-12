@@ -169,6 +169,20 @@ in `DIMENSION_OPS`, `VALUE_ARG` (`src/model.ts`) and `REBUILD`
 A relation that carries *coordinates* is not a dimension — that is why `fix`
 is `r`-named — and neither is one that carries no number at all.
 
+**If it says the same thing of any two of its arguments** — parallel, equal,
+coincident — it holds *among many*, and `par("l1", "l2", "l3", "l4")` is one
+relation, not three on the first pick (docs/plans/review-relations.md). Write
+the pair relation as above, add it to `AMONG` in `src/relations/among.ts`
+(its pair function, and how to read a call's arguments as members), and give
+its module entry `...amongEntry("yourOp")` from `src/among.ts` in place of
+`fn`. You write no rows for the set: they are your pair function, called once
+per spanning pair. Never read such a relation's `args` as exactly two.
+
+**If it takes a solid's face**, take the name through `faceRef`
+(`src/relations/solidref.ts`) before you journal it, and read it with
+`readPlane` inside the residual's thunk: a wall is `e1:l2`, the line it is
+swept from, and never its place in the profile.
+
 ### Adding a tool
 
 Subclass `Tool` and list it in a module's `tools` — the built-ins are in

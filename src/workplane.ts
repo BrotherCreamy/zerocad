@@ -66,7 +66,7 @@ export function planeLabel(ref: string): string {
  * tool holds a curve by it, and the focus reads a held curve by it.
  */
 export function planeNormalRef(model: Model, ref: string): string {
-  // A solid's flat face (`"e1.m3"`, docs/plans/click-on-face.md) is read as
+  // A solid's flat face (`"e1:l2"`, docs/plans/click-on-face.md) is read as
   // its own normal by `par` (solidref.ts's `faceDirection`), as a triple is.
   if (parseFaceName(ref)) return ref;
   const kind = model.planeKind(ref);
@@ -80,7 +80,7 @@ export function planeNormalRef(model: Model, ref: string): string {
 
 /**
  * A plane reference as view.ts's Plane, or null when it has collapsed past
- * having one. A solid's flat face by name (`"e1.m3"`) is one too — its plane
+ * having one. A solid's flat face by name (`"e1:l2"`) is one too — its plane
  * now, read off the feature's record (solidref.ts), its +z the face's
  * outward normal — and null for a face that is not flat or not the model's.
  */
@@ -95,7 +95,7 @@ export function planeOfRef(model: Model, ref: string): Plane | null {
   return p ? { origin: p.origin, u: p.u, v: p.v } : null;
 }
 
-/** Whether `ref` names a solid's flat face the model holds (`"e1.lid"`, `"e1.m3"`) — a plane a point can be held on (docs/plans/click-on-face.md). */
+/** Whether `ref` names a solid's flat face the model holds (`"e1.lid"`, `"e1:l2"`) — a plane a point can be held on (docs/plans/click-on-face.md). */
 export function isFacePlane(model: Model, ref: string | null | undefined): ref is string {
   return typeof ref === "string" && parseFaceName(ref) !== null && isPlanarFace(model, ref);
 }

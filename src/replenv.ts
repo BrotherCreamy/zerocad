@@ -12,7 +12,8 @@
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import { Dual } from "./kernel/dual.ts";
-import { Model, parsePointTriple, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
+import { Model, parseFaceName, parsePointTriple, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
+import { join, leave } from "./among.ts";
 import * as shapes from "./tools/shapes.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
@@ -827,9 +828,47 @@ export function neocadScope(h: EnvHandles): Bag {
      * costs a frame and buys an honest header.
      */
     del: (...names: string[]) => {
+      // What is said beyond the names removed (docs/plans/review-relations.md):
+      // a relation among many that a member left is still there, over the
+      // rest, and a relation held to a solid's wall goes with the line the
+      // wall is swept from — neither is in the list of what went.
+      const before = new Map([...model.relations.values()].map((r) => [r.name, { op: r.op, args: r.args }]));
       const removed = del(model, ...names);
+      const gone = new Set(removed);
+      for (const [name, was] of before) {
+        const now = model.relations.get(name);
+        if (now && now.args.length < was.args.length) {
+          const left = was.args.filter((a) => typeof a === "string" && gone.has(a));
+          h.log?.(`${describeRelation(now)} — ${left.join(", ")} left it, and it holds among the rest`);
+        }
+        if (now || names.includes(name)) continue;
+        for (const a of was.args) {
+          const wall = parseFaceName(a);
+          if (wall?.entity !== undefined && gone.has(wall.entity)) {
+            h.log?.(`${name} went with ${wall.entity}: it was held to ${String(a)}, the wall of ${wall.feature} that ${wall.entity} sweeps`);
+          }
+        }
+      }
       h.solve?.(); // once, after the whole batch — one edit, one verdict
       return removed;
+    },
+    /**
+     * Who is in a relation among many (among.ts): `join("r3", "l5")` — `l5`
+     * joins `r3`, and any other relation of the kind it was in is merged into
+     * it; `leave("r3", "l2")` — `l2` leaves, the relation staying over the
+     * rest, or going when one is left. Each rebuilds the relation in place,
+     * under its name, and re-solves as `set` does: the point of either is to
+     * change what holds.
+     */
+    join: (relation: string, ...names: string[]) => {
+      const name = join(model, relation, ...names);
+      h.solve?.();
+      return name;
+    },
+    leave: (relation: string, ...names: string[]) => {
+      const name = leave(model, relation, ...names);
+      h.solve?.();
+      return name ?? `${relation} is gone: one member is no relation`;
     },
   };
 

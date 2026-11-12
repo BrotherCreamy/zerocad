@@ -39,7 +39,7 @@ export interface ChipParts {
   where: string | null;
   /**
    * Whether `where` is **where the next click lands** rather than a plane
-   * chosen — the solid's face under the hand, `on e1.m3`, with no sketch
+   * chosen — the solid's face under the hand, `on e1:l2`, with no sketch
    * plane set (docs/plans/click-on-face.md). Said in the same place, since it
    * answers the same question, but it is no mode: nothing to look at, end or
    * change, so the first part is words and not a button then.

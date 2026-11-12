@@ -246,7 +246,7 @@ const len = (a: number[], b: number[]) => Math.hypot(...a.map((v, i) => v - b[i]
 for (const which of ["desktop", "iphone"] as const) {
   const hand = () => (which === "desktop" ? mouse : finger);
 
-  test(`${which}: five lines picked, Equal (all 5) — four eqs against the first, one undo step`, async () => {
+  test(`${which}: five lines picked, Equal (all 5) — one relation among the five, one undo step`, async () => {
     const h = hand();
     await fresh(h);
     // Spaced to the room an iPhone 13 has between its panes: the constraints
@@ -267,22 +267,24 @@ for (const which of ["desktop", "iphone"] as const) {
     // lines' test below measures that); opened, the list is the whole one.
     const more = listed.find((r) => r.more);
     if (more) { await h.row(more.label); listed = await rows(h.app); }
-    assert.deepEqual(listed.map((r) => r.label), ["Equal (all 5)", "Parallel (all 5)", "Horizontal (all 5)", "Vertical (all 5)", "Fix (all 5)"], await state(h.app));
-    assert.equal(listed[0].command, 'eq("l1", "l2"); eq("l1", "l3"); eq("l1", "l4"); eq("l1", "l5")');
+    assert.deepEqual(listed.map((r) => r.label), ["Equal (all 5)", "Parallel (all 5)", "Collinear (all 5)", "Horizontal (all 5)", "Vertical (all 5)", "Fix (all 5)"], await state(h.app));
+    // One call, one relation among the five: it was four eqs, each against
+    // the first pick (docs/plans/review-relations.md).
+    assert.equal(listed[0].command, 'eq("l1", "l2", "l3", "l4", "l5")');
     await h.row("Equal (all 5)");
     const eqs = (await relations(h.app)).filter((r) => r.op === "equalLength");
-    assert.deepEqual(eqs.map((r) => r.args), [["l1", "l2"], ["l1", "l3"], ["l1", "l4"], ["l1", "l5"]]);
+    assert.deepEqual(eqs.map((r) => r.args), [["l1", "l2", "l3", "l4", "l5"]]);
     assert.equal(await h.app.status(), "SOLVED");
     const lengths = await h.app.page.evaluate(() => {
       const m = (window as never as Probe).__neocad.model;
       return ["l1", "l2", "l3", "l4", "l5"].map((l) => { const [a, b] = m.line(l).refs.map((p) => m.coords(p)); return Math.hypot(...a.map((v, i) => v - b[i])); });
     });
     for (const x of lengths) assert.ok(Math.abs(x - lengths[0]) < 1e-6, `equal: ${lengths}`);
-    assert.equal((await glyphs(h.app)).filter((g) => g.op === "equalLength").length, 8, "an = on each side of each eq");
+    assert.equal((await glyphs(h.app)).filter((g) => g.op === "equalLength").length, 5, "an = on each of the five, and no line wearing four");
     await type(h, "select");
     await shot(h, "2-five-lines-equal");
     assert.equal((await h.app.repl("undo()")).ok, true);
-    assert.equal((await relations(h.app)).filter((r) => r.op === "equalLength").length, 0, "one undo step takes all four");
+    assert.equal((await relations(h.app)).filter((r) => r.op === "equalLength").length, 0, "one undo step takes it");
   });
 
   test(`${which}: two lines' list — eight rows, most likely first; on a phone the likeliest, and more… opens the rest`, async () => {

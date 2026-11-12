@@ -190,7 +190,8 @@ Offset relation, SolidWorks' Convert Entities (below).
 
 ### Deviations, and why
 
-- **Many at once is a star, measured.** Each pick is related to the first.
+- **Many at once is a star, measured.** (Superseded 2026-11-12 by
+  review-relations.md: one relation among them all.) Each pick is related to the first.
   With two of eight lines dimensioned to different lengths, the conflict
   search names four relations for the star wherever the two are, and up to
   nine for a chain (every eq on the path between); the chain wins only when

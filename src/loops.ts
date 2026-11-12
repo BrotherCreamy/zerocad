@@ -295,10 +295,14 @@ export function joinClasses(model: Model): Map<string, number> {
   const isPoint = (a: unknown): a is string => typeof a === "string" && model.entities.get(a)?.kind === "point";
   for (const rel of model.relations.values()) {
     if (rel.op !== "coincident") continue;
-    const [a, b] = rel.args;
-    if (!isPoint(a) || !isPoint(b)) continue;
-    const [ra, rb] = [find(a), find(b)];
-    if (ra !== rb) up.set(rb, ra);
+    // Two points, or one relation among many (relations/among.ts): all one class.
+    const [a, ...rest] = rel.args;
+    if (!isPoint(a)) continue;
+    for (const b of rest) {
+      if (!isPoint(b)) continue;
+      const [ra, rb] = [find(a), find(b)];
+      if (ra !== rb) up.set(rb, ra);
+    }
   }
   const ids = new Map<string, number>();
   const classOf = new Map<string, number>();

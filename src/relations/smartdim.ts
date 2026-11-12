@@ -10,8 +10,8 @@
 
 import { Dual } from "../kernel/dual.ts";
 import type { Model } from "../model.ts";
-import { curveNormal, directionOf, fadeUnder, frameBasis, joinVars, lengthBefore, rowLength, unitDuals } from "./refs.ts";
-import { angleBetween, dot, unit, vecSub, wedge } from "./vec.ts";
+import { chunk, curveNormal, directionOf, fadeUnder, frameBasis, joinVars, lengthBefore, lineVars, rowLength, unitDuals } from "./refs.ts";
+import { angleBetween, dot, norm, unit, vecSub, wedge } from "./vec.ts";
 
 function requireLength(op: string, v: unknown): number {
   if (typeof v !== "number" || !Number.isFinite(v) || v < 0) throw new Error(`${op} needs a length of 0 or more, got ${JSON.stringify(v)}`);
@@ -76,6 +76,75 @@ export function angle3(model: Model, v: string, a: string, b: string, radians: n
       return [fadeUnder(angleBetween(unit(u, floor), unit(w, floor)).sub(target).mul(k), floor, u, w)];
     }, `ang3(${v},${a},${b})`);
   });
+}
+
+/**
+ * Which end of each of two lines is at the corner they make: the point they
+ * share, by name, where they share one; else the two ends nearest each other
+ * as the drawing stands — the tangent points either side of a fillet that
+ * rounded the corner off, whose lines still make it. `at` is the four ends,
+ * the first line's then the second's.
+ */
+function cornerEnds(model: Model, l1: string, l2: string, at: number[][]): [number, number] {
+  const [r1, r2] = [model.line(l1).refs, model.line(l2).refs];
+  let best: [number, number] = [0, 0];
+  let least = Infinity;
+  for (const i of [0, 1]) {
+    for (const j of [0, 1]) {
+      if (r1[i] === r2[j]) return [i, j];
+      const d = Math.hypot(...at[i].map((x, k) => x - at[2 + j][k]));
+      if (d < least) [least, best] = [d, [i, j]];
+    }
+  }
+  return best;
+}
+
+/**
+ * **`corner(l1, l2, θ)`** — the angle in the corner two lines make, in
+ * radians: each line taken as it leaves the corner, so a wedge's sharp edge
+ * reads 30° whichever way round its two lines were drawn. `ang(l1, l2, θ)` is
+ * the angle between the lines' own directions, which for two sides of a
+ * profile drawn head to tail is the other one, 150°.
+ *
+ * What the dimension tool holds between **two meeting walls of a solid**
+ * (docs/plans/review-relations.md): the lines the walls are swept from, by
+ * name, read lazily (`lineVars`) — where it used to hold `ang3` of the corner
+ * point and the two far ends, three points, which a fillet of that corner
+ * re-points out from under it. The corner is found each time the relation is
+ * read (`cornerEnds`), so it follows a line an operation re-points.
+ *
+ * u·w = |u||w| cos θ, `ang`'s form: smooth at 0 and π, nowhere a square, and
+ * the same in any dimension (test/reviewrelations.test.ts: 2D and 3D).
+ */
+export function cornerAngle(model: Model, l1: string, l2: string, radians: number): string {
+  if (typeof radians !== "number" || !Number.isFinite(radians)) throw new Error(`corner needs an angle in radians, got ${JSON.stringify(radians)}`);
+  model.line(l1);
+  model.line(l2);
+  if (l1 === l2) throw new Error(`corner takes the two lines that make it: ${l1} twice is one`);
+  return model.relation("cornerAngle", [l1, l2, radians], () => {
+    const dim = model.dim;
+    const target = Math.cos(radians);
+    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
+      const ends = chunk(l, dim, 4);
+      const [i, j] = cornerEnds(model, l1, l2, ends.map((p) => p.map((x) => x.val)));
+      const u = vecSub(ends[1 - i], ends[i]), w = vecSub(ends[3 - j], ends[2 + j]);
+      return [dot(u, w).sub(norm(u).mul(norm(w)).mul(target))];
+    }, `corner(${l1},${l2})`);
+  });
+}
+
+/** The corner two lines make, now: where it is, the unit ray along each line out of it, and its angle in radians — what `corner` holds. */
+export function cornerNow(model: Model, l1: string, l2: string): { at: number[]; rays: [number[], number[]]; angle: number } {
+  const ends = [...model.line(l1).refs, ...model.line(l2).refs].map((p) => model.coords(p));
+  const [i, j] = cornerEnds(model, l1, l2, ends);
+  const ray = (from: number[], to: number[]) => {
+    const d = to.map((x, k) => x - from[k]);
+    const len = Math.hypot(...d);
+    return len > 0 ? d.map((x) => x / len) : d;
+  };
+  const rays: [number[], number[]] = [ray(ends[i], ends[1 - i]), ray(ends[2 + j], ends[3 - j])];
+  const cos = rays[0].reduce((s, x, k) => s + x * rays[1][k], 0);
+  return { at: ends[i], rays, angle: Math.acos(Math.max(-1, Math.min(1, cos))) };
 }
 
 /**

@@ -115,22 +115,26 @@ test("two opposite walls of a block are two lines: the distance between them is 
   void a; void b;
 });
 
-test("the angle between two walls of a wedge is the wedge's angle: at the corner their lines share", () => {
-  const { m, points, e } = wedge();
+test("the angle between two walls of a wedge is the wedge's angle: the corner their lines make", () => {
+  const { m, points, lines, e } = wedge();
   // The profile is p0 (0, 0) → p1 (40, 0) → p2 (40, 23.09) → p0: walls m0 and
   // m2 meet along the edge over p0, where the wedge is 30° — not the 150°
-  // between the two lines' own directions, which is what ang would read.
+  // between the two lines' own directions, which is what ang would read. It
+  // is `corner` of the two lines the walls are swept from, each taken out of
+  // the corner; it was `ang3` of three points until the dimension had to
+  // survive a fillet of that corner (docs/plans/review-relations.md).
   const plan = dimensionFor(m, [`${e}.m0`, `${e}.m2`]);
-  assert.equal(plan?.text, `ang3("${points[0]}", "${points[1]}", "${points[2]}", deg(30))`);
+  assert.equal(plan?.text, `corner("${lines[0]}", "${lines[2]}", deg(30))`);
   assert.equal(plan?.reading, "30°");
   const square = dimensionFor(m, [`${e}.m0`, `${e}.m1`]);
-  assert.equal(square?.text, `ang3("${points[1]}", "${points[0]}", "${points[2]}", deg(90))`);
+  assert.equal(square?.text, `corner("${lines[0]}", "${lines[1]}", deg(90))`);
   // Set, the wedge steepens: the solid's angle, through its sketch.
   const d = plan!.apply(m);
   solved(m);
   set(m, `${d}.value`, Math.PI / 4);
   solved(m);
   close(measured(m, ["angle3", points[0], points[1], points[2]]), Math.PI / 4, 1e-6);
+  close(measured(m, ["corner", lines[0], lines[2]]), Math.PI / 4, 1e-6);
 });
 
 test("an extrude's lid and its own base are its depth: the tool edits that, and makes nothing new", () => {
@@ -220,7 +224,8 @@ test("faces at an angle that no line holds: the angle between them, driven", () 
   assert.equal(plan?.text, `ang("l1", "${lines[0]}", deg(30))`);
   // A wall and a lid are square by construction: driven.
   const sq = dimensionFor(m, [`${e}.m0`, `${e}.lid`]);
-  assert.equal(sq?.text, `measure("fangle", "${e}.m0", "${e}.lid")`);
+  // The wall is written by the line it is swept from, whichever way it was picked (docs/plans/review-relations.md).
+  assert.equal(sq?.text, `measure("fangle", "${e}:l1", "${e}.lid")`);
   assert.equal(sq?.reading, "(90°)");
 });
 

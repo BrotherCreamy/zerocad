@@ -706,6 +706,54 @@ changing shape:
 Prefer the line form for anything that is a property of an edge. The built-in
 tools use it.
 
+## A relation among many is one relation, and nobody in it is first
+
+The owner's principle, the one later work is checked against: *"correct
+relationships BETWEEN entities … bidirectional relationships everywhere by
+default"* — a relation between entities, never an owner; nothing privileged,
+nothing consumed. Four lines picked and Parallel pressed used to make
+`par(l1, l2)`, `par(l1, l3)`, `par(l1, l4)`: a star on the first pick, which
+wore three marks and, deleted, left the other three related by nothing. It is
+one relation now, `par("l1", "l2", "l3", "l4")` (docs/plans/review-relations.md).
+
+- **Which relations.** The ones that are the same statement of any two
+  members, so that a set is well defined whatever order it was built in:
+  `par`, `eq` (lines among lines, circles and arcs among themselves), `col`,
+  `coin`, `conc`, `corad`, `eqrad`, and points level or upright with each
+  other (`par("p1", "p2", "p3", "origin.x")` — the points the members, the
+  direction what they are relative to). Not `perp`, `tan`, `sym` or `mid`: a
+  tangent chain says a different thing of each neighbouring pair. And not a
+  relation to a datum — `par("l1", "origin.x")`, `par("c1", "e1:l2")` — where
+  each line is level on its own account and the datum is a member of nothing.
+- **Equations are still one layer's.** `src/relations/among.ts` holds no row:
+  the entry is one `model.relation` whose body calls the pair relation's own
+  function n − 1 times, each call absorbed into the entry being built (the
+  rule that makes `concentric` one relation and not two). So a conflict
+  names it once, `del` takes it whole, and whatever is done to a pair's rows
+  is done to these. Which n − 1 pairs is the solver's business — each member
+  with the one listed first, the equations the star had, chosen by
+  measurement (three lines collinear in 3D solve by it and fold a line to a
+  point by a chain) — and is in no name, mark or journal entry: the entry
+  holds members.
+- **Who is in it is structure, so changing that is an operation**
+  (`src/among.ts`, beside `groups.ts`): `join` and `leave` rebuild the
+  relation in place over its new members, under its name — `rebuildRelation`,
+  what `set` is built on, new rows before old — and are journalled as
+  themselves. **A deletion's cascade asks first** (`shrinkFor`): a relation
+  whose members are only some of what is going loses them and stays, a
+  `leave` written ahead of the `deleteEntity`s, down to two; with one left
+  it goes, as any relation naming a deleted entity does. That is the one
+  change to "deleting cascades inward": inward still, but a set that
+  survives the loss of a member is not a thing that needed that member.
+- **Typed, a relation joins; replayed, it never does.** `relate` — what the
+  command line, a palette row and the constrain list run — adds the names to
+  a relation of the kind one of them is already in, and merges the relations
+  the names bridge, pairs included; the journal says `join`. A file's
+  `parallel ["l1", "l2"]` is that pair whatever else names `l1`, which is
+  what lets a file from before this reopen as the separate relations it had
+  and re-save the same. The alternative, joining on replay, would have merged
+  an old star the second time its file was opened.
+
 ## One fixed origin, and every other frame is a datum
 
 The kernel keeps a flat vector of numbers and those numbers have to live
@@ -1383,22 +1431,49 @@ The owner asked for SolidWorks' Smart Dimension, *"Distance between two
 faces of a solid, or angle"* (docs/plans/smart-dimension.md). A face is not
 stored, so a dimension on one holds **what made it**, by a name that says so.
 
-- **The name is the kernel's**: `e1.base`, `e1.lid`, `e1.m3` for the wall
-  member 3 swept, members counted loop by loop. faces.ts gives every face it
-  draws the name (`Face.name`), and the kernel's record carries the same one.
-  So a face picked on a body faces.ts draws and on one the kernel built is one
-  name, and a relation journals it.
+- **A face is named by what it is swept from, and the name is resolved when
+  it is read** (docs/plans/review-relations.md). A cap is `e1.base` or
+  `e1.lid`; a wall is **`e1:l2`**, the wall of `e1` swept from the profile
+  entity `l2`. That is what a relation journals and what a tool is handed for
+  the face under the hand. It was `e1.m3` — the wall in *place* 3 of the
+  profile, members counted loop by loop — which is how the solid kernel tags
+  the faces of one build (`src/solids/naming.ts`) and what a drawn face still
+  carries (`Face.name`), on a body faces.ts draws and on one the kernel
+  built alike. A place is right for a build and wrong for a relation: a
+  fillet of the profile's first corner puts its arc in place 1 and every
+  later wall moves up one, so `onplane(p, "e1.m3")`, made on the wall of
+  `l4`, took its point to the wall of `l3`. The two names meet in one file,
+  `src/relations/solidref.ts`: `faceSource` resolves either form;
+  **`faceRef`** turns a place into the entity now in it, and is called where
+  a relation is made (so a typed `e1.m3` is journalled by its line), where a
+  face is picked (the engine) and where a file from before format 20 is
+  replayed — at the relation's own step, when the profile is as it was when
+  the relation was made; **`faceKernelNames`** turns a name back into the
+  tags it is drawn as this build, to light it and to ask the kernel about it.
+  A colon, not a second dot: what follows a dot is a word the model owns
+  (`lid`, `base`, `x`, `value`), what follows the colon a name the user
+  owns, and an entity called `m3` must not be place 3. `claimName` refuses a
+  colon in a name as it refuses a dot.
+- **A wall's name is about two things**: `referentsOf("e1:l2")` is the
+  feature and the line, so a relation on the wall goes with either, lights
+  the line when its mark is hovered, and the log says which wall it went
+  with. A relation whose line a trim took out of the profile, the line
+  itself still there, is read as the plane that line would sweep rather than
+  throwing inside a solve; it is only ever *made* on a face the solid has.
 - **The source is the record's** (`src/relations/solidref.ts`), read at every
   evaluation. A cap is its profile's points or their twins and the sketch
   plane's normal, a datum. A line's wall is the line, its normal the line
   turned square to the extrusion. A round wall is its circle or arc, and an
   edge between two of one extrude's faces is its entity.
-- **So most face dimensions are sketch dimensions.** Two walls of one extrude
-  are `dist` or `ang3` on their lines, a round wall's size is its circle's
-  `dia`, an edge's length its line's. These follow any regeneration, because
-  lines do. One relation is new: `fdist`, square to a flat face, naming the
-  faces. It is the only place a face's index is held, which is the kernel
-  names' own caveat (a member inserted renumbers the walls after it).
+- **So most face dimensions are sketch dimensions.** Two parallel walls of
+  one extrude are `dist` of their lines, two that meet are `corner` of them
+  (relations/smartdim.ts: the angle in the corner the two lines make, each
+  read out of the corner — where `ang` of two sides drawn head to tail reads
+  the supplement, and `ang3` of three points lost its corner to a fillet), a
+  round wall's size is its circle's `dia`, an edge's length its line's.
+  These follow any regeneration, because lines do. `fdist`, square to a flat
+  face, names faces — by their lines, like every relation that takes one
+  (`onplane`, `par` and `perp` to a face's normal, a driven `fangle`).
 - **The depth is not a second dimension.** `extrusion` holds the lid at base
   + depth·ẑ with the depth a constant, so the lid-to-base distance can only
   be the depth. The tool opens its value rather than add a relation that
@@ -1409,6 +1484,10 @@ stored, so a dimension on one holds **what made it**, by a name that says so.
   measured: a driven dimension.
 - **A record's going takes the relations naming its faces.** `"e1.lid"`'s
   referent is the record, which the entity cascade never saw.
+- **What still holds a place**: the solid kernel's own names — a drawn face's
+  tag, an edge (`e1.lid|e1.m0`), a blend's edges, a surface taken from a face.
+  They are a build's, and filed in TODO.md as the next thing a regeneration
+  renumbers.
 
 **Faces pick for a tool that asks, and nowhere else.** `ToolContext.pickSolid`
 (`src/solidpick.ts`) is the ordinary pick, and where it finds nothing, the
