@@ -444,7 +444,9 @@ otherwise.
          re-journalled by its line. The choices are the register entry
          below;
   7. [ ] a chamfer face's sketch plane follows the solid or is refused;
-  8. [ ] Through all as a relation to the far face's geometry, not a hook.
+  8. [ ] Through all as a relation to the far face's geometry, not a hook —
+         specified in `docs/plans/through-all-relation.md` (2026-11-12),
+         queued after linked profiles; Up to face is the same relation.
 
 - **A prism stays a prism: relations between a feature's entities, both
   ways** (the owner, 2026-11-08/09: *"Why is it that after I extrude I can
