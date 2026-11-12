@@ -107,6 +107,7 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   const e1 = m.featureOf(extrude(m, lines[0], 20), "extrude");
   m.solve();
   const [ents, rels] = [m.entities.size, m.relations.size];
+  const twinsWere = [...m.relations.values()].filter((r) => r.twin).length;
   const keptTwins = e1.twins[0].slice();
   const keptWalls = e1.walls.slice();
   const keptCorners = points.map((p) => twinOver(m, e1.depth, p)!);
@@ -117,7 +118,10 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   // The fillet's own three (tangent point, centre, arc); then the regeneration's
   // four (the tangent point's twin, the centre's, the twin arc, one wall).
   assert.equal(m.entities.size - ents, 3 + 4);
-  assert.equal(m.relations.size - rels, 4, "the fillet's four relations; the depth is rebuilt, not added");
+  // …and each of the four has its twin on the lid (docs/plans/linked-profiles.md).
+  const twins = [...m.relations.values()].filter((r) => r.twin).length - twinsWere;
+  assert.equal(m.relations.size - rels - twins, 4, "the fillet's four relations; the depth is rebuilt, not added");
+  assert.equal(twins, 4, "tan, tan, rad and arcends, each said of the lid's arc too");
   assert.equal(m.features.size, 1);
   const f = m.featureOf("e1", "extrude");
   assert.equal(f.depth, e1.depth, "the same dimension");

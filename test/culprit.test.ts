@@ -253,10 +253,14 @@ test("3D: a feature's own relations are still background — a conflict through 
   // … if they are still background when you build, say so and leave a test
   // that will fail when that changes." They are: the extrusion that carries
   // the lid's `par` down to the base's `perp` is in every trial and in no
-  // answer, because `del` refuses it alone. When features relate rather than
-  // own (the register's item 4, linked-profiles.md), this test is meant to
-  // fail: decide then whether the set is the par's perp alone or the
-  // extrusion between them as well, and say so in the status.
+  // answer. It was written to fail when features came to relate rather than
+  // own (the register's item 4, linked-profiles.md), and it did, at the merge
+  // of the two (2026-11-12): the extrusion is deleted like any other relation
+  // now, leaving the record unbuilt. Decided there: the set stays the par's
+  // perp alone. The extrusion is background by the search's own rule — a
+  // relation a feature's record names is never a candidate (`removable`,
+  // model.ts) — and no longer because `del` refuses it. Still a tripwire: it
+  // fails when that rule changes and the set gains the extrusion.
   const m = new Model(3);
   m.searchMs = Infinity;
   const t = tiltedFrame(m);
@@ -268,7 +272,8 @@ test("3D: a feature's own relations are still background — a conflict through 
   const lid = parallel(m, f.twins[0][0], f.twins[0][1]);
   const { conflicts } = conflictsOf(m);
   assert.deepEqual(conflicts, [{ culprit: lid, set: [base], found: true }]);
-  assert.throws(() => m.deleteRelation(f.depth!), /still part of e1/, "the extrusion is not a relation to delete alone, which is what makes it background");
+  assert.equal(conflicts.some((c) => c.culprit === f.depth || c.set.includes(f.depth!)), false, "the extrusion is in no answer");
+  assert.doesNotThrow(() => m.deleteRelation(f.depth!), "and it is a relation to delete like any other, since features relate and do not own");
 });
 
 // --- what the status says of it ---------------------------------------------------------------------

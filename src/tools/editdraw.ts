@@ -6,8 +6,10 @@
 
 import type { PointerInfo, RenderContext, ToolContext } from "./tool.ts";
 import type { Entity, Model } from "../model.ts";
-import { distanceToCurve, isSketchCurve, pointOn } from "../sketchgeom.ts";
+import { cutsOf, distanceToCurve, isSketchCurve, pointOn } from "../sketchgeom.ts";
 import { heldOnCurves } from "../loops.ts";
+import { sampledWorld } from "../projection.ts";
+import { partnersOf } from "../twins.ts";
 
 /** The kinds the edit tools take as a curve, unless a tool says otherwise. */
 const CURVES = new Set(["line", "arc", "circle"]);
@@ -27,13 +29,24 @@ export function curveUnder(ctx: ToolContext, p: PointerInfo, takes: (e: Entity |
   const hit = ctx.pick?.(p.screen) ?? null;
   const sketched = (n: string) => !ownedBySolid(model, n);
   if (hit && hit.kind !== "point" && takes(model.entities.get(hit.name)) && sketched(hit.name)) return hit.name;
-  if (hit?.kind === "point" && sketched(hit.name)) {
+  // **A lid's edge that something cuts is an edge to edit** (docs/plans/
+  // linked-profiles.md): it has a partner on the base, and the edit is made
+  // on both. One nothing cuts falls through, as every solid's edge used to —
+  // seen from above it lies over its sketch edge, and that is the one meant.
+  const cut = (n: string) => linkedEdge(model, n) && cutsOf(model, n).length > 0;
+  if (hit && hit.kind !== "point" && takes(model.entities.get(hit.name)) && cut(hit.name)) return hit.name;
+  if (hit?.kind === "point") {
+    // A sketch's point: its sketch curves, nearest the place pressed. A lid's
+    // corner (a finger lands on one more often than on the edge beside it):
+    // its cut edges, nearest the pixel — they are not on the plane the press was read on.
+    const mine = sketched(hit.name) ? sketched : cut;
     const held = new Set(heldOnCurves(model).filter((h) => h.point === hit.name).map((h) => h.curve));
-    const through = [...model.entities.values()].filter((e) => takes(e) && !model.hidden.has(e.name) && sketched(e.name)
+    const through = [...model.entities.values()].filter((e) => takes(e) && !model.hidden.has(e.name) && mine(e.name)
       && (model.refsOf(e).includes(hit.name) || held.has(e.name)) && !(e.kind !== "line" && "center" in e && e.center === hit.name));
     let best: string | null = null, d = Infinity;
     for (const e of through) {
-      const here = distanceToCurve(model, e.name, p.world);
+      const on = placeOn(ctx, p, e.name);
+      const here = mine === cut && ctx.toScreen ? Math.hypot(...ctx.toScreen(on).map((c, i) => c - p.screen[i])) : distanceToCurve(model, e.name, p.world);
       if (here < d) [best, d] = [e.name, here];
     }
     if (best) return best;
@@ -44,10 +57,41 @@ export function curveUnder(ctx: ToolContext, p: PointerInfo, takes: (e: Entity |
   return onSketchPlane(ctx, p.screen, takes);
 }
 
-/** What a feature made — a lid's edge, a wall — which a sketch edit never takes. */
+/** What a feature made — a lid's edge, a wall — which a sketch edit takes only where it is a profile's edge with a partner (`linkedEdge`). */
 export function ownedBySolid(model: Model, name: string): boolean {
   for (const f of model.features.values()) if (f.owns.includes(name)) return true;
   return false;
+}
+
+/** Whether a curve a feature made is an edge of a linked profile: a lid's edge, with its partner on the base. */
+export function linkedEdge(model: Model, name: string): boolean {
+  return ownedBySolid(model, name) && partnersOf(model, name).length > 0;
+}
+
+/**
+ * **Where on `curve` a press is**, in the world: the point of the curve drawn
+ * under the pixel. A press is read on the drawing plane, which is where a
+ * sketch's curves are; a lid's edge is a depth above it, and seen from one
+ * side the ground under the pixel is nowhere near the edge. A line's is exact
+ * (the view is parallel); a curve's is its nearest drawn sample. Falls back to
+ * the press's own place where there is no view to project through.
+ */
+export function placeOn(ctx: ToolContext, p: PointerInfo, curve: string): number[] {
+  const model = ctx.model;
+  const e = model.entities.get(curve);
+  if (!e || !ctx.toScreen || !linkedEdge(model, curve)) return p.world;
+  const pts = e.kind === "line" ? e.refs.map((r) => model.coords(r)) : sampledWorld(model, e, 4);
+  if (!pts || pts.length < 2) return p.world;
+  let best = p.world, d = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [a, b] = [ctx.toScreen(pts[i]), ctx.toScreen(pts[i + 1])];
+    const [vx, vy] = [b[0] - a[0], b[1] - a[1]];
+    const span = vx * vx + vy * vy;
+    const t = span > 1e-12 ? Math.max(0, Math.min(1, ((p.screen[0] - a[0]) * vx + (p.screen[1] - a[1]) * vy) / span)) : 0;
+    const here = Math.hypot(a[0] + t * vx - p.screen[0], a[1] + t * vy - p.screen[1]);
+    if (here < d) [best, d] = [pts[i].map((c, k) => c + t * (pts[i + 1][k] - c)), here];
+  }
+  return best;
 }
 
 /** The sketch curve nearest a press read on the drawing plane, within ten pixels there; null where there is none or no plane to read it on. */

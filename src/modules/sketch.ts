@@ -272,23 +272,23 @@ defineModule("sketch", {
     arcToCircle: bound("arcToCircle"),
   },
   relations: {
-    radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius },
-    onCircle: { names: ["oncircle", "onCircle"], slots: slots("point", "circle"), fn: geom.onCircle },
-    concentric: { names: ["conc", "concentric"], slots: slots("circle", "circle"), ...amongEntry("concentric") },
+    radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius, twin: "shape" },
+    onCircle: { names: ["oncircle", "onCircle"], slots: slots("point", "circle"), fn: geom.onCircle, twin: "shape" },
+    concentric: { names: ["conc", "concentric"], slots: slots("circle", "circle"), ...amongEntry("concentric"), twin: "shape" },
     // One circle: concentric and equal, one relation (docs/plans/relations-complete.md).
-    coradial: { names: ["corad", "coradial"], slots: slots("circle", "circle"), ...amongEntry("coradial") },
-    equalRadius: { names: ["eqrad", "equalRadius"], slots: slots("circle", "circle"), ...amongEntry("equalRadius") },
-    tangent: { names: ["tan", "tangent"], slots: slots("line", "circle"), fn: geom.tangent },
-    arcEndpoints: { names: ["arcends", "arcEndpoints"], slots: slots("arc"), fn: geom.arcEndpoints },
-    intersection: { names: ["intersection"], slots: slots("point", "curve", "curve"), fn: geom.intersection },
+    coradial: { names: ["corad", "coradial"], slots: slots("circle", "circle"), ...amongEntry("coradial"), twin: "shape" },
+    equalRadius: { names: ["eqrad", "equalRadius"], slots: slots("circle", "circle"), ...amongEntry("equalRadius"), twin: "shape" },
+    tangent: { names: ["tan", "tangent"], slots: slots("line", "circle"), fn: geom.tangent, twin: "shape" },
+    arcEndpoints: { names: ["arcends", "arcEndpoints"], slots: slots("arc"), fn: geom.arcEndpoints, twin: "shape" },
+    intersection: { names: ["intersection"], slots: slots("point", "curve", "curve"), fn: geom.intersection, twin: "shape" },
     pierce: { names: ["pierce"], slots: slots("point", "curve", "plane"), fn: geom.pierce },
-    diameter: { names: ["dia", "diameter"], slots: slots("circle", "#diameter"), fn: geom.diameter },
+    diameter: { names: ["dia", "diameter"], slots: slots("circle", "#diameter"), fn: geom.diameter, twin: "shape" },
     // The ellipse's (docs/plans/sketch-shapes.md). `tan` and `conc` take one
     // under their own names; `major` and `minor` are its semi-axes, dimensions
     // as `rad` is.
-    onEllipse: { names: ["onellipse", "onEllipse"], slots: slots("point", "ellipse"), fn: geom.onEllipse },
-    majorAxis: { names: ["major", "majorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.majorAxis, dimension: 1 },
-    minorAxis: { names: ["minor", "minorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.minorAxis, dimension: 1 },
+    onEllipse: { names: ["onellipse", "onEllipse"], slots: slots("point", "ellipse"), fn: geom.onEllipse, twin: "shape" },
+    majorAxis: { names: ["major", "majorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.majorAxis, dimension: 1, twin: "shape" },
+    minorAxis: { names: ["minor", "minorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.minorAxis, dimension: 1, twin: "shape" },
     // The spline's (docs/plans/spline.md): a point on the curve, by a parameter
     // of the relation's own. `tan` takes a spline at an end under its own name.
     onSpline: { names: ["onspline", "onSpline"], slots: slots("point", "spline"), fn: onSpline },

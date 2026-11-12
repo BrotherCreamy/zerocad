@@ -542,7 +542,10 @@ test("a revolve's end face is a loop in the end frame — an extrude takes it", 
 
 // --- deletion --------------------------------------------------------------------------
 
-test('del("e1") takes the end face, its frame and the angle, and leaves the sketch exactly as it was; a full revolve takes only its angle', async () => {
+// It took the end face until linked profiles (docs/plans/linked-profiles.md,
+// item 4: a feature relates, it does not own). The record goes with the
+// relation that is the revolve — the angle — and the end face is plain geometry.
+test('del("e1") takes the record and the angle, and leaves the sketch and the end face; a full revolve had only its angle', async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -557,20 +560,20 @@ test('del("e1") takes the end face, its frame and the angle, and leaves the sket
   const e = revolve(m, lines[0], "t.y", 2);
   const f = m.featureOf(e, "revolve");
   const journalAt = m.journal.length;
+  const made = f.owns.filter((n) => m.entities.has(n));
+  assert.ok(made.length > 0, "a partial turn made an end face");
   const removed = del(m, e);
-  assert.equal(removed[0], e, "the record first");
-  assert.equal(removed[1], f.angle);
-  assert.deepEqual(new Set(removed), new Set([e, ...f.owns]), "exactly what the feature made");
-  assert.deepEqual([...m.entities.keys()], entities, "the sketch, entity for entity");
+  assert.deepEqual(removed, [e, f.angle], "the record first, then the relation that is it");
+  assert.deepEqual([...m.entities.keys()], [...entities, ...made], "the sketch, then the end face — all of it");
   assert.deepEqual([...m.relations.keys()], relations);
   assert.equal(m.solve().solved, true);
   for (const [n, c] of coords) assert.ok(near(m.coords(n), c), `${n} did not move`);
-  assert.deepEqual(m.journal.slice(journalAt).map((j) => j.op),
-    ["deleteFeature", "deleteRelation", ...removed.slice(2).map(() => "deleteEntity")]);
+  assert.deepEqual(m.journal.slice(journalAt).map((j) => j.op), ["deleteFeature", "deleteRelation"]);
 
+  const before = [...m.entities.keys()];
   const full = m.featureOf(revolve(m, lines[0], "t.y"), "revolve");
   assert.deepEqual(del(m, full.name), [full.name, full.angle]);
-  assert.deepEqual([...m.entities.keys()], entities);
+  assert.deepEqual([...m.entities.keys()], before);
 });
 
 test("deleting a piece — a profile edge, an end twin, the angle, the axis line — takes the record, and only what needed that piece", async () => {
@@ -598,10 +601,12 @@ test("deleting a piece — a profile edge, an end twin, the angle, the axis line
     assert.deepEqual(del(m, f.twins[0][1]), [f.name, f.twins[0][1]]);
     assert.ok(m.relations.has(f.angle));
   }
-  // The angle: the record goes and the end face is free.
+  // The angle: deletable like any relation (docs/plans/linked-profiles.md).
+  // The record stays and says why it builds nothing; the end face is free.
   {
     const { m, f } = build();
-    assert.deepEqual(del(m, f.angle), [f.name, f.angle]);
+    assert.deepEqual(del(m, f.angle), [f.angle]);
+    assert.match(m.featureOf(f.name, "revolve").unbuilt ?? "", /angle .* is deleted/);
     assert.equal(m.solve().solved, true);
   }
   // The axis line: the angle reads it, so the angle goes with it, and the
@@ -611,10 +616,9 @@ test("deleting a piece — a profile edge, an end twin, the angle, the axis line
     assert.deepEqual(del(m, axis), [f.name, f.angle, axis]);
     assert.ok(f.twins.flat().every((n) => m.entities.has(n)));
   }
-  // The primitives refuse to leave a record naming nothing.
+  // The primitive refuses to leave a record naming an entity that is gone.
   {
     const { m, f } = build();
-    assert.throws(() => m.deleteRelation(f.angle), new RegExp(`"${f.angle}" is still part of ${f.name}`));
     assert.throws(() => m.deleteEntity(f.twins[0][0]), new RegExp(`"${f.twins[0][0]}" is still part of ${f.name}`));
   }
 });

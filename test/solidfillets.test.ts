@@ -239,10 +239,15 @@ test("the radius is a dimension: set, save and open, undo by replay; del of eith
   setEdges(m2, "e2", ["e1.lid|e1.m0", "e1.lid|e1.m2"]);
   assert.deepEqual(m2.blendOf("e2").edges, ["e1.lid|e1.m0", "e1.lid|e1.m2"]);
   close(solidOf(await evaluate(m2)).volume, L * W * T - 2 * filletCut(4.5, L), 1e-9, "two edges");
-  // del of the dimension takes the fillet (the inward rule); del of the fillet takes its dimension.
+  // del of the dimension leaves the fillet, unbuilt and saying why — a relation
+  // a feature made is deletable like any other (docs/plans/linked-profiles.md,
+  // item 4), where it used to take the record; del of the fillet takes its dimension.
   const m3 = open(text, 3);
-  assert.deepEqual(del(m3, "d2"), ["e2", "d2"]);
-  assert.equal(m3.blends.size, 0);
+  assert.deepEqual(del(m3, "d2"), ["d2"]);
+  assert.match(m3.blendOf("e2").unbuilt ?? "", /size d2 is deleted/);
+  assert.deepEqual(chainsOf(m3).left, [{ feature: "e2", why: "its size d2 is deleted" }], "left out of its body, and said");
+  assert.deepEqual(chainsOf(m3).bodies.map((c) => c.steps.map((s) => s.name)), [["e1"]], "the body without its fillet");
+  assert.match(organiserSections(m3).find((s) => s.id === "features")!.rows.find((r) => r.name === "e2")!.detail, /unbuilt/);
   const m4 = open(text, 3);
   assert.deepEqual(del(m4, "e2"), ["e2", "d2"]);
   assert.ok(!m4.relations.has("d2"));

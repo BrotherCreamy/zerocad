@@ -618,14 +618,34 @@ needs the frame whose plane it lies in, so deleting a frame reaches the curves
 drawn on it (`Model.dependents` counts the plane, and the primitive refuses to
 orphan one) — while its points, as ever, stay.
 
-**A feature's record reads the same rule from both sides.** It names
-everything it was built on and made, so deleting any of those takes the
-record — and only the record, as deleting a point takes a relation and not the
-relation's other arguments; the pieces left are ordinary geometry and stay.
-Deleting the feature itself takes what it *made* (the record's `owns`) and
-never the profile it was built on, which was a sketch before the feature
-existed — Onshape's rule. The primitives refuse to delete anything a record
-still names, so a record can never point at nothing.
+**A feature relates, it does not own** (docs/plans/linked-profiles.md; the
+section below, "No hierarchy"). Until 2026-11-12 a feature's record read the
+inward rule from both sides — deleting anything it named took the record,
+and deleting the feature took what it *made* (the record's `owns`), Onshape's
+rule. The owner: *"i don't like the idea of anything being 'consumed' as this
+implies unidirectional hierarchy"*. So now:
+
+- **`del("e1")` takes the record and the relation that is the feature** — an
+  extrude's `extrusion`, a revolve's `revolution`, a fillet's or a surface's
+  size — with the relations that read the record (`e1_perp`), and **no
+  entity**. The lid, the walls, a revolve's end face, an edge extrude's
+  copies stay as plain geometry, as deleting a `sym` leaves both halves.
+- **An entity of an extrude's profile deleted takes its partner on the other
+  profile** (`linkedClosure`) and **the record stays, open** (`unsweep`,
+  journalled ahead of the deletions, as a hole's filling is). Only where it
+  cannot stand — its sketch frame going, its last pair — does the record go,
+  and then alone, leaving its dimension, as it always did.
+- **A relation a record names is deleted like any other.** The primitive
+  used to refuse an extrude's depth; now the record stops naming it and says
+  why it builds nothing (`unbuilt`).
+- **A relation naming a face goes only where the face's geometry is gone**:
+  a point's `onplane(p, "e1.lid")` is re-held, by name, as `coplanar` over
+  three of the lid's own points (`rehold`); a round wall has no three points
+  that are its surface and `fdist` no relation that says the same between
+  entities, so those go with the record.
+
+The primitives still refuse to delete an *entity* a record names, so a
+record can never point at nothing.
 
 **There is no confirmation prompt, because undo is the confirmation.** `del`
 is one user action, so a cascade that took more than was meant is one Ctrl+Z
@@ -1209,6 +1229,86 @@ the axis" where the user's onplanes already say "these points are on this
 plane"; that is the feature being consistent, and a person can neither
 delete nor fix it. Measured with the line taken out: a whole revolve's
 angle read orange.
+
+## No hierarchy: an extrude's two profiles are peers, and a feature relates
+
+The owner (docs/plans/linked-profiles.md): *"i mean kind of like mirror
+relations"*; *"i don't like the idea of anything being 'consumed' as this
+implies unidirectional hierarchy"*; *"after extrude, it should be impossible
+to tell which was the original and which is the derivative"*; and, refining
+"no hierarchy", *"hierarchies do exist, but they are not timeline based"* — a
+body does depend on its profiles, but through relations that read both ways,
+not through an order of creation.
+
+**The link is the `extrusion`.** It already holds every point of one profile
+at its partner plus one chord, both ways. `twins.ts` reads a link off it —
+the pairs it holds, and every line and spline whose ends are paired and whose
+partner runs between their partners — for an extrude and an edge extrude
+alike. Nothing reads which side "the profile" was.
+
+**Every relation within a profile has a twin on the other**: the same
+relation over the partner entities, an ordinary registry entry under a name
+derived from its partner's (`r3_e1`), so it claims no counter and an old
+file's later names stay theirs — the `e1_perp` trick. The entry carries
+`twin: { of, via }`. Which relations twin is the relation's own module entry
+(`RelationDecl.twin`): **shapes** (`dist`, `tan`, `eq`, `coin`, `rad`…) and
+**directions** (`par`, `perp`, `ang`, which may name a frame's axis — a
+direction a translation does not turn) do; a relation that says *where*
+(`fix`, `onplane`) does not, nor one that names anything outside the profile
+— its twin would pin the lid where the base is.
+
+**The pair is one thing, and a twin holds no rows.** What a twin says of its
+profile is exactly what its partner says of the other, carried across by the
+extrusion; its rows would repeat rows already there. They were tried first,
+and measured: with them in the problem the suite's frame-turn (a rectangle
+on a tilted frame, the frame's y-ref swung) stopped solving — repeated rows
+re-weight the least-squares step, and it found the fold. So a linked twin is
+registered, named, drawn, set and deleted, and holds nothing; the solver,
+the diagnosis and the conflict search see one statement for the pair by
+construction, with no special case in any of them, and a solve takes the
+path it took before there were twins. When the link's `extrusion` is deleted
+each twin is an ordinary relation that owes its rows (`asleep`) and is given
+them by its own function before the call returns. `set` on either rebuilds
+every relation of the pair with the one value; `deleteRelation` — the
+primitive, so an old file's deletion of a base relation means what it meant
+— takes the pair. A relation among many (among.ts) has one twin among the
+partners, the relation as written; what would join or leave a twin joins or
+leaves the relation it is the twin of, by the partners on that profile, and
+a member deleted journals that relation's one `leave` — the twin is made
+again from it, as it was made in the first place.
+
+**Kept true by one pass, at the points a replay reaches.** `Model` runs a
+follower (`defineFollower`, as `defineThroughReach` keeps it from knowing
+what a body is) after every relation made at the top level, every outermost
+operation and every entity made outside one — never inside an operation,
+which sees structure half-made. The follower (`syncTwins`, and
+`relinkOpen` before it) is idempotent and decided by names and joins alone,
+never positions: so a journal carries **no entry for a twin**, and replaying
+what made a relation makes its twin again under the same name. Format 21
+exists for what *deletions* mean now, not for any new shape (persist.ts).
+
+**An edit to one profile is an edit to both.** Deleting a profile's entity
+takes its partner (`linkedClosure`), and the extrude **stays, open**: its
+record keeps what is left of the profile, `faces.ts` draws a wall per
+surviving edge from both sides and no cap, `chainsOf` leaves it out of every
+body and says why, the organiser's row says *open*. A line drawn again
+between two corners — joined to them by `coin`, as the line tool joins —
+is given its partner and the profile, walking closed by its joins, is
+rebuilt (`relinkOpen`); closure by position (an end extended back to an
+edge) is the host's to ask after a person's edit (`closeOpen`), journalled as
+the `regen` it is. A `trim` on a lid's edge is made on its partner with each
+cut carried back across the link (a cutter with no partner holds the end's
+twin, on its own profile); one that takes the loop away leaves the extrude
+open (`planOpen`: each member's twin re-pointed or made without the walk
+round), where it used to be refused. `extend` only moves a point and holds
+it, which the extrusion already carries both ways.
+
+**What is left that tells them apart** is written down rather than hidden:
+a twin's name says which was typed (`r3_e1`); `fix` and `onplane` are on the
+profile they were put on; two base corners joined by `coin` have one lid
+point between them; a region stays on the profile the extrude was made
+from; and a profile that is a *piece* of longer lines (a region a crossing
+split) has no partner edge for edge, so its relations do not twin.
 
 ## Tools are not privileged
 
@@ -2494,7 +2594,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-five bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-six bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2889,6 +2989,19 @@ of running the app:
    turns a line and never scales it*) it was six. `set` seats the end face
    where the new angle puts it before the solve (`seatTurned`), as it seats
    an extrude's lid, and the unit suite now has the drawing a person makes.
+76. The trim tool on a lid's edge trimmed the wrong curve, or none
+   (docs/plans/linked-profiles.md). The unit tests called `trim` with a
+   place on the lid and passed. In the app the edit tools had never taken a
+   solid's own edge: a press on one fell through to "the sketch curve
+   nearest the press, read on the drawing plane" — which, with the solid
+   seen from one side, is the ground under the pixel, nowhere near an edge
+   a depth above it. On the iPhone that was the line drawn across the lid,
+   and the tool trimmed the cutter instead of the edge. And under a finger
+   the pick is the edge's corner, a point the tool passed over for being the
+   solid's, so by finger nothing was trimmed at all. A lid's edge that
+   something cuts is an edge to edit now, its place the point of it drawn
+   under the pixel (`placeOn`, editdraw.ts), and a lid's corner offers the
+   cut edges through it.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

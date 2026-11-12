@@ -106,7 +106,7 @@ defineModule("core", {
   },
   relations: {
     // dimension-generic, from relations/basic.ts
-    dist: { names: ["dist"], slots: slots("a", "b", "#distance"), fn: basic.dist },
+    dist: { names: ["dist"], slots: slots("a", "b", "#distance"), fn: basic.dist, twin: "shape" },
     fix: {
       names: ["fix"], slots: slots("point", "#coordinates", "frame"), fn: basic.fix,
       typed: (model: Model, name: string, at: number[], frame?: string | null) => basic.fix(model, name, lifted(model, at), frame),
@@ -115,25 +115,27 @@ defineModule("core", {
     onPlane: { names: ["onplane", "onPlane"], slots: slots("point", "frame"), fn: basic.onPlane },
     // 3D only: the point in the plane of three others, all four moving — the
     // both-ways hold an offset keeps its copy in its chain's plane by (profiles-held.md).
-    coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar },
+    coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar, twin: "shape" },
     // The relations that hold among many equals — `par("l1", "l2", "l3", "l4")`
     // is one relation, not a star on the first (docs/plans/review-relations.md).
-    coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), ...amongEntry("coincident") },
-    midpoint: { names: ["mid", "midpoint"], slots: slots("midpoint", "a", "b"), fn: basic.midpoint },
+    // A twin on a linked profile is the relation as written — the entry's `fn`,
+    // which never joins — over the partner members (docs/plans/linked-profiles.md).
+    coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), ...amongEntry("coincident"), twin: "shape" },
+    midpoint: { names: ["mid", "midpoint"], slots: slots("midpoint", "a", "b"), fn: basic.midpoint, twin: "shape" },
     // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
     // frame-axis reference — `par("l1", yaxis())` is what `ver("l1")` was.
-    parallel: { names: ["par", "parallel"], slots: slots("a", "b", "c"), ...amongEntry("parallel") },
-    perpendicular: { names: ["perp", "perpendicular"], slots: slots("a", "b", "c"), fn: geom.perpendicular },
-    angle: { names: ["ang", "angle"], slots: slots("a", "b", "#angle"), fn: geom.angle },
-    pointOnLine: { names: ["on", "pointOnLine"], slots: slots("point", "line"), fn: geom.pointOnLine },
-    equalLength: { names: ["eq", "equalLength"], slots: slots("line", "line"), ...amongEntry("equalLength") },
-    symmetric: { names: ["sym", "symmetric"], slots: slots("a", "b", "line"), fn: geom.symmetric },
+    parallel: { names: ["par", "parallel"], slots: slots("a", "b", "c"), ...amongEntry("parallel"), twin: "direction" },
+    perpendicular: { names: ["perp", "perpendicular"], slots: slots("a", "b", "c"), fn: geom.perpendicular, twin: "direction" },
+    angle: { names: ["ang", "angle"], slots: slots("a", "b", "#angle"), fn: geom.angle, twin: "direction" },
+    pointOnLine: { names: ["on", "pointOnLine"], slots: slots("point", "line"), fn: geom.pointOnLine, twin: "shape" },
+    equalLength: { names: ["eq", "equalLength"], slots: slots("line", "line"), ...amongEntry("equalLength"), twin: "shape" },
+    symmetric: { names: ["sym", "symmetric"], slots: slots("a", "b", "line"), fn: geom.symmetric, twin: "shape" },
     // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
     // `vertical` are the words an Onshape hand types, and they **expand to
     // par** against the default frame's axis — `par("l1", xaxis())` is what is
     // journalled and drawn (`—`), so there is still no hor/ver relation, only a
     // second spelling of the one that exists.
-    collinear: { names: ["col", "collinear"], slots: slots("line", "line"), ...amongEntry("collinear") },
+    collinear: { names: ["col", "collinear"], slots: slots("line", "line"), ...amongEntry("collinear"), twin: "shape" },
     horizontal: {
       names: ["horizontal"], slots: slots("a", "b"), op: false,
       fn: (model: Model, a: string, ...more: (string | null)[]) => level(model, "x", "horizontal", a, ...more),
@@ -142,7 +144,7 @@ defineModule("core", {
       names: ["vertical"], slots: slots("a", "b"), op: false,
       fn: (model: Model, a: string, ...more: (string | null)[]) => level(model, "y", "vertical", a, ...more),
     },
-    equalSpacing: { names: ["spacing", "equalSpacing"], slots: slots("point", "point", "point"), fn: geom.equalSpacing },
+    equalSpacing: { names: ["spacing", "equalSpacing"], slots: slots("point", "point", "point"), fn: geom.equalSpacing, twin: "shape" },
     measure: { names: ["measure"], slots: slots("#kind", "a", "b"), fn: measure },
   },
   operations: {

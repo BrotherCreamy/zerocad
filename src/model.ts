@@ -681,6 +681,39 @@ export interface RelationEntry {
    * the file. Absent for a relation that made none — every one before it.
    */
   vars?: number[];
+  /**
+   * **A linked twin** (docs/plans/linked-profiles.md): this relation is the
+   * other end of `of`, across the link `via` — the `extrusion` that holds an
+   * extrude's two profiles as one translated pair. The owner: *"The other side
+   * of an extrude profile is an identically linked profile/sketch entities. If
+   * you change one the other follows automatically."* So the pair is one thing
+   * while the link stands: `set` on either sets both, deleting either deletes
+   * both (`deleteRelation`).
+   *
+   * **A linked twin holds no rows of its own** (`blocks` is empty): what it
+   * says of the other profile is exactly what `of` says of this one carried
+   * across by the extrusion, which holds the two profiles as one translated
+   * pair — so its rows would repeat rows already there. With none, the pair
+   * is one statement to the solver, the diagnosis and the conflict search by
+   * construction (never counted redundant for being a pair, named once), and
+   * a solve takes the path it took before there were twins: measured, the
+   * rows present turned a frame-turn the suite solves into a collapse. When
+   * `via` is deleted the field goes and the relation is **asleep** — it is an
+   * ordinary relation that owes its rows — until the follower gives it them
+   * (`defineFollower`), in the same call: both profiles then hold their own,
+   * as deleting a `sym` leaves both halves. `adopted` marks a relation a
+   * person made that was found saying what a twin would say and linked,
+   * rather than one made for the link.
+   */
+  twin?: { of: string; via: string; adopted?: true };
+  /** Unlinked and not yet given its rows back. See `twin`. */
+  asleep?: true;
+  /**
+   * On an `extrusion` only: it links nothing (twins.ts) — an extrusion a file
+   * from before linked profiles left standing when its record went
+   * (`Model.deleteFeature`), holding a lid that had no relations of its own.
+   */
+  unlinked?: true;
 }
 
 /**
@@ -790,9 +823,35 @@ export interface ExtrudeFeature {
    * its own `loops` as before.
    */
   region?: string;
+  /**
+   * **Open** (docs/plans/linked-profiles.md): an edge of its profile has been
+   * deleted — from both linked profiles, as every edit to one is an edit to
+   * both — so `loops` is what is left of it, no longer closed. The record
+   * stays: the walls of the edges that survive are still swept and drawn, as
+   * open surfaces with no base or lid face (an edge extrude is the primitive),
+   * the organiser's row says *open*, and drawing the missing edge again on
+   * either profile closes it (`relink`) and it is a solid once more.
+   */
+  open?: true;
+  /**
+   * What it has just stopped sweeping, between `unsweep` and the deletions
+   * that follow it in the same `del`: still in the model for that moment, and
+   * not to be taken back as an edge drawn again (`relinkOpen`). Names that no
+   * longer exist mean nothing, so it needs no clearing.
+   */
+  shed?: string[];
+  /** Why it makes no body, when a relation it needs has been deleted (`Model.deleteRelation`): said by the organiser. */
+  unbuilt?: string;
   /** Everything the record refers to. See above. */
   names: string[];
-  /** The part of `names` the feature made, which deleting it takes. */
+  /**
+   * What the feature **made** — its twins, walls, depth. Once this was what
+   * deleting the feature took; now nothing is owned (the owner: *"i don't
+   * like the idea of anything being 'consumed' as this implies unidirectional
+   * hierarchy"*), and `del("e1")` takes the record and the relation that is
+   * the extrude and leaves every entity. Kept as the list of what selects,
+   * hides and groups as the feature (`membersOf`).
+   */
   owns: string[];
 }
 
@@ -852,9 +911,11 @@ export interface RevolveFeature {
    * its own `loops` as before.
    */
   region?: string;
+  /** Why it makes no body, when its angle has been deleted (`Model.deleteRelation`): said by the organiser. */
+  unbuilt?: string;
   /** Everything the record refers to. See `ExtrudeFeature`. */
   names: string[];
-  /** The part of `names` the feature made, which deleting it takes. */
+  /** What the feature made — what selects and hides as it; deleting the feature leaves it (see `ExtrudeFeature`). */
   owns: string[];
 }
 
@@ -893,6 +954,8 @@ export interface BlendFeature {
   edges: string[];
   /** The dimension holding the radius (a fillet) or the setback (a chamfer). */
   size: string;
+  /** Why it rounds nothing, when its dimension has been deleted (`Model.deleteRelation`). */
+  unbuilt?: string;
   /** Everything the record refers to: its dimension. */
   names: string[];
   /** What deleting it takes: its dimension. */
@@ -975,6 +1038,25 @@ export function lidReach(model: Model, relation: string, depth: number): number 
   if (!f?.extent) return depth;
   if (f.extent === "symmetric") return depth / 2;
   return throughReach ? throughReach(model, f, depth) : depth;
+}
+
+/**
+ * **What follows every edit that could change which relations are twins**
+ * (docs/plans/linked-profiles.md): run after a relation made at the top level
+ * and after an outermost operation, never inside one — so it sees structure
+ * whole, and at exactly the points a replay reaches too (a journal entry is a
+ * relation, an operation or a primitive, and the first two are these) — and
+ * after an entity is made outside an operation, which is what a line drawn
+ * back into an open extrude's profile is. The follower is told which. The
+ * linked profiles' upkeep registers here (twins.ts): the model holds the
+ * structure of a link and calls this, and knows nothing of what a twin is
+ * made of, as `defineThroughReach` keeps it from knowing what a body is.
+ */
+type Follower = (model: Model, after: "relation" | "operation" | "entity") => void;
+let follower: Follower | null = null;
+
+export function defineFollower(f: Follower | null): void {
+  follower = f;
 }
 
 /**
@@ -1123,6 +1205,8 @@ export interface SurfaceEntry {
   tolerance?: number;
   /** The dimension holding its number, where it has one. */
   size?: string;
+  /** Why it builds nothing, when its dimension has been deleted (`Model.deleteRelation`). */
+  unbuilt?: string;
   /** Everything the record refers to: curves, other surfaces and features, its dimension. */
   names: string[];
   /** What deleting it takes: its dimension. */
@@ -1309,12 +1393,50 @@ export class Model {
    * both do.
    */
   asOperation<T>(op: string, args: unknown[] | (() => unknown[]), body: () => T): T {
-    const result = this.withoutRecording(body);
+    this.operating++;
+    let result: T;
+    try {
+      result = this.withoutRecording(body);
+    } finally {
+      this.operating--;
+    }
     // A function is read only now, after the body: an extrude over a crossing
     // journals the names of the points its body materialised, which no one
     // knows before it has made them.
     this.record(op, typeof args === "function" ? args() : args);
+    this.follow("operation");
     return result;
+  }
+
+  /** How many operations deep the current call is — the follower waits for the outermost. */
+  private operating = 0;
+  /** Set while the follower runs, so what it makes does not call it again. */
+  private following = false;
+
+  /** Runs the follower (`defineFollower`) — outside any operation, and never from inside itself. */
+  private follow(after: "relation" | "operation" | "entity"): void {
+    if (this.operating > 0 || this.following || !follower) return;
+    this.following = true;
+    try {
+      follower(this, after);
+    } finally {
+      this.following = false;
+    }
+  }
+
+  /**
+   * Runs `body` as the follower does: nothing it makes calls the follower.
+   * For structural upkeep that makes relations of its own and settles their
+   * links itself (twins.ts).
+   */
+  unfollowed<T>(body: () => T): T {
+    const was = this.following;
+    this.following = true;
+    try {
+      return body();
+    } finally {
+      this.following = was;
+    }
   }
 
   /**
@@ -1325,6 +1447,7 @@ export class Model {
   place(ent: Entity): void {
     this.entities.set(ent.name, ent);
     if (this.joining && this.openGroup !== null) this.groups.get(this.openGroup)?.members.push(ent.name);
+    this.follow("entity");
   }
 
   /**
@@ -1507,6 +1630,7 @@ export class Model {
       ? { name, op, args, blocks: building.blocks, vars: building.vars }
       : { name, op, args, blocks: building.blocks });
     this.record(op, args);
+    this.follow("relation");
     return name;
   }
 
@@ -1542,9 +1666,87 @@ export class Model {
       this.building = outer;
     }
     for (const h of entry.blocks) this.problem.removeBlock(h);
+    // Still the twin it was: a rebuild changes what a relation says, not which
+    // pair it is half of — and a linked twin holds no rows (`RelationEntry.twin`),
+    // so the body has only checked the new arguments, and what it added goes.
+    if (entry.twin) {
+      for (const h of building.blocks) this.problem.removeBlock(h);
+      this.relations.set(name, { name, op, args, blocks: [], twin: entry.twin });
+      return;
+    }
+    const kept = entry.unlinked ? { unlinked: true as const } : {};
     this.relations.set(name, building.vars.length
-      ? { name, op, args, blocks: building.blocks, vars: building.vars }
-      : { name, op, args, blocks: building.blocks });
+      ? { name, op, args, blocks: building.blocks, vars: building.vars, ...kept }
+      : { name, op, args, blocks: building.blocks, ...kept });
+  }
+
+  /**
+   * Every relation linked to `name` as a twin, itself included, in the order
+   * they were made (`RelationEntry.twin`): the pair — or, where a lid is
+   * itself another extrude's profile, the chain of them. One thing to `set`
+   * and to delete.
+   */
+  linkedRelations(name: string): string[] {
+    const group = new Set([name]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const r of this.relations.values()) {
+        if (!r.twin || !this.relations.has(r.twin.of)) continue;
+        const [a, b] = [group.has(r.name), group.has(r.twin.of)];
+        if (a !== b) {
+          group.add(a ? r.twin.of : r.name);
+          grew = true;
+        }
+      }
+    }
+    return [...this.relations.keys()].filter((n) => group.has(n));
+  }
+
+  /**
+   * Links `name` as the twin of `twin.of` across `twin.via` — its rows go,
+   * since a linked twin holds none (`RelationEntry.twin`) — or, with null,
+   * ends its link and leaves it asleep, for the follower to give its rows
+   * back. Structure only: what a twin says is twins.ts's.
+   */
+  setTwin(name: string, twin: RelationEntry["twin"] | null): void {
+    const r = this.relationOf(name);
+    if (twin === null) {
+      if (r.twin) this.unlink(r);
+      return;
+    }
+    for (const h of r.blocks) this.problem.removeBlock(h);
+    r.blocks = [];
+    delete r.asleep;
+    r.twin = twin;
+  }
+
+  /** A twin made an ordinary relation again: asleep until its rows are back (`RelationEntry.twin`). */
+  private unlink(r: RelationEntry): void {
+    delete r.twin;
+    r.asleep = true;
+  }
+
+  /** A relation woken: `body` is its own function over its own arguments, and its rows are its own again. */
+  wake(name: string, body: () => void): void {
+    const r = this.relationOf(name);
+    if (!r.asleep || r.twin) return;
+    this.rebuildRelation(name, r.op, r.args, body);
+  }
+
+  /**
+   * Removes one relation **alone**, journalling nothing: the upkeep's
+   * primitive (twins.ts), for a twin whose other profile has been
+   * restructured under it — a lid's arc made again by a regeneration — where
+   * `deleteRelation` would take the pair. A relation that was its twin's
+   * source leaves that twin an ordinary relation, to be twinned afresh.
+   */
+  forgetRelation(name: string): void {
+    const r = this.relationOf(name);
+    for (const x of this.relations.values()) if (x.twin?.of === name) this.unlink(x);
+    this.leaveGroupsQuietly(name);
+    for (const h of r.blocks) this.problem.removeBlock(h);
+    this.relations.delete(name);
+    this.hidden.delete(name);
   }
 
   /**
@@ -2538,20 +2740,52 @@ export class Model {
   }
 
   /**
-   * Removes one relation and the residual blocks it added. Refuses while a
-   * feature's record names it — an extrude's depth, a revolve's angle — for
-   * `deleteEntity`'s reason: the record would be left naming nothing.
+   * Removes one relation and the residual blocks it added — **and its linked
+   * twins with it** (`RelationEntry.twin`): the pair is one thing, so one
+   * entry, `deleteRelation("r3")`, is the pair going, in a new file and in
+   * one from before twins alike.
+   *
+   * **Never refused for being a feature's** (docs/plans/linked-profiles.md,
+   * the register's item 4: a relation a feature made is deletable like any
+   * other). It used to refuse an extrude's depth or a revolve's angle, since
+   * the record would be left naming nothing; now the record stops naming it
+   * and, where it was the dimension the body is built from, says why it
+   * builds none (`unbuilt`) — the organiser shows it, nothing is drawn of it,
+   * and every entity is still there. **The relation that is a link going ends
+   * the link**: an extrude's `extrusion` deleted, the twins made across it
+   * are ordinary relations from then on, each profile keeping its own.
    */
   deleteRelation(name: string): void {
-    const r = this.relationOf(name);
-    const featured = [...this.featuresNaming(name), ...this.blendsNaming(name), ...[...this.surfaces.values()].filter((x) => x.names.includes(name))];
-    if (featured.length) {
-      throw new Error(`"${name}" is still part of ${featured.map((f) => f.name).join(", ")}`);
+    this.relationOf(name);
+    const sized = (f: { name: string; unbuilt?: string }, what: string) => { f.unbuilt = `its ${what} ${name} is deleted`; };
+    for (const f of this.features.values()) {
+      if (!f.names.includes(name)) continue;
+      f.names = f.names.filter((n) => n !== name);
+      f.owns = f.owns.filter((n) => n !== name);
+      if (f.kind === "extrude" && f.depth === name) sized(f, "depth");
+      if (f.kind === "revolve" && f.angle === name) sized(f, "angle");
     }
-    this.leaveGroups(name);
-    for (const h of r.blocks) this.problem.removeBlock(h);
-    this.relations.delete(name);
+    for (const f of [...this.blends.values(), ...this.surfaces.values()]) {
+      if (!f.names.includes(name)) continue;
+      f.names = f.names.filter((n) => n !== name);
+      f.owns = f.owns.filter((n) => n !== name);
+      if (f.size === name) sized(f, "size");
+    }
+    let unlinked = false;
+    for (const x of this.relations.values()) {
+      if (x.twin?.via !== name) continue;
+      this.unlink(x);
+      unlinked = true;
+    }
+    for (const n of this.linkedRelations(name)) {
+      const r = this.relationOf(n);
+      this.leaveGroups(n);
+      for (const h of r.blocks) this.problem.removeBlock(h);
+      this.relations.delete(n);
+    }
     this.record("deleteRelation", [name]);
+    // The twins the link held are ordinary relations now, and owed their rows.
+    if (unlinked) this.follow("relation");
   }
 
   /**
@@ -2560,17 +2794,38 @@ export class Model {
    * operations.ts), and a deletion is journalled as its expansion, one
    * primitive per name, so this is what a replay of one calls. Nothing names a
    * record, so nothing can refuse it.
+   *
+   * `how` is `"unlinked"` only in a journal from before linked profiles
+   * (format 19 and older; persist.ts writes it in). Then a record's going
+   * left its lid with no relations of its own and its `extrusion` standing,
+   * and the entries after it delete the lid piece by piece; so the twins this
+   * build made across that extrusion go with the record — a relation a person
+   * made that was adopted as one is only unlinked — and the extrusion is
+   * marked as linking nothing from then on (`RelationEntry.unlinked`).
    */
-  deleteFeature(name: string): void {
+  deleteFeature(name: string, how?: unknown): void {
     // A fillet's or chamfer's record goes by the same primitive: one name
     // space, one journal op for "this record, and only it" — and so does a
     // surface's (docs/plans/surfaces.md).
+    const via = this.features.get(name)?.kind === "extrude" ? (this.features.get(name) as ExtrudeFeature).depth : this.surfaces.get(name)?.size;
     if (this.blends.has(name)) this.blends.delete(name);
     else if (this.surfaces.has(name)) this.surfaces.delete(name);
     else this.featureOf(name);
     this.features.delete(name);
     this.hidden.delete(name);
-    this.record("deleteFeature", [name]);
+    let woke = false;
+    if (how === "unlinked" && via !== undefined) {
+      const link = this.relations.get(via);
+      if (link) link.unlinked = true;
+      for (const r of [...this.relations.values()]) {
+        if (r.twin?.via !== via || !this.relations.has(r.name)) continue;
+        woke = true;
+        if (r.twin.adopted) this.unlink(r);
+        else this.forgetRelation(r.name);
+      }
+    }
+    this.record("deleteFeature", how === "unlinked" ? [name, how] : [name]);
+    if (woke) this.follow("relation");
   }
 
   // ---- regions ------------------------------------------------------------
@@ -2820,6 +3075,11 @@ export class Model {
       this.removeMembers(g.name, [name]);
     }
     this.hidden.delete(name);
+  }
+
+  /** `leaveGroups` with nothing journalled: for what is removed by upkeep a replay does again itself (`forgetRelation`). */
+  private leaveGroupsQuietly(name: string): void {
+    for (const g of this.groupsHolding(name)) this.removeMembers(g.name, [name]);
   }
 
   /**

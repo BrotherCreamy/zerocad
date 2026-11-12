@@ -33,6 +33,7 @@
 
 import { referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { among, amongArgs, amongRows, amongSet, isAmongOp, membersOf, type AmongSet } from "./relations/among.ts";
+import { linksOf } from "./twins.ts";
 
 const sameTail = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
@@ -74,6 +75,38 @@ function relationOfKind(model: Model, name: unknown, who: string): { r: Relation
   return { r, set };
 }
 
+/**
+ * `names`, which lie on a twin's profile, as their partners on the profile of
+ * the relation it is the twin of (docs/plans/linked-profiles.md) — or null
+ * where one of them has no partner across that link. An extrude's two
+ * profiles are peers, and a relation and its twin are one statement: an edit
+ * to the twin is made on its partner, and the pass that keeps twins true
+ * (twins.ts) makes the twin again from it.
+ */
+function partnersAcross(model: Model, twin: RelationEntry, names: readonly string[]): string[] | null {
+  const link = twin.twin ? linksOf(model).find((l) => l.via === twin.twin!.via) : undefined;
+  if (!link) return null;
+  // Which way: the twin's own members say which profile it is on.
+  const mine = twin.args.filter((a): a is string => typeof a === "string");
+  const map = mine.some((a) => link.back.has(a)) ? link.back : link.fwd;
+  const out: string[] = [];
+  for (const n of names) {
+    const p = map.get(n);
+    if (p === undefined) return null;
+    out.push(p);
+  }
+  return out;
+}
+
+/** `partnersAcross`, or the refusal `join` and `leave` give a twin they cannot carry the names across for. */
+function acrossTwin(model: Model, twin: RelationEntry, names: readonly string[], who: string): string[] {
+  const over = partnersAcross(model, twin, names);
+  if (over) return over;
+  const of = twin.twin!.of;
+  throw new Error(`${who}: ${twin.name} is the twin of ${of} on a linked profile, and not every one of ${names.join(", ")} `
+    + `has a partner on ${of}'s — ${who} ${of} itself, by what is on its profile`);
+}
+
 function checkNames(model: Model, names: readonly unknown[], who: string): asserts names is string[] {
   if (!names.length) throw new Error(`${who} needs at least one name after the relation`);
   for (const n of names) {
@@ -95,6 +128,12 @@ function checkNames(model: Model, names: readonly unknown[], who: string): asser
 export function join(model: Model, relation: string, ...names: string[]): string {
   const { r, set } = relationOfKind(model, relation, "join");
   checkNames(model, names, "join");
+  // A twin's edit is its partner's (`acrossTwin`): the partners join the
+  // relation it is the twin of, and the twin is made again over the grown set.
+  if (r.twin && !r.twin.adopted) {
+    join(model, r.twin.of, ...acrossTwin(model, r, names, "join"));
+    return relation;
+  }
   const members = [...set.members];
   for (const n of names) if (!members.includes(n)) members.push(n);
   // Whatever the grown set now touches, until nothing more does.
@@ -147,10 +186,16 @@ function withdraw(model: Model, relation: string, names: readonly string[]): "sh
  * — or null when it went.
  */
 export function leave(model: Model, relation: string, ...names: string[]): string | null {
-  const { set } = relationOfKind(model, relation, "leave");
+  const { r, set } = relationOfKind(model, relation, "leave");
   checkNames(model, names, "leave");
   const not = names.find((n) => !set.members.includes(n));
   if (not !== undefined) throw new Error(`leave: ${not} is not in ${relation} — it holds among ${set.members.join(", ")}`);
+  // A twin's edit is its partner's (`acrossTwin`): the partners leave the
+  // relation it is the twin of, and the twin follows — or goes with it.
+  if (r.twin && !r.twin.adopted) {
+    leave(model, r.twin.of, ...acrossTwin(model, r, names, "leave"));
+    return model.relations.has(relation) ? relation : null;
+  }
   return model.asOperation("leave", [relation, ...names], () => (withdraw(model, relation, names) === "gone" ? null : relation));
 }
 
@@ -190,7 +235,18 @@ export function relate(model: Model, op: string, ...args: string[]): string {
   if (twice !== undefined) return among(model, op, ...args); // refused there, in the relation's words
   const hosts = sharing(model, op, set, null);
   if (!hosts.length) return among(model, op, ...args);
-  const host = hosts[0];
+  // One of the drawing's own before a twin (docs/plans/linked-profiles.md): a
+  // twin is kept as what its partner says, so what joins it must join its
+  // partner — on the other linked profile, by the names' partners there.
+  // Where the names are not all on the twin's profile there is no such thing
+  // to say of the partner, and the relation is made as its own.
+  const host = hosts.find((h) => !h.r.twin || h.r.twin.adopted) ?? hosts[0];
+  if (host.r.twin && !host.r.twin.adopted) {
+    const over = partnersAcross(model, host.r, set.members);
+    if (!over) return among(model, op, ...args);
+    relate(model, op, ...over, ...set.tail);
+    return model.relations.has(host.r.name) ? host.r.name : host.r.twin.of;
+  }
   // The names the host has not got; or, where it has them all and they are in
   // other relations too (an old file's star), the names as given, so that
   // `join` merges those others into it.

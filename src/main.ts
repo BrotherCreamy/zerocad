@@ -45,6 +45,7 @@ import { LogTail } from "./logtail.ts";
 import { Organiser, organiserSections, rowMenu, surfaceMenu } from "./organiser.ts";
 import { ConstraintsPalette, conflictRoles, paletteFor, type ConflictRole } from "./constraints.ts";
 import { surfaceNameOf } from "./surfaces.ts";
+import { closeOpen } from "./operations.ts";
 import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
@@ -1616,6 +1617,14 @@ async function main() {
     const c = report.solved ? { relations: [], unowned: [], conflicts: [] } : model.conflicting(report);
     standing = c.conflicts;
     conflicted = conflictRoles(c.conflicts);
+    // Named once, lit on both ends: a relation that is half of a linked pair
+    // (docs/plans/linked-profiles.md) wears the verdict's ink on its twin's
+    // mark too, in its own part — culprit, against or plain conflict — so the
+    // conflict shows on whichever profile is being looked at.
+    for (const [r, role] of [...conflicted]) {
+      if (!model.relations.has(r)) continue;
+      for (const twin of model.linkedRelations(r)) if (!conflicted.has(twin)) conflicted.set(twin, role);
+    }
     if (report.solved) statusLine.show("solved", "SOLVED");
     // The verdict alone: the names it accuses are the diagnosis beside it, each
     // one a thing to click (`showDiagnosis`), so they are not said twice.
@@ -1810,6 +1819,17 @@ async function main() {
     if (actionDepth === 0) return false; // defensive: an unbalanced `after` records nothing
     if (--actionDepth > 0) return false;
     if (movedHistory) { movedHistory = false; return false; }
+    // **An open extrude whose profile is a loop again is closed** (docs/plans/
+    // linked-profiles.md), whatever closed it — an end extended back to an
+    // edge, an arc drawn in. A line drawn between two corners has closed it
+    // already, by its joins, in the model; this is the rest, which reads
+    // where things are and so is a person's edit's to trigger, and each
+    // closing is the `regen` the journal then carries, inside the same step.
+    try {
+      for (const name of closeOpen(model)) log(`${name} is closed again — a solid`, "ok");
+    } catch (err) {
+      console.warn("closing open extrudes failed", err);
+    }
     const changed = undoStack.pushIfChanged(actionBefore, snapshot());
     // Every edit, however it was made, is a change the autosave hears of.
     if (changed) files?.changed();

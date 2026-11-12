@@ -1,6 +1,6 @@
 # Plan: an extrude's two profiles are peers, related like a mirror's — nothing is consumed
 
-**Status: queued, the owner's answers in** (2026-11-12; *The owner's answers* below replaces the questions). First said 2026-11-09. The owner:
+**Status: built** (2026-11-12, branch `claude/linked-profiles`; *As built* at the end says what was made, what differs from the design and what was left). Design 3 is `fillets-one-thing.md`'s. First said 2026-11-09. The owner:
 *"i mean kind of like mirror relations"*; *"in retrospect, i don't like the
 idea of anything being 'consumed' as this implies unidirectional hierarchy"*;
 *"Regarding 3D fillets, i think they ought to keep the original geometry as
@@ -153,3 +153,156 @@ feature what was owned and what is now related, in a table in As built.
 CHANGELOG top quoting the owner; STATUS; ARCHITECTURE ("no hierarchy": a
 feature relates, it does not own); the register; `help()`; the spec marked
 built.
+
+## As built (2026-11-12)
+
+### The link and the twins
+
+- **The link is the `extrusion` relation** — an extrude's depth, an edge
+  extrude's size. `src/twins.ts`'s `linksOf` reads the pairs off it: every
+  point pair it holds (a sketch frame's datum points aside), and every line
+  and spline whose ends are paired and whose partner runs between their
+  partners. Neither side is called the source.
+- **A twin is a registry entry of its own**, named `<partner>_<record>`
+  (`r3_e1`, `d2_e1`; across two stacked extrudes `r3_e1_e2`), carrying
+  `twin: { of, via }`. While the link stands it **holds no rows** — its
+  statement is its partner's, carried by the extrusion; when the extrusion
+  is deleted it is given its rows by its own function and is an ordinary
+  relation.
+- **Made and kept by a follower** (`defineFollower` in model.ts, registered
+  by operations.ts): after every relation made at the top level, every
+  outermost operation and every entity placed outside one. It reads names
+  and joins, never positions, and is idempotent, so the journal has no
+  entry for a twin and a replay makes the same ones under the same names.
+- `set` on either of a pair rebuilds both with the one value;
+  `deleteRelation` on either takes both; a conflict names the relation that
+  was typed and the host lights both ends; a dimension's label is drawn on
+  the end nearer the viewer, a mark on both.
+
+| Relation | Twins? | Why |
+|---|---|---|
+| `dist`, `coin`, `mid`, `on` (point on line), `eq`, `sym`, `col`, equal spacing, `coplanar` | yes — shape | a translation keeps lengths and incidences |
+| `rad`, `dia`, on-circle, concentric, coradial, equal radius, `tan`, arc endpoints, intersection, on-ellipse, major and minor axis | yes — shape | the same, for curves |
+| `par`, `perp`, `ang` | yes — direction | a translation keeps directions; either may name a frame's axis |
+| `fix`, `onplane`, `pierce` | no — position | the twin would pin the lid where the base is |
+| `measure`, on-spline | no | a reading, not a hold; a spline's partner is paired by its points |
+| `extrusion`, `revolution`, `translated`, `rotated`, `rotation` | no | they are links themselves |
+| any of the above naming an entity outside the profile | no | the spec's rule: it reaches outside |
+
+Each relation's module entry says which it is (`RelationDecl.twin`:
+`"shape"` or `"direction"`); a relation with no entry does not twin.
+
+### Review item 4: what was owned, and what is related now
+
+| Feature | Before | Now |
+|---|---|---|
+| **Extrude** | Owned its lid's points and edges and its walls: `del("e1")` deleted them. Deleting a base line deleted the extrude and all it owned; a lid line could not be deleted alone. The depth `d1` and `e1_perp` took the record with them. A trim that broke the loop was refused. | `del("e1")` answers `[e1, d1, e1_perp]` and takes no entity; both profiles and the chords stay, every twin an ordinary relation. An entity of either profile deleted takes its partner and the wall between, and the record stays **open**. `d1` deleted leaves the record **unbuilt**; `e1_perp` deleted lets the chord lean. A trim that breaks the loop opens the extrude. `owns` still lists what the record made — for regeneration and for the refusals that remain on walls — and no longer decides what a deletion takes. |
+| **Cut** (an extrude with `mode: "cut"`) | As the extrude; deleting it deleted its tool profile's far end and walls. | As the extrude: `[e2, d2, e2_perp]`, the tool's two profiles and chords stay, the body is drawn uncut. |
+| **Edge extrude** (surface record `s1`) | Owned the copied curves, their points and the end chords. | Linked like an extrude: the copy carries a twin of each relation on the curves. `del("s1")` takes the record and its `extrusion`; `s1_perp` is an ordinary relation; a curve deleted takes its copy and the record keeps the rest. |
+| **Revolve** | Owned its end face: `del("e1")` deleted it. The angle took the record. | `del("e1")` answers `[e1, <angle>]`; the end face and the sketch stay. The angle deleted leaves the record unbuilt. **Not linked**: no twins across a `revolution`, and deleting an edge of either end still takes the record (the geometry stays). |
+| **3D fillet, chamfer** (blend record) | Owned no entity. Its size took the record; it went with its body. | The size deleted leaves it unbuilt, the body drawn without it. Its extrude deleted, it stays as a record left out of every body, saying why. |
+| **Offset** | Owned nothing: copies held by `par`, `dist` and the like. | Unchanged; each relation is deleted alone and takes nothing. A lid's edge can now be offset (it was refused as "part of e1's solid"). |
+| **Mirror** | Owned nothing: a `sym` per point pair. | Unchanged. |
+| **Linear and circular pattern** | Owned nothing: `translated`, `rotated`, `rotation`. | Unchanged. |
+| **Relations naming a face** | `onplane(p, "e1:l2")`, `par(c, "e1:l2")` and `fdist` went with the feature. | `onplane` on a flat face is re-pointed to `coplanar` over three of the face's own points, under the same name (`rehold`, journalled ahead of the deletion). `fdist`, `par(c, "e1:l2")` and anything on a round face still go with the record: they read the record. |
+
+### Deviations from the design
+
+- **Open walls are drawn, not built by the kernel.** The owner's answer has
+  the surviving walls "still swept … drawn as open surfaces"; they are
+  drawn, from both sides, from the model's own points (faces.ts), and no
+  SMLib sheet body is made. So an open extrude cannot be cut, filleted or
+  measured on. This is between the answer and its stated fallback.
+- **"Named once, by whichever end the user has in view"**: named once, by
+  the relation that was typed; both ends are lit. The conflict search has no
+  view.
+- **"Dimensions on whichever end faces the viewer"**: the end nearer the
+  viewer along the view direction (in sight first), which is the same thing
+  for a prism seen from outside.
+- **Split and power-trim**: there is no split operation in this build; the
+  trim tool's click takes a lid edge, its power-trim stroke does not.
+- **"Closing the loop again (drawing the missing line on either profile,
+  which twins at once)"**: true for a line joined to the two open corners by
+  a shared point or `coin`. An arc, or a closure made by position, closes on
+  the host's next `closeOpen` (after any edit by a person) or a typed
+  `regen`.
+- **"Impossible to tell which was the original"** is not reached. What
+  still tells: a twin's name (`r3_e1`), the region (`rg1` stays on the
+  profile the extrude was made from), `fix` and `onplane`, two corners
+  joined by `coin` having one lid point, and a profile that is a piece of
+  longer lines having no twins. Each is filed in TODO.md.
+- **Revolve** is in item 4's table for deletion only; its ends are not
+  linked.
+- **Format 21** adds nothing to a file. It exists because `deleteFeature`
+  means something else: a pre-21 entry is marked `"unlinked"` on the way in
+  and takes what it took.
+
+### Met on the way in: relations among many, and walls by their lines
+
+`review-relations.md` (format 20) was merged under this before it went up.
+Where the two meet:
+
+- **A relation among many has one twin among the partners.**
+  `eq("l1", "l3", "l2")` on one profile is twinned as the relation as
+  written over the three partners (the module entry's `fn`, which never
+  joins). `join` and `leave` re-form the twin in the pass that follows them.
+- **A name typed with a member that only a twin holds joins the relation the
+  twin is the twin of**, by its partner on the other profile (among.ts's
+  `relate`, and `join`/`leave` given a twin's name): one relation and its
+  twin, never a third; the journal's entry is the made relation's `join`. A
+  name with no partner there cannot join a twin — `join` says so, and a typed
+  relation is made as its own.
+- **A member deleted journals one `leave`**, the made relation's. The twin is
+  forgotten and made again over the rest by the pass that follows that
+  `leave` — live and on replay alike — because a twin has no entries.
+- **`"e1:l2"` in a relation is a face**, outside any profile: no twin, as
+  with `"e1.lid"`. `rehold` reads a wall through `faceSource` whichever way
+  it is written.
+
+### What `fillets-one-thing.md` stands on
+
+- A twin for an entity added to a profile: `relinkOne` gives a line its
+  partner by its joins; `planOpen`/`rebuildOpen` re-make a lid from a given
+  set of loops, which is where an arc's twin comes from.
+- Construction through a twin: a link pairs lines by their points whatever
+  their flag, so a pair flagged construction is still a pair, its relations
+  keep their twins and a new relation on it is twinned at once; a
+  construction line between two corners pairs with the one between their
+  partners (tested, flagging at the `Model`). **Not done**: the
+  `construction` operation still refuses a feature's outline member and
+  flags only what it is given — lifting the refusal and flagging the partner
+  with it is the fillet package's operation to define, since it changes what
+  an old file's `construction("l5")` means.
+- The body from the non-construction loops: regions already walk past
+  construction (loops.ts), so `regen` re-derives a record's loops from what
+  is not construction; `regenerateGiven`, `planOpen` and `rebuildOpen` make
+  a lid from the loops they are handed, re-making or re-pointing each twin
+  by name.
+
+### Tests
+
+`test/linkedprofiles.test.ts` (29 tests: twins, the table above, set and
+drag both ways, nothing agreeing or redundant added, a conflict named once,
+pairs deleted, the extrude deleted, an edge deleted from either end and
+drawn back, a corner, a wall, trim and extend from either end, the
+format-19 fixture, every feature of item 4, a feature-made relation, a free
+body pulled, a sketch fillet's twins, construction through a twin, a
+relation among many joined, left and shrunk from either profile, a wall by
+its line, a twin of a twin, marks, 2D,
+`ls()`/`rels()`). `test/fixtures/linked-v19.neocad.json` was written by the
+build before this one, with the geometry it solved to beside it.
+`test/e2e/linkedprofiles.e2e.ts`, mouse and iPhone 13.
+
+### Pictures
+
+| | |
+|---|---|
+| 443 | Desktop, hidden-line: the block's base and lid each wearing their `⊥` pairs, the dimension 50 drawn once on the lid's front edge. |
+| 444 | `set("d2_e1.value", 64)`: the label reads 64, both front edges longer. |
+| 445 | A back lid corner dragged: the back edges of lid and base moved together. |
+| 446 | The lid's right edge deleted: three walls, no caps, the row `extrude · open`. |
+| 447 | The edge drawn back on the base: a whole block, `e1` under Bodies again. |
+| 448 | `del("e1")`: two rectangles and four chords, marks on both; `rg1` on the lower. |
+| 449 | A short line on the lid across its front edge. |
+| 450 | The trim tool on the lid's edge: the front wall half as long, the row `extrude · open`. |
+| 451–458 | The same eight on an iPhone 13, by finger (the edge deleted by its name, typed). |

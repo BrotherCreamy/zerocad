@@ -38,8 +38,10 @@ import {
 import { addBSpline, checkBSpline, pathCurveOf, type BSplineEntity } from "./kinds/spline.ts";
 import { domain, nearestParam, subCurve, type BSpline } from "./bspline.ts";
 import {
-  del, featuresTouching, givenRegenerated, regenerateAfter, regenerateNamed, regenerationRefusal, type Regenerated,
+  canOpen, del, featuresTouching, givenRegenerated, regenerateAfter, regenerateNamed, regenerateOpen, regenerationRefusal, type Regenerated,
 } from "./operations.ts";
+import { extrusionChord } from "./relations/extrusion.ts";
+import { linksOf, partnersOf, type Link } from "./twins.ts";
 import { curveEnds, cutsOf, distanceToCurve, fractionOn, isSketchCurve, lengthOf, reachOf, type CurveCut } from "./sketchgeom.ts";
 import { heldOnCurves, joinClasses } from "./loops.ts";
 import { curveFrame, sketchSide } from "./curveplane.ts";
@@ -94,7 +96,30 @@ function ownerOf(model: Model, name: string): string | null {
 
 function refuseOwned(model: Model, name: string, op: string): void {
   const f = ownerOf(model, name);
-  if (f) throw new Error(`"${name}" is part of ${f}'s solid — ${op} the sketch it was made from, and ${f} follows it`);
+  // A lid's edge with a partner on the base is no one's to refuse: the two
+  // profiles are peers, and the edit is made on both (`acrossOf`).
+  if (f && !acrossOf(model, name)) throw new Error(`"${name}" is part of ${f}'s solid — ${op} the sketch it was made from, and ${f} follows it`);
+}
+
+/**
+ * **A curve's partner on the other linked profile**, when the curve is the
+ * one a feature made (docs/plans/linked-profiles.md): the profile the record
+ * is rebuilt from, and the chord from it to this one. The owner: *"If they
+ * are truly twinned profiles, then reining in one side should trim on the
+ * other also."* An edit asked of a lid's edge is made on its partner, moved
+ * back by the chord, and the regeneration that follows makes it on the lid —
+ * one operation, one entry, both profiles. Null for a curve that is on the
+ * profile already, or that has no partner (a wall, the piece of a longer
+ * line).
+ */
+function acrossOf(model: Model, curve: string): { partner: string; link: Link; chord: number[] } | null {
+  for (const link of linksOf(model)) {
+    const partner = link.back.get(curve);
+    if (partner === undefined || !model.entities.has(partner)) continue;
+    const chord = extrusionChord(model, link.via);
+    if (chord) return { partner, link, chord };
+  }
+  return null;
 }
 
 /** A place, as the model's coordinates: a 3D model takes two (on z = 0) or three. */
@@ -134,8 +159,16 @@ function rebuildEnds(model: Model, arc: string): void {
 
 // --- trim ---------------------------------------------------------------------
 
-/** One end of a trimmed piece, as the journal keeps it: the curve that cut it there, the point already there (or null), and where. */
-export type CutSpec = [string, string | null, number[]];
+/**
+ * One end of a trimmed piece, as the journal keeps it: the curve that cut it
+ * there, the point already there (or null), and where. **A cut made across a
+ * link** (a lid's edge trimmed back to a curve drawn on the lid) has no curve
+ * on this profile to hold its end on: its first element is null, and a fourth
+ * names the cutter on the other profile, which the end's twin is held on once
+ * the regeneration has made it — so the cut is still a relation, on the
+ * profile where the curve that made it is.
+ */
+export type CutSpec = [string, string | null, number[]] | [null, string | null, number[], string];
 
 /**
  * **A piece of a spline, resolved** (docs/plans/trim-everything.md): the
@@ -216,7 +249,8 @@ export function trimPiece(model: Model, curve: string, at: number[]): { lo: Curv
 
 /** A journal's (or a typed call's) resolved cuts — and a spline's pieces — checked for shape. */
 function givenCuts(model: Model, resolved: unknown): [CutSpec | null, CutSpec | null, PiecePlan[] | null] {
-  const spec = (s: unknown): s is CutSpec => Array.isArray(s) && s.length === 3 && typeof s[0] === "string"
+  const spec = (s: unknown): s is CutSpec => Array.isArray(s)
+    && ((s.length === 3 && typeof s[0] === "string") || (s.length === 4 && s[0] === null && typeof s[3] === "string"))
     && (s[1] === null || typeof s[1] === "string") && Array.isArray(s[2]) && s[2].every((v) => typeof v === "number");
   const plan = (p: unknown): p is PiecePlan => !!p && typeof p === "object" && Array.isArray((p as PiecePlan).knots)
     && (p as PiecePlan).knots.every((k) => typeof k === "number") && Array.isArray((p as PiecePlan).ctrl)
@@ -230,7 +264,10 @@ function givenCuts(model: Model, resolved: unknown): [CutSpec | null, CutSpec | 
       + "and a spline's pieces after them, [{ knots, ctrl }…]");
   }
   const r = resolved as unknown[];
-  for (const s of [r[0], r[1]] as (CutSpec | null)[]) if (s && !model.entities.has(s[0])) throw new Error(`trim: "${s[0]}" is not there to cut at`);
+  for (const s of [r[0], r[1]] as (CutSpec | null)[]) {
+    const by = s === null ? null : s[0] ?? s[3]!;
+    if (by !== null && !model.entities.has(by)) throw new Error(`trim: "${by}" is not there to cut at`);
+  }
   return [r[0] as CutSpec | null, r[1] as CutSpec | null, r.length === 3 ? r[2] as PiecePlan[] : null];
 }
 
@@ -375,13 +412,30 @@ function planTidy(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec |
 export function trim(model: Model, curve: string, near: unknown, resolved?: unknown, regenerated?: unknown,
                      notes: string[] = []): string[] {
   checkTrimmable(model, curve, "trim");
-  const at = coordsOf(model, near, "trim");
+  let at = coordsOf(model, near, "trim");
   const given = resolved != null;
   let lo: CutSpec | null, hi: CutSpec | null, pieces: PiecePlan[] | null = null;
+  // **A lid's edge is trimmed on its partner** (docs/plans/linked-profiles.md):
+  // the piece is found where the hand is, on the lid; the trim is the base
+  // curve's, each cut carried back across the link — to the cutter's own
+  // partner where it has one, and where it has none (a curve drawn on the
+  // lid's face) left for the end's twin to be held on. Journalled as the base
+  // curve's trim, so a replay makes the one operation that made both.
+  const across = given ? null : acrossOf(model, curve);
   if (given) [lo, hi, pieces] = givenCuts(model, resolved);
   else {
     const piece = trimPiece(model, curve, at);
     [lo, hi] = [piece.lo && specOf(piece.lo), piece.hi && specOf(piece.hi)];
+    if (across) {
+      const back = (p: number[]) => p.map((v, i) => v - (across.chord[i] ?? 0));
+      const carry = (s: CutSpec | null): CutSpec | null => {
+        if (!s) return null;
+        const by = s[0] === null ? undefined : across.link.back.get(s[0]);
+        const point = s[1] === null ? null : across.link.back.get(s[1]) ?? null;
+        return by !== undefined && model.entities.has(by) ? [by, point, back(s[2])] : [null, point, back(s[2]), s[0] ?? s[3]!];
+      };
+      [lo, hi, at, curve] = [carry(lo), carry(hi), back(at), across.partner];
+    }
   }
   const e = model.entities.get(curve)!;
   if (isClosedEntity(e) && (lo === null || hi === null)) throw new Error(`trim of ${closedPiece(e).split(" trims")[0]} needs a cut either side of the piece`);
@@ -397,18 +451,41 @@ export function trim(model: Model, curve: string, near: unknown, resolved?: unkn
   model.asOperation("trim", () => (after === null ? [curve, at, resolvedNow()] : [curve, at, resolvedNow(), after]), () => {
     const marks = model.nameCounters();
     const undo: (() => void)[] = [];
+    const ends = new Map<CutSpec, string>();
+    // **A trim that takes an extrude's loop away leaves it open** — as a
+    // deleted edge does (docs/plans/linked-profiles.md) — where it used to be
+    // refused: the trimmed edge is still swept, as far as it now runs, on both
+    // profiles. A feature that cannot be left open (a revolve) still refuses.
+    const opened: string[] = [];
     try {
-      made = applyTrim(model, curve, lo, hi, pieces, undo);
+      made = applyTrim(model, curve, lo, hi, pieces, undo, ends);
       if (!given) {
-        const why = regenerationRefusal(model, touched);
-        if (why) throw new Error(`trimming that piece of ${curve} leaves a feature nothing to stand on — ${why}`);
+        for (const name of touched) {
+          const why = regenerationRefusal(model, [name]);
+          if (!why) continue;
+          if (!canOpen(model, name)) throw new Error(`trimming that piece of ${curve} leaves a feature nothing to stand on — ${why}`);
+          opened.push(name);
+        }
       }
     } catch (err) {
       for (const u of undo.reverse()) u();
       model.restoreNameCounters(marks);
       throw err;
     }
-    after = given ? (regen ? regenerateNamed(model, [], regen) : null) : regenerateNamed(model, touched, null, notes);
+    if (given) after = regen ? regenerateNamed(model, [], regen) : null;
+    else {
+      const closed = regenerateNamed(model, touched.filter((n) => !opened.includes(n)), null, notes);
+      const open = regenerateOpen(model, opened);
+      after = closed || open.length ? [...(closed ?? []), ...open] : null;
+      for (const n of opened) notes.push(`${n} is open now — its profile no longer closes; draw or extend it closed again`);
+    }
+    // A cut made across a link: the end's twin held on the curve that cut it, on its own profile.
+    for (const s of [lo, hi]) {
+      if (!s || s[0] !== null) continue;
+      const end = ends.get(s);
+      const twin = end === undefined ? undefined : linksOf(model).map((l) => l.fwd.get(end)).find((t) => t !== undefined && model.entities.has(t));
+      if (twin !== undefined && model.entities.has(s[3]) && !heldOn(model, twin, s[3])) holdOn(model, twin, s[3]);
+    }
     adoptCutPoints(model, [lo?.[1], hi?.[1]].filter((p): p is string => typeof p === "string"));
   });
   if (tidyPlan) {
@@ -496,19 +573,25 @@ function planPieces(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec
  * piece out of the middle leaves, if any.
  */
 function applyTrim(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec | null, pieces: PiecePlan[] | null,
-                   undo: (() => void)[]): string[] {
-  const pointFor = ([by, point, at]: CutSpec): string => {
+                   undo: (() => void)[], ends: Map<CutSpec, string> = new Map()): string[] {
+  const pointFor = (spec: CutSpec): string => {
+    const [by, point, at] = spec;
+    // `by` null: a cut made across a link — the end is held through its twin, by `trim`.
     if (point !== null && model.entities.get(point)?.kind === "point") {
-      if (!heldOn(model, point, by)) {
+      if (by !== null && !heldOn(model, point, by)) {
         const r = holdOn(model, point, by);
         undo.push(() => model.deleteRelation(r));
       }
+      ends.set(spec, point);
       return point;
     }
     const p = model.addPoint(at.slice(0, model.dim)).name;
     undo.push(() => model.deleteEntity(p));
-    const r = holdOn(model, p, by);
-    undo.push(() => model.deleteRelation(r));
+    if (by !== null) {
+      const r = holdOn(model, p, by);
+      undo.push(() => model.deleteRelation(r));
+    }
+    ends.set(spec, p);
     return p;
   };
   const relate = (name: string) => undo.push(() => model.deleteRelation(name));
@@ -710,7 +793,10 @@ function endMeant(model: Model, e: Entity, end: unknown): { point: string; which
 export function extendReach(model: Model, curve: string, end: unknown, to?: string | null): { point: string; by: string; at: number[] } {
   const e = checkTrimmable(model, curve, "extend");
   const { point, which } = endMeant(model, e, end);
-  const shared = model.dependents(point).filter((d) => d.name !== curve).map((d) => d.name);
+  // An extrude's wall stands on the end and goes where it goes: it is the
+  // chord at that point, not a second edge pulled along (linked-profiles.md).
+  const walls = new Set([...model.features.values()].flatMap((f) => (f.kind === "extrude" ? f.walls : [])));
+  const shared = model.dependents(point).filter((d) => d.name !== curve && !walls.has(d.name)).map((d) => d.name);
   if (shared.length) throw new Error(`${point} is also ${shared.join(" and ")}'s — extend lengthens a free end, and this one is a corner`);
   const joined = [...model.relations.values()].find((r) => r.op === "coincident" && r.args.includes(point));
   if (joined) throw new Error(`${point} is held to ${joined.args.filter((a) => a !== point).join(" and ")} by ${joined.name} — extend lengthens a free end; del("${joined.name}") frees it`);
@@ -746,7 +832,17 @@ export function extend(model: Model, curve: string, end: unknown, to?: string | 
     ({ point, by, at: place } = extendReach(model, curve, end, to ?? null));
   }
   return model.asOperation("extend", [curve, point, by, place], () => {
+    const was = model.coords(point);
     model.setCoords(point, place.slice(0, model.dim));
+    // **On a linked profile the end's partner goes with it** (docs/plans/
+    // linked-profiles.md): the extrusion holds the two ends one chord apart,
+    // so the hold on this one is a hold on both, and an edge of the lid is
+    // extended as one of the base is. Seated here so the solve has nothing to
+    // share out between them — a seed, as the extrude's own are.
+    for (const { partner } of partnersOf(model, point)) {
+      if (model.entities.get(partner)?.kind !== "point") continue;
+      model.setCoords(partner, model.coords(partner).map((c, i) => c + (place[i] ?? 0) - was[i]));
+    }
     holdOn(model, point, by);
     return curve;
   });

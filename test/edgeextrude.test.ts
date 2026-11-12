@@ -129,17 +129,23 @@ test("set(depth): the copy moves, the base stays — across zero too; and an arc
   assert.ok(Math.abs(m.radius(copyArc) - 12) < 1e-9, `the copy's radius followed: ${m.radius(copyArc)}`);
 });
 
-test("s1_perp is an ordinary relation: deleted, the record stays; del of the record takes what it made and keeps the curves", async () => {
+// Until linked profiles `del("s1")` took what the record made. Nothing is
+// owned now (docs/plans/linked-profiles.md, item 4): the record goes with the
+// relation that is the edge extrude, and the copies and the end chords stay.
+test("s1_perp is an ordinary relation: deleted, the record stays; del of the record takes its extrusion and leaves the curves and their copies", async () => {
   await loadSolver();
   const { m, s } = scene();
   const { pts, lines } = ell(m);
   s.edgeExtrude(lines[0], 10);
   assert.deepEqual(del(m, "s1_perp"), ["s1_perp"]);
   assert.ok(m.surfaces.has("s1"));
-  const owns = m.surfaceOf("s1").owns;
+  const made = m.surfaceOf("s1").owns;
+  const depth = m.surfaceOf("s1").size!;
   const removed = del(m, "s1");
-  assert.deepEqual(new Set(removed), new Set(["s1", ...owns]));
+  assert.deepEqual(new Set(removed), new Set(["s1", depth]), "the record and the relation that is it");
   for (const n of [...pts, ...lines]) assert.ok(m.entities.has(n), `${n} kept`);
+  for (const n of made) if (n !== depth) assert.ok(m.entities.has(n), `${n}, which it made, is plain geometry now`);
+  assert.equal(m.solve().solved, true);
 });
 
 test("save and open: replayed name for name, journalled as edgeExtrude, and re-saved byte for byte", async () => {
