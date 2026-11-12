@@ -7,6 +7,126 @@ decisions.
 
 ---
 
+## 2026-11-12 — the gate made trustworthy again: four failures that were not the app's (and one that was, in the browser only)
+
+Four tests failed on the base branch, and every worker's gate tripped on
+them. Each was reproduced and measured before anything was changed
+(`claude/gate-stable`; the runs are counted alone and with two other e2e
+files looping on the same four cores, and every run's load average was
+kept).
+
+- **Android's font scale, measured** (android.e2e.ts) — **the app's, in the
+  browser only: bug 77.** The browser under the suite became Chromium
+  153.0.8010.12 when the container was rebuilt, and 153 reports
+  `env(preferred-text-scale)` only to a page carrying `<meta
+  name="text-scale" content="scale">`; every other page is told 1, whatever
+  the system's scale (141 told every page). The app read 1 and said *text
+  size 1.00* under a scale of 1.3. Measured, in the binary's own flag
+  (`--blink-settings=accessibilityFontScaleFactor`) and by CDP's
+  `Emulation.setEmulatedOSTextScale`, which agree: with the meta the page
+  is told the system's scale × the browser's font size ÷ 16 (1.3 at 20 px
+  reads 1.625) and `medium` moves too; with the meta taken out again both
+  are back. So the page asks: where the plain reading is exactly 1 on
+  Android under a finger, the meta goes in, the variable is read, the meta
+  comes out, all before the first paint, and the browser's own share is
+  divided out so the rule (system × browser) counts it once
+  (`systemTextScale`, uiscale.ts; the table is in android.md). The e2e says
+  by version which reading this Chromium gives and fails there, saying so,
+  if neither does; it also checks 1.15 at a 20 px browser font reads *text
+  size 1.44*, not 1.80. Base: 0 of 3 runs at load 45–50. After: the test 5
+  of 5 at load 36–52 and 2 of 2 after that (the loaded runs below).
+- **The see-through log line** (overlaylock.e2e.ts, all five ways) — **the
+  test racing the app's fade.** A tail line is whole for 3 s and gone at 10
+  (logtail.ts), and one contrast sample is four screenshots; traced with
+  the line's age and opacity stamped on each shot, one screenshot took
+  1.7 s and once 7.7 s under load, so the line was shot at opacity 0.5, or
+  after it had gone, and the two shots agreed at every pixel: *some ink to
+  sample (0 pixels)*. The fade is the design, 3 s whole is readable, and
+  nothing in the app changed. The sample holds the fade off for its own
+  length (`animation: none`, so the line is drawn as a fresh one is), polls
+  for the ground it is meant to be over instead of sleeping (the lid read
+  dark once at load 45), and says the line again if it aged out mid-sample.
+  Base: 2 runs of 2 failed at load 35–45, four of five ways each. After:
+  see below.
+- **The cost test's 2000 ms** (conflicts.test.ts) and **what a conflict
+  names on the product's 500 ms** (profilesheld.test.ts and four more
+  files) — **wall-clock in a unit test on a shared box.** The search read
+  2255 and 2888 ms with other suites on the box and 235 ms alone; the 500 ms
+  budget ran out and the bound's fallback named others. The cost is counted
+  now in what the model asked the kernel for — solves and iterations, per
+  fixture and for the forty rectangles (25 solves, 130 iterations), against
+  the product's 200-trial budget — with the clock printed beside it and
+  asserted only under `NEOCAD_TIMING`. The bound itself is tested on a
+  clock the test turns, 100 ms a reading: five trials, the culprit named
+  alone, `found` false, the same on any machine. Every test of *what* is
+  named lifts the clock (`searchMs = Infinity`), as culprit.test.ts always
+  did. Base: conflicts 9 of 10 at load 24–57; after: see below.
+- **Nothing to undo, said beside the verdict** (undokeys.e2e.ts) — **the
+  test racing the note's fade.** The note clears itself after 1.6 s; the
+  test read it 150 ms after the key plus two round trips, and under load
+  that was once past it (`'' !== 'nothing to redo'`). Every read of the
+  note now waits for the words it expects, or reports what it says at 3 s.
+- **The dev server, watched** (test/e2e/run.ts). In a full run on the
+  merged base vite died partway under four workers' load, and the run said
+  *no dev server at …* twenty-one times from modefeedback onward. The
+  runner keeps the server's last stderr lines, hears it exit, prints a
+  banner saying when and how (`killed by SIGKILL`, or its code) and what it
+  last wrote, starts it again on the same port (twice at most; a third
+  death stops the tests, since every failure after it would be the
+  server's), and says again at the end which failures to run alone before
+  believing. The harness's own message points at the banner.
+
+- **Three more things the loaded runs taught** (load 30–40: my two
+  looping files beside the other workers'). The fade's own test read a
+  line at 0.52 where the rule said 0.42 at its age: the fade is a CSS
+  animation on the browser's frame clock, which runs behind the wall clock
+  under load and never ahead of it, so the test reads each line against its
+  own age and allows the frame clock up to 3 s behind. Four screenshots
+  outlived the tail's 10 s even with the fade held, so the sample keeps the
+  sampled line young by the app's own stamp (`data-at` set to now before
+  each shot). And a renderer crash ("Target crashed") left a file whose
+  tests had all reported sitting 38 minutes in `browser.close()` — and
+  another worker's two full runs sat 50 minutes each on fits.e2e.ts after
+  the same crash, on a CDP `send` the browser never answers for a target
+  that is gone. **A crashed target fails its test and never holds the
+  suite** now (harness.ts: `bounded`, `timedCdp`, `closeBounded`): every
+  CDP session the suite opens has its sends bounded at 30 s, every browser
+  close at 15 s, and run.ts gives every test a 15 minute timeout, so what
+  none of those covers still ends as a named failure, not a runner that
+  waits forever.
+
+**Counts, before → after.** Each run's load average was kept; "loaded" is
+two e2e files looping beside the run on the same four cores, on top of
+whatever the other workers were doing.
+- Android's font scale: base 0 of 3 (load 45–50). After, the test itself:
+  5 of 5 at load 36–52, 2 of 2 at 17–27, 2 of 2 loaded at 24 — 9 of 9.
+  (One of the first five runs lost *files on Android before Chrome 132* to
+  a 20 s wait at load 52; not this test.)
+- The see-through tests, all five ways: base 0 of 2 runs at load 35–45
+  (in each, four of five ways failed on the ink, one on the touch
+  harness's lost tap). After the first fix: 1 of 1 at load 12; 2 of 3 at
+  17–29, the one failure the fade's own test, fixed next; loaded at 30–40,
+  1 of 3, the failures the line's removal (then kept young), the frame
+  clock (then allowed for) and the renderer crashing. Final, loaded at
+  load 15–32, three runs, fifteen ways: **the ink assertion failed in
+  none**; the runs were 1 of 3 green, the four failures being two renderer
+  kills — the container's memory cgroup's OOM killer, `dmesg` says, on a
+  16 GB box with every worker's browsers on it — and two of the touch
+  harness's lost taps (`24 !== 25`, the older entry).
+- The cost test: base 9 of 10 at load 24–57 (2888 ms). After 10 of 10
+  alone (load 6–16, search 160–235 ms, 25 solves every time) and 5 of 5
+  loaded at 23–29 (search up to 832 ms, 25 solves every time; the clock
+  no longer asserted). The bound on the turned clock: 5 solves every run.
+- Profiles held: base 10 of 10 at load 42–57 (it did not fail for me);
+  after 10 of 10 and 5 of 5 loaded.
+- Nothing to undo: base reproduced, 1 of 3 loaded at load 28 (`'' !==
+  'nothing to redo'`); after 6 of 6 alone (load 6–10) and 3 of 3 loaded
+  at 26–30.
+- The server's death, rehearsed by SIGKILLing vite under a run: twice 50 s
+  apart, the banner each time, the files after it green against the
+  restarted server, the two in flight failed with the signatures the
+  banner now names.
+
 ## 2026-11-12 — where linked profiles met the solver package: the merge
 
 Linked profiles (#93) was built beside review-solver (#92) and merged after

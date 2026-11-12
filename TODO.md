@@ -2696,6 +2696,49 @@ are flagged as such.
 
 ## Next up
 
+- [x] **The gate made trustworthy again** (branch `claude/gate-stable`,
+  2026-11-12): four tests failed on the base for reasons that were not
+  regressions, and every worker's gate tripped on them. Each was measured
+  before it was touched; the CHANGELOG entry has the counts, before and
+  after, alone and loaded. *Android's font scale* was the app's, in the
+  browser only (bug 77, Chromium 153 tells only a page that asks;
+  android.md). *The see-through log line* was the test racing the app's
+  fade with four slow screenshots. *The conflict search's cost* was a
+  wall-clock budget in a unit test on a shared box: measured in solves and
+  iterations now, the clock printed and asserted only under `NEOCAD_TIMING`;
+  the bound itself tested on a clock the test turns. *Nothing to undo* was
+  the test racing the note's 1.6 s fade. And the e2e runner watches its dev
+  server: when it dies the run says so, when and how, restarts it twice on
+  the same port, and says again at the end which failures were that. And a
+  crashed target fails its test rather than holding the suite: a crashed
+  renderer held a finished overlaylock open 38 minutes in `browser.close()`
+  and fits.e2e.ts 50 minutes on a CDP `send`, twice, so every CDP send the
+  suite makes is bounded (30 s), every browser close (15 s), and every test
+  has a timeout (15 min; run.ts).
+  Left, each written down where it belongs:
+    - [ ] **The renderer is killed under load** ("Target crashed", in four
+          of six loaded overlaylock runs with two suites looping beside
+          three other workers' runs). `dmesg`: the container's memory
+          cgroup's OOM killer taking `chrome-headless` — a 16 GB box with
+          every worker's browsers on it, not the app. The harness now fails
+          rather than hangs on it. If it recurs on a quiet box, it is a bug
+          of the app's (a page that grows); it has not.
+    - [ ] **A finger's tap under load still makes no point** (overlaylock's
+          `24 !== 25` at load 35–45, two of five ways in each of two base
+          runs; the cause is the touch harness's, filed under the touch
+          density entry: a lift acknowledged after `LONG_PRESS_MS` reads as
+          a long-press). Not this package's; measured and left.
+    - [ ] **The search's 500 ms on a phone under load** (the entry under
+          review-relations) is unchanged; what changed is that no unit test
+          asserts *what* is named on the product's clock any more
+          (`searchMs = Infinity` in each, as culprit.test.ts always did).
+    - [ ] **Not measured on a phone**: that a real Pixel's Chrome ≥ 153
+          reports the system's scale to the momentary meta the way the
+          emulation does, and that nothing flickers for it (the meta is in
+          and out before the first paint; `medium` was measured back at 16
+          px, but a paint between the two readings would be the browser's
+          own doing).
+
 - [x] **An extrude's two profiles are peers; features relate, they do not
   own** (the owner, 2026-11-09 and 2026-11-12; spec
   [`linked-profiles.md`](docs/plans/linked-profiles.md)). **Built**
@@ -2920,7 +2963,7 @@ are flagged as such.
           many are the pair's, so the fix there is the fix here; the
           spanning set (each with the first) should be measured again once
           the rows are normalised — a chain may then be as good.
-    - [ ] **Two e2e tests fail on the base branch too, on the machine this
+    - [x] **Two e2e tests fail on the base branch too, on the machine this
           was built on** (measured 2026-11-12 on a fresh clone of
           `claude/resume-tasks-o7q02e`, none of this package in it).
           *Android's font scale, measured* (android.e2e.ts) fails every
@@ -2933,7 +2976,30 @@ are flagged as such.
           cores: `.otail .tline:last-child: some ink to sample (0 pixels)`
           — the log's newest line shot before it was drawn, by the look of
           it; the other four ways (mouse, iPhone, landscape) passed every
-          run.
+          run. **↳ Closed by gate-stable (2026-11-12).** Both were what
+          they looked like, and neither was the test alone. *The font
+          scale* was the app's, in the browser only (bug 77): Chromium 153
+          reports `env(preferred-text-scale)` only to a page carrying
+          `<meta name="text-scale" content="scale">` and tells every other
+          page 1 (141 told every page; the table is in android.md). The
+          page now asks with a momentary meta and takes it out again in the
+          same task, dividing out the browser's own font size that the asked
+          reading folds in; the e2e says by version which reading the
+          browser gives. Base: 0 of 3 runs; after: the test 5 of 5 at load
+          36–52 (one run lost another test to the load, a 20 s wait). *The
+          see-through line* was the test racing the app's fade: a tail line
+          is whole for 3 s and gone at 10, and one sample is four
+          screenshots, of which one took 1.7 s and once 7.7 s under load
+          (traced), so the line was shot half-faded or gone and A and B
+          agreed everywhere — any device, not the Pixel's. The sample now
+          holds the fade off (`animation: none` for its length), polls for
+          the ground it is meant to be over instead of sleeping 250–300 ms
+          (the lid read dark at load 45 once), and says the line again if
+          it aged out of the tail mid-sample. The fade itself is as it was,
+          and its own test is untouched. Base: the see-through tests failed
+          in 2 runs of 2 at load 35–45 (4 of 5 ways each run; one of those
+          the other, older cause below). The counts after are in the
+          CHANGELOG entry.
 
 - [x] **A click on a face draws on the ground; nothing says where a click
   will land** (the owner, 2026-11-09: *"when i make a rectangular prism, i
@@ -3192,7 +3258,9 @@ are flagged as such.
           (modefeedback.e2e.ts; 2 of 8 on the base commit, 1 of 8 on this
           branch, in a probe repeating the test's tap), and overlaylock.e2e.ts's
           see-through log line fades before it is sampled (1 failure on the
-          base, 6 and 2 on this branch, the same assertion). The rest of
+          base, 6 and 2 on this branch, the same assertion; **the sample
+          holds the fade off since gate-stable, 2026-11-12** — the entry
+          under review-relations' leftovers has the measurement). The rest of
           that run's failures, each file alone three times:
           sketchmodephone and solidfilletsphone 3 of 3; sketchrelations 2 of
           3 (the third lost the taps after arming the dimension tool, the
