@@ -43,7 +43,8 @@ face lit under the cursor), `sketch-mode.md` (case 1, unchanged),
    three points on three faces; a line an end on each of two faces; a
    rectangle four corners on one face (its four `onplane`s and the tool's
    `coplanar` then agree, which the status now counts rather than blames).
-2. **Held, visibly.** A point placed on a flat face gets `onplane(p, face)`,
+2. **Held, visibly.** (The face's name is `e1:l2` since review-relations.md,
+   2026-11-12.) A point placed on a flat face gets `onplane(p, face)`,
    the face named as the dimension tool names it (`e1.lid`, `e1.m3`, …,
    `solidref.ts`) and read lazily through the feature's record, so it follows
    a depth change and a regeneration. Ordinary relation: journalled by its

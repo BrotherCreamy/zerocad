@@ -10,6 +10,113 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-12 — one relation among equals, and a wall named by its line
+
+Review items 5 and 6, built on `claude/review-relations` from
+docs/plans/review-relations.md. The register has the choices, one line each;
+this is why, and what was turned down.
+
+**What `e1.m3` meant was measured before anything was changed.** A block of
+four lines, a point held on the fourth wall by `onplane(p, "e1.m3")`, a
+fillet of the first corner: the profile became `l1, a1, l2, l3, l4`, place 3
+was `l3`, and the point went from x = 0 to y = 40. The name was read again
+at every evaluation — "lazily", which had been written up as a virtue — so
+the relation followed the *place*. A chamfer and a trim that re-finds the
+region did the same. That file is a fixture now. Part of item 6 was already
+true: two parallel walls of one extrude were `dist` of their lines, a round
+wall its circle. What held a place was everything built since on a face's
+*name*: click-on-face's `onplane` and `par`, `fdist` between two features, a
+driven `fangle`.
+
+**Why a colon.** `e1.l2` was the obvious form and it does not work: a name
+after a dot is a word the model owns — `lid`, `base`, `x`, `value` — and
+`parseAxisRef` throws on any other, by design, so that `f1.w` is a typo and
+not an entity. An entity can be called `lid` or `m3`. With a colon the two
+namespaces cannot meet, the name is still one string a relation can journal,
+and `claimName` refuses a colon as it refuses a dot. **Rejected**: the entity
+alone (`"l2"` where a face is wanted) — a line can be a wall of two features,
+and `onplane(p, "l2")` already has a meaning it refuses; an object
+`{feature, entity}` — every journal argument is a string or a number, and
+the palette, `rels()` and the hover tag print them.
+
+**Why the kernel keeps its places.** The solid kernel tags a face by feature
+and member index for one build, and the drawn faces carry that tag. Renaming
+there would have meant the worker, the naming table, the blends and the
+surfaces — and another package (linked-profiles.md) is rewriting the extrude's records.
+So the written name is the model's, the tag is the build's, and exactly two
+functions cross: `faceRef` (tag to name, where a relation is made, a face is
+picked or an old file replayed) and `faceKernelNames` (name to tags, to
+light a face or ask the kernel about it). **Rejected**: resolving the old
+form lazily forever — that is the bug; migrating old files in one pass
+before the replay — the profile a relation was made against exists only at
+its own step, which is where it is resolved now. That makes an old file
+whose walls had drifted reopen on the walls its relations were made on. I
+think that is what its author meant; it is a change of meaning all the same,
+and it is in the register to be vetoed.
+
+**`corner`, not `ang`.** The spec said the angle between two meeting walls
+should be `ang(l1, l2, θ)` of their lines "or the existing `ang` where that
+is what it already is". It is not: `ang` is the angle between the lines' own
+directions, and two sides of a profile drawn head to tail read the
+supplement — 150° on the wedge whose sharp edge is 30°, the reading #84
+chose `ang3` to avoid, and which of the two a user got would depend on which
+way round they had drawn each line. Typing `ang(…, deg(150))` would have
+kept the letter of the spec and shown the owner a wrong number on his phone.
+So a small dimension that names the two lines and reads each out of their
+corner. It also fixes what item 6 was really about: `ang3` held the corner
+*point*, and a fillet of that corner re-points the lines off it. **Rejected**:
+a flag on `ang` (geometry.ts is being rewritten by the solver package, and a
+relation whose reading depends on a fourth argument is two relations);
+`ang` of the face normals (`fangle`'s reading, the acute angle, wrong past
+90°).
+
+**How a relation among many is one relation.** The repo already had the
+mechanism: a relation function called inside another's body is absorbed into
+it (`concentric` is a `coincident`). So `par` among four is one
+`model.relation` whose body calls `parallel` three times — no row of its
+own, which is also what lets the solver package change `par`'s rows under
+it. **The spanning set was a chain first** (each with the next: the
+symmetric-looking choice) and the 3D test of three collinear lines came back
+"solved" with the first line folded to a point; as three separate relations
+the same chain is a CONFLICT. `col(a, b)` puts `b`'s ends on `a`'s line, a
+line of no length has every point on it, and in a chain only one row knows
+the first line — and one relation that alone folds a line is read as the
+user's own zero. Each member with the one listed first is the star's
+equations exactly, and solves as the star did, which is what the spec asked.
+It makes the member listed first special *to the solver*; nothing above it
+can tell, and the rows are re-formed when that member goes.
+
+**Joining, and why a replay must not.** "Adding the relation to a member of
+an existing group joins the group." I read a pair as a group of two: if only
+relations of three or more attracted joins, a relation that had shrunk to
+two would behave differently from one typed as two, and relating pair by
+pair would still build stars — the first-typed line a hub, by history. So a
+typed relation joins whatever it finds. That cannot be what a *file* does:
+an old star replayed with joining would merge on open, and — worse — a file
+saved today and holding deliberate separate pairs (a tool's, an
+operation's) would merge on its second open. So the function a module's
+entry replays is literal, the one it types is `relate`, and a joining is in
+the journal as `join`, an edit like `set`. **Rejected**: joining only into
+relations of three or more (above); a new relation name on every join
+(`deleteRelation` + a fresh `par`: the name is what a glyph, a selection and
+a later journal entry hold); migrating old stars into sets on open (the spec
+forbids it, and the names after them would all shift).
+
+**Deletion.** "Deleting cascades inward" stays true with one refinement: a
+set that still holds among two after losing a member did not need that
+member. The cascade asks (`shrinkFor`), writes a `leave` ahead of the
+deletions, and the relation keeps its name. The first design had the
+primitive `deleteEntity` do it silently; it is in the cascade and the
+journal instead, because a replay must leave the relation the same way and
+the log should say what happened to a relation that is not in the list of
+what went.
+
+**What the pictures showed.** Nothing new to count as a browser-only bug.
+The first palette picture did show three of five free lines shrunk to stubs
+by `par` — review item 1's shrink, as loud with one relation as with a
+star, because the rows are the same. The e2e holds its lines' lengths and
+says why; the solver package's fix lands under these rows.
+
 ## 2026-11-12 — the owner's answers: pull on anything, twins edit together, a fillet is one thing
 
 The owner answered the standing questions. The register has each; what is

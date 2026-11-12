@@ -33,6 +33,107 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Many at once is one relation among equals, and a wall is named by the
+  line it is swept from** (review items 5 and 6, the owner 2026-11-12: *"All
+  good."*; the principle: *"correct relationships BETWEEN entities …
+  bidirectional relationships everywhere by default"*;
+  docs/plans/review-relations.md, built). The choices made building it, one
+  line each with its reason. Each vetoable:
+  - **A wall is written `e1:l2`** — feature, colon, the entity it is swept
+    from; caps stay `e1.lid`, `e1.base`. A colon and not a second dot,
+    because what follows a dot is a word the model owns (`lid`, `x`,
+    `value`) and what follows the colon is a name the user owns: an entity
+    called `m3` or `lid` must not collide. **The decision to look at first.**
+  - **A name may not contain a colon**, as it may not contain a dot: so no
+    entity can be mistaken for a wall. No file or test in the repository
+    used one.
+  - **`e1.m3` still reads, as the wall in place 3 *when the relation is
+    made***, and is journalled by its line from then on — typed, picked, or
+    in a file from before format 20, where it is resolved at the relation's
+    own step. So an old file in which a fillet had renumbered the walls
+    reopens holding the wall each relation was *made* on, not the one the
+    old build had drifted it to: a deliberate change of what such a file
+    means, to what its author meant.
+  - **The solid kernel's own names are untouched** — a drawn face's tag
+    (`e1.m3`), an edge (`e1.lid|e1.m0`), a blend's edges, a surface taken
+    from a face. They are one build's names; the written name is mapped to
+    and from them in `solidref.ts` and nowhere else. Feature records were
+    not restructured (linked-profiles.md is rewriting them).
+  - **A wall's relation goes with its line or its feature**, whichever is
+    deleted, and the log names the wall it went with.
+  - **A relation whose line a trim took out of the profile stays**, holding
+    the plane that line would sweep, rather than throwing inside a solve or
+    being deleted by the trim: the line and the feature are both still
+    there, and undo of the trim finds it as it was. It can only be *made* on
+    a face the solid has. Filed below as what should say so in the palette.
+  - **Two meeting walls are `corner(l1, l2, θ)`, a new dimension**, not the
+    `ang(l1, l2, θ)` the spec named: `ang` reads the angle between the lines'
+    own directions, which for two sides of a profile drawn head to tail is
+    the supplement (150° on a 30° wedge), and which of the two a user saw
+    would depend on which way round each line was drawn. `corner` takes each
+    line out of the corner (their shared point, else their nearest ends,
+    found each time it is read), so it reads the solid's angle and outlives
+    a fillet of that corner. `ang3` stays, for three points a user picks.
+  - **The constrain tool still names a flat face it picks by three of its
+    points** (`"p1.p2.p3"`, #82): that names entities already and no place
+    ever renumbered it. `constraintsFor` now also reads a face by its own
+    name, so the dimension tool's and click-on-face's names are offered
+    On face and Normal to face. Switching the constrain tool's pick to the
+    face's name is one function (`solidRefAt`); filed.
+  - **Which relations hold among many**: `par`, `eq` (lines, or circles and
+    arcs — never a mix, since `eq` of a line and an arc is length and of two
+    arcs radius), `col`, `coin`, `conc`, `corad`, `eqrad`, and points level
+    or upright with each other. Not `tan` (a chain says a different thing of
+    each neighbouring pair), `perp`, `sym`, `mid`. Not a relation to a datum
+    (a frame's axis, a face): each line is level on its own account.
+  - **Points Horizontal or Vertical (all n) became one relation too** —
+    `horizontal("p1", "p2", "p3")`, journalled `par("p1", "p2", "p3",
+    "origin.x")` — because it was a star on the first point like the rest;
+    the spec's list did not name it. **Lines** Horizontal (all n) stays one
+    `par` to the axis a line, as the spec says.
+  - **Collinear (all n)** is a new row of the constrain list, after
+    Parallel (and Symmetric, for three): the spec listed it and the list had
+    no many-at-once Collinear.
+  - **The rows are each member with the one listed first** — the star's own
+    equations — not each with the next: measured, three lines collinear in
+    3D fold the first to a point by a chain and solve by this. Not
+    observable above the solver: no name, mark, or journal entry says which
+    pairs, and the rows are re-formed when the one listed first goes.
+  - **A typed relation joins — pairs included.** `par("l2", "l9")` where `l2`
+    is in any `par` among entities adds `l9` to it (the oldest, when the
+    names are in several, and the rest merge in), so relating pair by pair
+    builds the same one relation as picking all at once and nobody becomes a
+    hub by being typed first. The command line, the palette and the
+    constrain list do this; a relation function called directly (a tool's or
+    an operation's own) and a replay do not.
+  - **A replay never joins**: a file's pair is that pair. So an old star
+    reopens as the separate relations it was and re-saves the same, and is
+    gathered into one relation only when one of its members is related
+    again. Nothing is migrated.
+  - **Already related is no error**: `par("l1", "l3")` with both in one
+    relation returns its name and journals nothing.
+  - **`join("r3", …)` and `leave("r3", …)`** are the edits, typed and
+    journalled as themselves; leaving a pair deletes it. A line's menu offers
+    *Leave r3 (// with …)* for a relation among three or more, not for a
+    pair (whose own menu says Delete).
+  - **A member deleted leaves the relation over the rest** — journalled as a
+    `leave` ahead of the `deleteEntity` — and the log says so, since the
+    relation is not among the names removed. What the members are relative
+    to (the frame of `origin.x`) going takes the relation whole.
+  - **A feature's own relations are neither joined nor left**: one a record
+    names is part of what that feature is.
+  - **One mark where the members share a place**: `coin`, `conc` and `corad`
+    among many wear one mark at the shared point, as a pair does, rather
+    than n marks stacked on one spot; `par`, `eq`, `col` and `eqrad` wear one
+    on each member.
+  - **The arguments keep the order they were picked or joined in**; nothing
+    reads it but `rels()` and the palette's line.
+  - **Format 20**: the seven ops may carry more than two members, `join` and
+    `leave` are new, and a wall is written by its line.
+  - **No bug was found only in the browser**: the count stays seventy-three.
+    The one thing the pictures showed that the tests had not — free lines
+    made parallel shrink to stubs — is review item 1, already in the
+    register, and the e2e holds its lines' lengths and says why.
 - **A click on a face lands on that face, is held there, and says so before
   the click** (the owner, 2026-11-09: *"if i am hovering over a face without
   an active on-plane constraint, it should constrain to the plane i am
@@ -48,7 +149,8 @@ otherwise.
     the face its first press landed on, the rest of the gesture read back
     onto it; a drag that runs off the face's edge stays on the face.
   - **The face is held by the existing `onplane`**, naming the face as the
-    kernel names it — `onplane("p9", "e1.m3")` — read off the feature's
+    kernel named it — `onplane("p9", "e1.m3")`; **superseded 2026-11-12**: the
+    wall is written by its line, `e1:l2`, the entry above — read off the feature's
     record as `fdist` reads it (relations/solidref.ts): a cap by its first
     point and the sketch plane's normal, a wall by its line's two ends as
     variables. No second relation op, so the palette, the ▱ glyph, `del`
@@ -215,9 +317,17 @@ otherwise.
   4. [ ] features relate, they do not own: `deleteFeature`'s cascade, the
          undeletable feature-held relations, `edgeExtrude` owning entities
          (linked-profiles.md starts this for the extrude);
-  5. [ ] many-at-once as one n-ary relation, not a star on the first pick;
-  6. [ ] `fdist` and `ang3` name entities, lazily, not wall indices or
-         points;
+  5. [x] many-at-once as one n-ary relation, not a star on the first pick —
+         built (2026-11-12, docs/plans/review-relations.md): `par("l1",
+         "l2", "l3", "l4")` is one relation whose rows are the pair's own;
+         a member deleted leaves it over the rest; a typed relation naming a
+         member joins it. The choices are the register entry below;
+  6. [x] `fdist` and `ang3` name entities, lazily, not wall indices or
+         points — built with 5: a wall is `e1:l2`, resolved when read, in
+         every relation that takes a face; two meeting walls are
+         `corner(l1, l2, θ)` of their lines; `e1.m3` still reads and is
+         re-journalled by its line. The choices are the register entry
+         below;
   7. [ ] a chamfer face's sketch plane follows the solid or is refused;
   8. [ ] Through all as a relation to the far face's geometry, not a hook.
 
@@ -421,7 +531,8 @@ otherwise.
     the one before. Measured with the conflict search on eight lines: a star
     names at most four relations in a conflict wherever it is, a chain up to
     nine; a chain wins only for two neighbours (3 against 4). The price is
-    the first pick wearing n − 1 marks (picture 341). Typed as one line so it
+    the first pick wearing n − 1 marks (picture 341). **Superseded 2026-11-12**:
+    one relation among them all, the entry at the top. Typed as one line so it
     is one undo step.
   - **Fix's glyph is a drawn padlock** (there was no lock glyph; `#` had
     stood in for an anchor that mushed at 12 px), measured readable at 1×
@@ -2321,6 +2432,78 @@ are flagged as such.
          **Built** (2026-10-22) — see Done.
 
 ## Next up
+
+- [x] **Many at once is a star on the first pick; a face is named by its
+  place in the profile** (review items 5 and 6; the owner, 2026-11-12: *"All
+  good."*). Spec: [`review-relations.md`](docs/plans/review-relations.md).
+  **Built** (2026-11-12, branch `claude/review-relations`): one relation
+  among many whose rows are the pair's own (relations/among.ts), `join`,
+  `leave` and a deletion that shrinks rather than deletes (among.ts), a
+  typed relation joining; a wall written `e1:l2` and resolved when read
+  (relations/solidref.ts), `corner` for two meeting walls, format 20 with
+  three fixtures the format-19 build saved. Decisions in the register above.
+  Left:
+    - [ ] **The solid kernel's own names still hold a place**: an edge
+          (`e1.lid|e1.m0`) in a solid fillet's or chamfer's list of edges,
+          in `extend`'s boundary edge and in a driven `length`; a surface
+          taken from a face (`face("e1.m2")`); a blend's own faces
+          (`e3.f0`). A fillet of the profile renumbers them exactly as it
+          renumbered a relation's wall. They are operations' arguments and
+          a build's names, not relations', and the fix is the same shape —
+          an edge as the two things its faces are swept from — but it meets
+          the blend and surface records, which this package was told to
+          leave alone.
+    - [ ] **A relation on a wall whose line a trim took out of the profile
+          is not said to be off the solid.** It holds the plane the line
+          would sweep (deliberate: no throw in a solve, and undo of the trim
+          finds it whole), but the palette lists it like any other.
+          `faceSource` is null for it, which is the test to mark it by.
+    - [ ] **The constrain tool names a flat face by three of its points**
+          (`solidRefAt`, #82), the dimension tool and a click on a face by
+          `e1:l2`. Both are entities; the triple goes when one of its three
+          corner points does (a fillet of that corner), the name only when
+          the line does. One function to change, and
+          `relationscomplete`'s tests of the picked name.
+    - [ ] **Two lines of a sketch picked with the dimension tool still get
+          `ang`**, which reads 150° or 30° at the same corner depending on
+          which way round the lines were drawn. `corner` is the reading a
+          hand expects wherever two lines share an end; offered only for a
+          solid's walls so far, because changing the sketch's two-line
+          angle is a change to what #84's table types.
+    - [ ] **`_` may only stand among a relation's first slots**: `par(_,
+          "l1", "l2", "l3")` is refused past the third argument (clauses.ts
+          counts slots). A relation among many wants a rest slot.
+    - [ ] **A joining is not said in the log** beyond the name returned:
+          `par("l2", "l9")` answers `r3`, and the palette shows r3 with one
+          more member. A deletion's shrink and a wall's going are said.
+    - [ ] **Selecting a relation on a phone does not light what it holds**:
+          a tap on a wall dimension's label selects it (violet) and the two
+          lines its walls are swept from stay quiet, where a mouse's hover
+          lights them (docs/images/473 against 477).
+    - [ ] **The hover tag and the palette say `faceDistance`, `cornerAngle`,
+          `angle3`**, the journal ops, for the dimensions module's
+          relations: picking.ts's short-name table is core's and sketch's.
+          The names typed are `fdist`, `corner`, `ang3`.
+    - [ ] **Free lines made parallel shrink** (review item 1, with
+          `review-solver.md`): seen again in this package's first palette
+          picture, three of five lines stubs. The rows of a relation among
+          many are the pair's, so the fix there is the fix here; the
+          spanning set (each with the first) should be measured again once
+          the rows are normalised — a chain may then be as good.
+    - [ ] **Two e2e tests fail on the base branch too, on the machine this
+          was built on** (measured 2026-11-12 on a fresh clone of
+          `claude/resume-tasks-o7q02e`, none of this package in it).
+          *Android's font scale, measured* (android.e2e.ts) fails every
+          time: Chromium 153, launched with
+          `--blink-settings=accessibilityFontScaleFactor=1.3`, reads
+          `env(preferred-text-scale)` as 1 on an empty page. The baseline
+          this package was given says it passed, so something under the
+          suite moved. *Pixel 7 portrait: see-through from the menu*
+          (overlaylock.e2e.ts) fails 2 runs of 4 with four suites on four
+          cores: `.otail .tline:last-child: some ink to sample (0 pixels)`
+          — the log's newest line shot before it was drawn, by the look of
+          it; the other four ways (mouse, iPhone, landscape) passed every
+          run.
 
 - [x] **A click on a face draws on the ground; nothing says where a click
   will land** (the owner, 2026-11-09: *"when i make a rectangular prism, i

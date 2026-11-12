@@ -118,7 +118,7 @@ test("desktop: two faces of a stepped block, then a double-click on the label an
   await shot(desk, "1-face-under-the-hand");
   await click(desk, [40, 7, 10]);
   await click(desk, [20, 26, 14]);
-  assert.deepEqual(await picks(desk), ["e1.m1", "e1.m3"], "the step's two +x walls, by the kernel's names");
+  assert.deepEqual(await picks(desk), ["e1:l2", "e1:l4"], "the step's two +x walls, each by the line it is swept from");
   await hover(desk, [55, 30, 10]);
   await shot(desk, "2-two-faces-picked");
   await click(desk, [55, 30, 10]);
@@ -153,12 +153,13 @@ test("desktop: the angle between two faces of a wedge is the wedge's", async () 
   await type(desk, `${CORNER}; zoom(4); pan(-80, 90); arm("dimension")`);
   await click(desk, [20, 0, 5]);
   await click(desk, [20, WEDGE[2][1] / 2, 5]);
-  assert.deepEqual(await picks(desk), ["e1.m0", "e1.m1"], "the front and the slope");
+  assert.deepEqual(await picks(desk), ["e1:l1", "e1:l2"], "the front and the slope");
   await click(desk, [55, 10, 5]);
   await desk.page.waitForTimeout(400);
-  const a = (await relations(desk)).find((r) => r.op === "angle3")!;
-  assert.ok(a, "the angle at their shared corner");
-  assert.ok(Math.abs((a.args[3] as number) - Math.PI / 6) < 1e-9, `30°: ${a.args[3]}`);
+  const a = (await relations(desk)).find((r) => r.op === "cornerAngle")!;
+  assert.ok(a, "the corner their two lines make");
+  assert.deepEqual(a.args.slice(0, 2), ["l1", "l2"], "naming the lines the walls are swept from, not three points");
+  assert.ok(Math.abs((a.args[2] as number) - Math.PI / 6) < 1e-9, `30°: ${a.args[2]}`);
   assert.ok((await glyphs(desk)).some((g) => g.symbol === "30°"), "drawn as 30°");
   await desk.page.mouse.move(700, 560);
   await shot(desk, "4-the-wedge-is-30");
@@ -244,7 +245,7 @@ test("iPhone 13: two faces tapped, a tap to place, a double-tap on the label —
   await type(phone, `${CORNER}; zoom(2.1); pan(-30, 90); arm("dimension")`);
   await tap([40, 7, 10]);
   await tap([20, 26, 14]);
-  assert.deepEqual(await picks(phone), ["e1.m1", "e1.m3"]);
+  assert.deepEqual(await picks(phone), ["e1:l2", "e1:l4"]);
   await shot(phone, "8-iphone-two-faces-tapped");
   // Empty canvas above the block, clear of the panes: where the label goes.
   await phone.at(110, 262);
@@ -272,11 +273,11 @@ test("iPhone 13: the wedge's angle, by finger", async () => {
   await type(phone, `${CORNER}; zoom(1.6); arm("dimension")`);
   await tap([20, 0, 5]);
   await tap([20, WEDGE[2][1] / 2, 5]);
-  assert.deepEqual(await picks(phone), ["e1.m0", "e1.m1"]);
+  assert.deepEqual(await picks(phone), ["e1:l1", "e1:l2"]);
   await tap([50, 10, 5]);
   await phone.page.waitForTimeout(400);
-  const a = (await relations(phone)).find((r) => r.op === "angle3")!;
-  assert.ok(a && Math.abs((a.args[3] as number) - Math.PI / 6) < 1e-9);
+  const a = (await relations(phone)).find((r) => r.op === "cornerAngle")!;
+  assert.ok(a && Math.abs((a.args[2] as number) - Math.PI / 6) < 1e-9);
   await shot(phone, "10-iphone-the-wedge-is-30");
 });
 

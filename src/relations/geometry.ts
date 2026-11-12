@@ -23,7 +23,7 @@ import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameB
 import { coincident, onPlane } from "./basic.ts";
 import { angleToProfile, leanOffNormal, profileMembers, squareToProfile } from "./profilesquare.ts";
 import { isPathCurve, onSpline, tangentSpline } from "./spline.ts";
-import { faceDirection } from "./solidref.ts";
+import { faceDirection, faceRef } from "./solidref.ts";
 
 // --- the direction relations -----------------------------------------------
 //
@@ -63,8 +63,12 @@ import { faceDirection } from "./solidref.ts";
 function directionSides(model: Model, op: string, a: string, b: string, c?: string | null):
   { u: DirectionRef; v: DirectionRef; args: string[] } {
   // A solid's flat face, by name, is a direction too — its normal, read off
-  // the feature's record (solidref.ts): `par("c1", "e1.m3")` holds a circle
-  // drawn on a wall in the wall (docs/plans/click-on-face.md).
+  // the feature's record (solidref.ts): `par("c1", "e1:l2")` holds a circle
+  // drawn on a wall in the wall (docs/plans/click-on-face.md). A wall given by
+  // its place (`"e1.m3"`) is journalled, and read from here on, as the wall
+  // of the entity now in that place (`faceRef`, docs/plans/review-relations.md).
+  [a, b] = [faceRef(model, a), faceRef(model, b)];
+  if (c != null) c = faceRef(model, c);
   const dir = (ref: string) => faceDirection(model, ref) ?? directionOf(model, ref);
   const sides = (): { u: DirectionRef; v: DirectionRef; args: string[] } => {
     if (model.entities.get(a)?.kind === "point") {

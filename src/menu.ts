@@ -31,6 +31,8 @@ import { findLoops, type Loop } from "./loops.ts";
 import { featureRegion, holeIndex, holeLoop, type FeatureRegion } from "./operations.ts";
 import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
 import { constraintsFor, frameCoords, roundValue } from "./dimensioning.ts";
+import { membersOf } from "./relations/among.ts";
+import { glyphSymbol } from "./glyphs.ts";
 import { activeWorkbench, menuToolItems, onWorkbench } from "./modules.ts";
 import "./modules/builtin.ts";
 
@@ -548,9 +550,32 @@ function entityMenu(model: Model, pick: Pick): Menu {
   if (model.dim === 3 && ["line", "arc", "circle", "spline"].includes(pick.kind) && !model.isConstruction(pick.name)) {
     items.push({ label: "Extrude edge…", action: { do: "type", text: `edgeExtrude(${quoted(pick.name)}, ` } });
   }
+  items.push(...leaveItems(model, pick.name));
   items.push(...constructionItems(model, [pick.name]));
   items.push(...holeItems(model, pick.name), ...editItems(model, [pick.name]));
   return { header: describePick(model, pick), items };
+}
+
+/**
+ * **Leave r3** on a member of a relation among three or more
+ * (docs/plans/review-relations.md): the one thing a relation among many needs
+ * that a pair did not — taking one line out of `par("l1", "l2", "l3", "l4")`
+ * without deleting the line or the relation. Types `leave("r3", "l2")`; the
+ * relation stays over the rest. Not offered on a pair, where leaving is
+ * deleting the relation and its own menu says Delete.
+ */
+function leaveItems(model: Model, name: string): MenuItem[] {
+  const out: MenuItem[] = [];
+  for (const r of model.relations.values()) {
+    const set = membersOf(model, r);
+    if (!set || set.members.length < 3 || !set.members.includes(name)) continue;
+    const others = set.members.filter((m) => m !== name);
+    out.push({
+      label: `Leave ${r.name} (${glyphSymbol(r)} with ${others.join(", ")})`,
+      action: { do: "run", command: `leave(${quoted(r.name)}, ${quoted(name)})` },
+    });
+  }
+  return out;
 }
 
 /**

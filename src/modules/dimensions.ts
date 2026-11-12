@@ -7,12 +7,15 @@
 // Its relations are dimensions (`d`-named, `set` re-runs them): `fdist`, a
 // distance square to a solid's flat face; `along`, a distance along one
 // direction (SolidWorks' horizontal and vertical); `ang3`, the angle at a
-// vertex; `arclen`, an arc's length. Its glyphs are placed and labelled here,
-// beside them, through glyphs.ts's two registries — and so are the driven
-// readings of the kinds it brought (`measure("fdist", …)` and the rest). One
-// command, `measureOf`, answers what the tool would dimension without making
-// anything. In every workbench: a sketch has `along`, `ang3` and `arclen`, and
-// `fdist` refuses in 2D with its reason.
+// vertex; `corner`, the angle in the corner two lines make — what two meeting
+// walls of a solid are dimensioned by, the lines they are swept from
+// (docs/plans/review-relations.md); `arclen`, an arc's length. Its glyphs are
+// placed and labelled here, beside them, through glyphs.ts's two registries —
+// and so are the driven readings of the kinds it brought (`measure("fdist",
+// …)` and the rest). One command, `measureOf`, answers what the tool would
+// dimension without making anything. In every workbench: a sketch has
+// `along`, `ang3`, `corner` and `arclen`, and `fdist` refuses in 2D with its
+// reason.
 
 import { defineModule } from "../modules.ts";
 import { slots } from "../clauses.ts";
@@ -20,7 +23,7 @@ import type { Model, RelationEntry } from "../model.ts";
 import { defineGlyphAnchor, defineGlyphLabel, formatValue, type GlyphAnchor } from "../glyphs.ts";
 import { worldToScreen, type View } from "../view.ts";
 import { frameBasis } from "../relations/refs.ts";
-import { angle3, arcLength, distAlong } from "../relations/smartdim.ts";
+import { angle3, arcLength, cornerAngle, cornerNow, distAlong } from "../relations/smartdim.ts";
 import { faceDistance, isPlanarFace, planeNow } from "../relations/solidref.ts";
 import { directionNow, measured, placeOf, solidGeometry } from "../relations/measure.ts";
 import { dimensionFor } from "../dimensioning.ts";
@@ -93,6 +96,22 @@ function angle3Anchor(model: Model, view: View, v: string, a: string, b: string)
   return [{ world: V, dir, about: [v] }];
 }
 
+/** In the corner two lines make, stepped along its bisector — where a draughtsman writes the angle between them. */
+function cornerAnchor(model: Model, view: View, l1: string, l2: string): GlyphAnchor[] {
+  if (model.entities.get(l1)?.kind !== "line" || model.entities.get(l2)?.kind !== "line") return [];
+  const c = cornerNow(model, l1, l2);
+  const [px, py] = worldToScreen(view, c.at);
+  const toward = (ray: number[]) => {
+    const [qx, qy] = worldToScreen(view, c.at.map((x, i) => x + ray[i]));
+    const l = Math.hypot(qx - px, qy - py);
+    return l > 1e-9 ? [(qx - px) / l, (qy - py) / l] : [0, 0];
+  };
+  const [ua, ub] = [toward(c.rays[0]), toward(c.rays[1])];
+  const bis = Math.hypot(ua[0] + ub[0], ua[1] + ub[1]);
+  const dir: [number, number] = bis > 1e-9 ? [(ua[0] + ub[0]) / bis, (ua[1] + ub[1]) / bis] : [Math.SQRT1_2, Math.SQRT1_2];
+  return [{ world: c.at, dir, about: [l1, l2] }];
+}
+
 /** Half-way round an arc, stepped outward. */
 function arcAnchor(model: Model, view: View, name: string): GlyphAnchor[] {
   const a = model.arc(name);
@@ -123,6 +142,8 @@ function solidAnchor(model: Model, view: View, r: RelationEntry): GlyphAnchor[] 
 defineGlyphLabel("faceDistance", (_m, r) => (typeof r.args[2] === "number" ? formatValue(r.args[2]) : null));
 defineGlyphLabel("distAlong", (_m, r) => (typeof r.args[3] === "number" ? formatValue(r.args[3]) : null));
 defineGlyphLabel("angle3", (_m, r) => (typeof r.args[3] === "number" ? deg(r.args[3]) : null));
+defineGlyphLabel("cornerAngle", (_m, r) => (typeof r.args[2] === "number" ? deg(r.args[2]) : null));
+defineGlyphAnchor("cornerAngle", (m, v, r) => cornerAnchor(m, v, str(r.args[0]), str(r.args[1])));
 // An arc's length, as a draughtsman marks one: the arc over the number.
 defineGlyphLabel("arcLength", (_m, r) => (typeof r.args[1] === "number" ? `⌒${formatValue(r.args[1])}` : null));
 defineGlyphAnchor("faceDistance", (m, v, r) => fdistAnchor(m, v, str(r.args[0]), str(r.args[1])));
@@ -140,6 +161,8 @@ reading("along", formatValue);
 reading("fdist", formatValue);
 reading("length", formatValue);
 reading("angle3", deg);
+reading("corner", deg);
+defineGlyphAnchor("measure:corner", (m, v, r) => cornerAnchor(m, v, str(r.args[1]), str(r.args[2])));
 reading("fangle", deg);
 reading("arclen", (v) => `⌒${formatValue(v)}`);
 reading("major", (v) => `a${formatValue(v)}`);
@@ -168,6 +191,9 @@ defineModule("dimensions", {
     faceDistance: { names: ["fdist", "faceDistance"], slots: slots("face", "b", "#distance"), fn: faceDistance, dimension: 2 },
     distAlong: { names: ["along", "distAlong"], slots: slots("a", "b", "direction", "#distance"), fn: distAlong, dimension: 3 },
     angle3: { names: ["ang3", "angle3"], slots: slots("vertex", "a", "b", "#angle"), fn: angle3, dimension: 3 },
+    // The angle in the corner two lines make, each taken out of the corner —
+    // what two meeting walls are dimensioned by (docs/plans/review-relations.md).
+    cornerAngle: { names: ["corner", "cornerAngle"], slots: slots("line", "line", "#angle"), fn: cornerAngle, dimension: 2 },
     arcLength: { names: ["arclen", "arcLength"], slots: slots("arc", "#length"), fn: arcLength, dimension: 1 },
   },
   commands: (kit) => ({
@@ -195,12 +221,19 @@ defineModule("dimensions", {
     "           its two ends: its length (arclen). A solid's vertex, edge or face",
     "           (vertex before edge before face under the hand): two faces, a",
     "           face and a point or edge — square to the face (fdist), or the",
-    "           angle; two walls of one extrude are their lines; a lid and its",
-    "           own base is the depth, opened to set. A dimension that would",
-    "           repeat or contradict what is held is made driven, and said.",
+    "           angle; two walls of one extrude are their lines — dist between",
+    "           parallel walls, corner(l1, l2, θ) between two that meet: the",
+    "           angle in the corner the two lines make, each read out of it, so",
+    "           a wedge's sharp edge reads 30° however its lines were drawn,",
+    "           and a fillet of that corner leaves the dimension on its walls;",
+    "           a lid and its own base is the depth, opened to set. A wall is",
+    "           written by the line it is swept from (e1:l2), a cap e1.lid or",
+    "           e1.base. A dimension that would repeat or contradict what is",
+    "           held is made driven, and said.",
     "           Double-click (double-tap) a dimension to set its value.",
-    '           fdist("e1.lid", "e2.lid", 15)  along("p1", "p2", "origin.x", 30)',
-    '           ang3("p1", "p2", "p3", deg(40))  arclen("a1", 25)',
+    '           fdist("e1:l2", "e2:l8", 40)  along("p1", "p2", "origin.x", 30)',
+    '           ang3("p1", "p2", "p3", deg(40))  corner("l1", "l2", deg(30))',
+    '           arclen("a1", 25)',
     '           measureOf("e1.lid", "e1.base") — the reading, nothing made.',
   ],
 });
