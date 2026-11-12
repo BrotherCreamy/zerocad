@@ -159,7 +159,7 @@ export function onPlane(model: Model, pointName: string, planeName?: string | nu
     throw new Error("onPlane needs a 3D model — in 2D every point already lies in every frame's plane");
   }
   const p = model.point(pointName);
-  // **A solid's face by name** — `onplane(p, "e1.m3")`, the face a click
+  // **A solid's face by name** — `onplane(p, "e1:l2")`, the face a click
   // landed on (docs/plans/click-on-face.md) — is the same relation, read off
   // the feature's record rather than a plane reference (solidref.ts's
   // `onFace`). Here, not in `planeKind`: a face is a feature's, and the model

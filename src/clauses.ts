@@ -20,7 +20,7 @@
 // `repl.ts`'s concerns: the evaluator only needs to know how to *show* a
 // clause, which it learns through the display hook below, not by importing it.
 
-import { parseAxisRef, type Model } from "./model.ts";
+import { parseAxisRef, parseFaceName, type Model } from "./model.ts";
 
 /**
  * The display hook Node's REPL and `util.inspect` already honour, and the one
@@ -188,6 +188,9 @@ export function checkClauses(model: Model, who: string, clauses: unknown[]): voi
     }
     for (const a of c.args) {
       if (typeof a !== "string") continue;
+      // A solid's face by name (`"e1.lid"`, `"e1:l2"`) is a feature's, not an
+      // entity: whether there is such a face is the relation's own refusal.
+      if (parseFaceName(a)) continue;
       const axis = parseAxisRef(a);
       const name = axis ? axis.frame : a;
       if (model.entities.has(name)) continue;

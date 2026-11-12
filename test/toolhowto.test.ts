@@ -82,12 +82,14 @@ test("every registered tool says how it is used — Select, the Hand and the edi
 test("the constrain tool's how: what to tap, then where the relation is chosen — the owner's case", async () => {
   await builtIns();
   assert.deepEqual(toolHow("constrain", "finger"), [
-    "Tap the things to relate: two lines, a line and a circle…",
-    "Then choose from the list: Parallel, Tangent, Equal…",
+    "Tap the things to relate.",
+    "Then choose: Parallel, Tangent…",
+    "Pick several for one relation; hold a line for Leave.",
   ]);
   assert.deepEqual(toolHow("constrain", "mouse"), [
     "Click the things to relate: two lines, a line and a circle…",
-    "Then choose from the list: Parallel, Tangent, Equal…",
+    "Then choose: Parallel, Tangent…",
+    "Pick several for one relation; right-click a line for Leave.",
   ]);
   // And each relation it promises is one the list gives for the things it names.
   const m = new Model(2);
@@ -98,7 +100,7 @@ test("the constrain tool's how: what to tap, then where the relation is chosen �
   m.addPoint([70, 70], "o2");
   m.addCircle("o2", 8, null, "c2");
   const labels = (names: string[]) => constraintsFor(m, names).filter((r) => !r.off).map((r) => r.label);
-  assert.ok(labels(["l1", "l2"]).includes("Parallel") && labels(["l1", "l2"]).includes("Equal"), labels(["l1", "l2"]).join());
+  assert.ok(labels(["l1", "l2"]).includes("Parallel"), labels(["l1", "l2"]).join());
   assert.ok(labels(["l1", "c1"]).includes("Tangent"), labels(["l1", "c1"]).join());
 });
 
@@ -177,7 +179,7 @@ test("a tool's tip carries its steps under what it does; a tool with none has th
   assert.deepEqual(t.how, how);
   assert.equal(tipText(t),
     "Constrain — Relates what you pick: choose from the relations that apply — Click the things to relate: two lines, a line and a circle… — " +
-    'Then choose from the list: Parallel, Tangent, Equal… — arm("constrain")');
+    'Then choose: Parallel, Tangent… — Pick several for one relation; right-click a line for Leave. — arm("constrain")');
   assert.deepEqual(toolTip("h_bare", null, null, null), { name: "H_bare", summary: null, command: 'arm("h_bare")', key: null }, "no how key at all");
 });
 

@@ -887,7 +887,7 @@ async function main() {
       chipGuide = null;
     }
     // With no plane chosen, where the next click lands — the solid's face
-    // under the hand, `on e1.m3` — takes the first part, said and not offered
+    // under the hand, `on e1:l2` — takes the first part, said and not offered
     // (docs/plans/click-on-face.md).
     const land = named ? null : landingLabel(engine.landing);
     if (chip.show(chipParts(named?.label ?? land, what, next, chipGuide?.text ?? null, land !== null), optionsPanel.size() !== null)) fitChip();

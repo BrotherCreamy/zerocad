@@ -170,8 +170,9 @@ test("iPhone 13, the owner's case: Constrain from behind Dimension, its tip up; 
   assert.equal((await phone.model()).activeTool, "constrain");
   assert.equal(t.summary, "Relates what you pick: choose from the relations that apply");
   assert.deepEqual(t.how, [
-    "Tap the things to relate: two lines, a line and a circle…",
-    "Then choose from the list: Parallel, Tangent, Equal…",
+    "Tap the things to relate.",
+    "Then choose: Parallel, Tangent…",
+    "Pick several for one relation; hold a line for Leave.",
   ]);
   assert.equal(t.also, "Hold this button for Dimension.");
   await keepsClear(phone, t, "Constrain's tip");
@@ -428,7 +429,8 @@ test("desktop: a hover's tooltip has the steps, in a mouse's words, between what
     "tname: Constrain",
     "tsum: Relates what you pick: choose from the relations that apply",
     "thow: Click the things to relate: two lines, a line and a circle…",
-    "thow: Then choose from the list: Parallel, Tangent, Equal…",
+    "thow: Then choose: Parallel, Tangent…",
+    "thow: Pick several for one relation; right-click a line for Leave.",
     'tcmd: arm("constrain")',
   ]);
   const tip = await box(desk, "#tooltip");
@@ -450,8 +452,40 @@ test("desktop: a hover's tooltip has the steps, in a mouse's words, between what
   await desk.page.click('#constraints .ocmd[data-command=\'par("l1", "l2")\']');
   await desk.page.waitForTimeout(300);
   assert.deepEqual((await relations(desk)).map((r) => r.op), ["parallel"]);
-  // On a desktop everything fits: the whole list, and the section that says there is nothing yet stayed.
   await desk.type("cancel()");
+  assert.deepEqual(desk.pageErrors, []);
+});
+
+test("desktop: the constrain tool's third step is true — three lines picked and one press make one relation; a right-click on a line offers Leave, and it leaves", async () => {
+  await fresh(desk);
+  await desk.type("ln(pt(-30, 30), pt(-5, 32)); ln(pt(-30, 18), pt(-8, 21)); ln(pt(-30, 6), pt(-2, 3))");
+  await desk.type("constrain");
+  await desk.page.mouse.move(700, 500);
+  const mid = async (l: string) => {
+    const [a, b] = await desk.page.evaluate((n) => {
+      const m = (window as never as { __neocad: { model: { line(n: string): { refs: [string, string] }; coords(n: string): number[] } } }).__neocad.model;
+      return m.line(n).refs.map((p) => m.coords(p));
+    }, l);
+    return desk.at(...await desk.screenOf(a.map((v, i) => (v + b[i]) / 2)));
+  };
+  for (const l of ["l1", "l2", "l3"]) {
+    const p = await mid(l);
+    await desk.page.mouse.click(p.x, p.y);
+    await desk.page.waitForTimeout(150);
+  }
+  await desk.page.click('#constraints .ocmd[data-command=\'par("l1", "l2", "l3")\']');
+  await desk.page.waitForTimeout(300);
+  assert.deepEqual(await relations(desk), [{ op: "parallel", args: ["l1", "l2", "l3"] }], "pick several for one relation");
+  await desk.page.keyboard.press("Escape");
+  await desk.page.waitForTimeout(200);
+  const p = await mid("l2");
+  await desk.page.mouse.click(p.x, p.y, { button: "right" });
+  await desk.page.waitForSelector("#ctxmenu:not([hidden])");
+  const leave = desk.page.locator("#ctxmenu .item", { hasText: /^Leave / });
+  assert.match(await leave.first().textContent() ?? "", /^Leave r1 .*leave\("r1", "l2"\)$/, "right-click a line for Leave");
+  await leave.first().click();
+  await desk.page.waitForTimeout(300);
+  assert.deepEqual(await relations(desk), [{ op: "parallel", args: ["l1", "l3"] }], "and it has left");
   assert.deepEqual(desk.pageErrors, []);
 });
 

@@ -167,7 +167,9 @@ Every new relation is dimension-generic where it can be (`along`, `ang3`,
 
 ### How a face is held
 
-- **Named as the kernel names it** (`e1.base`, `e1.lid`, `e1.m3`), for a body
+- **Named as the kernel names it** (`e1.base`, `e1.lid`, `e1.m3`; superseded
+  2026-11-12 by review-relations.md: a wall is written `e1:l2`, by the line it
+  is swept from, and two meeting walls are `corner` of their lines), for a body
   faces.ts draws as for one the kernel builds; faces.ts's `Face.name` and the
   kernel's face record carry the same name, so a face picked is the face
   journalled.

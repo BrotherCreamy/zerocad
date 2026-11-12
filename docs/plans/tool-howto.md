@@ -80,7 +80,7 @@ host's `how` and `chosen`, the ✓'s sentence); `src/main.ts` (`tipHand`,
 `howOptions`, `showChosenTip`, `ui({ tips })`); `src/appmenu.ts` (the View
 row); `src/constraints.ts` (`PICKING`, the fit); `index.html` (`#chosentip`,
 `.thow`, `.talso`); `src/modules/interface.ts` (`help()`). Tests:
-`test/toolhowto.test.ts` (15), `test/e2e/toolhowto.e2e.ts` (12). Pictures:
+`test/toolhowto.test.ts` (15), `test/e2e/toolhowto.e2e.ts` (13). Pictures:
 docs/images/480–487.
 
 ### Every tool's how
@@ -121,7 +121,7 @@ and the iPhone 13 profile.
 | `pattern` | modify | Copies in a row or round a centre: select, then step and count | 1. Tap what to copy, then ✓.<br>2. Set the step and the count in the options.<br>3. ✓ again makes the copies. |  |
 | `pattern` — circular | modify |  | 1. Tap what to copy, then ✓.<br>2. Tap the point to turn about; set the angle and count.<br>3. ✓ again makes the copies. |  |
 | `dimension` | relate | Dimensions what you click, a solid's faces too; a click places it | 1. Tap what to measure: a line, a circle, two points…<br>2. Then tap empty space to place it.<br>3. Double-tap the number to edit it. |  |
-| `constrain` | relate | Relates what you pick: choose from the relations that apply | 1. Tap the things to relate: two lines, a line and a circle…<br>2. Then choose from the list: Parallel, Tangent, Equal… |  |
+| `constrain` | relate | Relates what you pick: choose from the relations that apply | 1. Tap the things to relate.<br>2. Then choose: Parallel, Tangent…<br>3. Pick several for one relation; hold a line for Leave. | 1. Click the things to relate: two lines, a line and a circle…<br>3. Pick several for one relation; right-click a line for Leave. |
 | `extrude` | sweep | Pulls a closed shape into a solid: click inside it, then ✓ | 1. Tap inside a closed outline.<br>2. Set the depth in the options; ⇅ turns it the other way.<br>3. ✓ builds the solid. |  |
 | `cut` | sweep | Cuts a hole or a pocket into a solid: click a closed shape, then ✓ | 1. Tap inside a closed outline drawn on a solid.<br>2. Set how deep in the options.<br>3. ✓ cuts it out. |  |
 | `revolve` | its own | Spins a closed shape into a solid: click it, then the axis, then ✓ | 1. Tap inside a closed outline.<br>2. Then tap a lit line or axis arrow to spin it about.<br>3. Set the angle in the options. ✓ builds it. |  |
@@ -138,6 +138,16 @@ for Constrain.* / *…for Dimension.*; `curves` — *…for Spline.* / *…for
 Ellipse.*; `sweep` — *…for Cut, Surface, Edge.* (and so on); `shapes` —
 *…for Polygon, Slot, Region.*; `modify`, whose eight would be three lines —
 *Hold this button for 8 more tools.*
+
+**After review-relations merged** (2026-11-12, the same day): the constrain
+tool's steps gained a third — *Pick several for one relation; hold a line
+for Leave.* (a mouse: *right-click a line*) — both done in the browser on
+the merged code: four lines picked and one press type `eq("l1", "l2", "l3",
+"l4")`, one relation; a held line's menu offers *Leave r1 (= with l1, l2,
+l4)*, which types `leave("r1", "l3")`. To keep the tip at eight lines under
+a finger, its first two steps are one line each there: what can be picked is
+said by the palette's own empty line, up at the same moment; a mouse's
+tooltip keeps the examples.
 
 ### What doing it in the browser changed
 
@@ -181,7 +191,11 @@ words, then each line was done. What came out differently:
 5. **The placement is a cost, not a place** (`chosenPlacement`), and tips
    start at one line (`STAY`). On an upright iPhone 13 at 100 % every tip is
    at x 57, y 50 (66 where the chip's words wrap to two lines), 329 wide,
-   86–187 tall (the steps alone 86–125).
+   86–187 tall (the steps alone 86–125). **A nine-line tip ends inside the
+   middle third's top edge**: the third starts at y 221 and twelve tools'
+   tips (Select, Rectangle, Circle, Arc, Spline, Offset, Chamfer, Extrude,
+   Cut, Surface, Edge, Sketch) end at y 235–253. The constrain tool's and
+   the dimension tool's, eight lines, end at 217 and are clear of it.
 6. **It lies over the action strip** on an upright phone.
 7. **The palette's fit**: the wasted row was the empty "have" section, not a
    margin; it gives way where the rows overflow.

@@ -279,13 +279,14 @@ function joined(model: Model, a: string, b: string): boolean {
   while (todo.length) {
     const p = todo.pop()!;
     for (const r of model.relations.values()) {
-      if (r.op !== "coincident") continue;
-      const [x, y] = r.args as [string, string];
-      const next = x === p ? y : y === p ? x : null;
-      if (next === null || seen.has(next)) continue;
-      if (next === b) return true;
-      seen.add(next);
-      todo.push(next);
+      // Two points, or one `coin` among many (among.ts): each is held to every other.
+      if (r.op !== "coincident" || !r.args.includes(p)) continue;
+      for (const next of r.args as string[]) {
+        if (seen.has(next)) continue;
+        if (next === b) return true;
+        seen.add(next);
+        todo.push(next);
+      }
     }
   }
   return false;

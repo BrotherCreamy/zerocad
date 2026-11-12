@@ -2,13 +2,28 @@
 // what a dimension or a relation to a solid holds (docs/plans/smart-dimension.md;
 // the owner: *"Distance between two faces of a solid, or angle"*).
 //
-// **A face is named as the solid kernel names it** (src/solids/naming.ts):
-// `e1.base`, `e1.lid`, and `e1.m3` for the face swept from the profile's
-// fourth member (members counted loop by loop). The same names whether the
-// body is drawn from its live geometry (faces.ts, one feature) or built by
-// the kernel (a boolean): the kernel tags a face by the feature and role that
-// made it, and those are the record's. An **edge** is the kernel's name too,
-// its two faces: `e1.lid|e1.m0`.
+// **A face is named by what it is swept from** (docs/plans/review-relations.md):
+// `e1.base` and `e1.lid` for the caps, and **`e1:l2`** for the wall of `e1`
+// swept from the profile entity `l2` — the name every relation journals, and
+// the one a tool is handed for the face under the hand. It is **resolved when
+// read**, here and nowhere else: `faceSource` finds the wall the entity sweeps
+// in the profile as it stands, so a trim, a split or a fillet of the profile
+// leaves the name meaning the wall it meant.
+//
+// The solid kernel names a face of one build by its *place* in the profile
+// (src/solids/naming.ts: `e1.m3`, the fourth member, members counted loop by
+// loop), whether the body is drawn from its live geometry (faces.ts, one
+// feature) or built by the kernel (a boolean), and that is what a drawn face
+// carries. The two meet in two functions below: `faceRef` turns a place into
+// the entity now in it — where a picked face, a typed `e1.m3` or an old file's
+// becomes the written form — and `faceKernelNames` turns a name back into the
+// places it is drawn as this build, to light it. A place is never journalled:
+// a fillet of the profile's first corner puts an arc in place 1 and moves
+// every wall after it up one, which is what `onplane(p, "e1.m3")` used to
+// follow from one wall to the next (test/reviewrelations.test.ts holds a file
+// that build saved). An **edge** is still the kernel's name, its two faces:
+// `e1.lid|e1.m0` — it maps to an entity where it has one (`edgeSource`) and
+// is otherwise only measured.
 //
 // **A face maps to its source where it has one** — which is every face a
 // sweep made, because a sweep is real geometry here (ARCHITECTURE.md, "A
@@ -30,15 +45,15 @@
 //
 // **The names are read lazily**, every evaluation, through the feature's
 // record, so a relation on `e1.lid` follows a lid a `set` moved and a profile
-// a fillet regenerated. A wall named by its index is the kernel's caveat
-// too: a regeneration that inserts a member (a fillet's arc) renumbers the
-// walls after it, as it renumbers the kernel's faces. Same-feature walls are
-// therefore dimensioned through their lines (dimensioning.ts), which follow
-// any regeneration; `fdist` keeps a wall's index only between two features.
+// a fillet regenerated, and one on `e1:l2` follows `l2` wherever a
+// regeneration puts it. A wall whose line has left the profile altogether (a
+// trim that took the region's edge elsewhere) is still read, as the plane
+// that line would sweep, so a solve never meets a name that reads nothing;
+// one whose line is deleted goes with the line (`referentsOf`, model.ts).
 
 import type { Dual } from "../kernel/dual.ts";
 import { Dual as D } from "../kernel/dual.ts";
-import { memberName, parseFaceName, type FaceName, type FeatureEntry, type Model, type ProfileMember } from "../model.ts";
+import { memberName, parseFaceName, wallName, type FaceName, type FeatureEntry, type Model, type ProfileMember } from "../model.ts";
 import { extrusionChord } from "./extrusion.ts";
 import { planeBasis, unitDuals, type DirectionRef } from "./refs.ts";
 import { axisReader, revolveProfilePlane, turnMatrix } from "./revolution.ts";
@@ -80,7 +95,26 @@ export type FaceSource =
     shape: "plane" | "cylinder" | "other";
   };
 
-/** The source of a face named as the kernel names it, or null when the model has none (a fillet's face, a gone feature). */
+/** The places in `f`'s profile — the kernel's numbering — whose member is all or part of `entity`. */
+function placesOf(f: FeatureEntry, entity: string): number[] {
+  const out: number[] = [];
+  members(f).forEach((m, k) => { if (memberName(m.base) === entity) out.push(k); });
+  return out;
+}
+
+/** The surface an entity sweeps along `f`: a line's a plane, an arc's or circle's a cylinder; a revolve's are other. */
+function sweptShape(model: Model, f: FeatureEntry, entity: string): "plane" | "cylinder" | "other" {
+  const kind = model.entities.get(entity)?.kind;
+  return f.kind === "revolve" ? "other" : kind === "line" ? "plane" : kind === "circle" || kind === "arc" ? "cylinder" : "other";
+}
+
+/**
+ * The source of a face by name — **the one place a face's name is resolved**
+ * — or null when the model has none (a fillet's face, a gone feature, an
+ * entity that sweeps no wall of that feature). A wall named by its entity
+ * (`e1:l2`) is found in the profile as it stands; one named by its place
+ * (`e1.m3`, the kernel's tag, or an old file's) is the member there now.
+ */
 export function faceSource(model: Model, name: string): FaceSource | null {
   const p = parseFaceName(name);
   if (!p) return null;
@@ -91,12 +125,67 @@ export function faceSource(model: Model, name: string): FaceSource | null {
     if (f.kind === "revolve" && f.twins.length === 0) return null;
     return { kind: "cap", feature: f, which: p.role };
   }
-  const m = members(f)[p.member];
+  const all = members(f);
+  if (p.entity !== undefined) {
+    // One entity may bound a region in several portions; every one of them
+    // sweeps the same surface, so the first stands for the wall.
+    const places = placesOf(f, p.entity);
+    if (!places.length) return null;
+    return {
+      kind: "wall", feature: f, index: places[0], entity: p.entity,
+      whole: places.every((k) => typeof all[k].base === "string"), shape: sweptShape(model, f, p.entity),
+    };
+  }
+  const m = all[p.member];
   if (!m) return null;
   const entity = memberName(m.base);
-  const kind = model.entities.get(entity)?.kind;
-  const shape = f.kind === "revolve" ? "other" : kind === "line" ? "plane" : kind === "circle" || kind === "arc" ? "cylinder" : "other";
-  return { kind: "wall", feature: f, index: p.member, entity, whole: typeof m.base === "string", shape };
+  return { kind: "wall", feature: f, index: p.member, entity, whole: typeof m.base === "string", shape: sweptShape(model, f, entity) };
+}
+
+/**
+ * A wall as a residual reads it once its relation is made: `faceSource`'s
+ * answer, or — where the line a relation names has since left the profile (a
+ * trim moved the region's edge to another line) and both it and the feature
+ * are still there — the plane that line would sweep, `index` -1. A relation
+ * is only ever *made* on a face the solid has (`faceSource`); this is what
+ * keeps one from throwing inside a solve after the profile changed under it.
+ */
+function heldSource(model: Model, name: string): FaceSource | null {
+  const s = faceSource(model, name);
+  if (s) return s;
+  const p = parseFaceName(name);
+  const f = p?.entity !== undefined ? model.features.get(p.feature) : undefined;
+  if (!p || p.entity === undefined || !f || !model.entities.has(p.entity)) return null;
+  return { kind: "wall", feature: f, index: -1, entity: p.entity, whole: true, shape: sweptShape(model, f, p.entity) };
+}
+
+/**
+ * **A face's written name** — what a relation journals and a tool is handed:
+ * a wall by its place (`e1.m3`: the kernel's tag of a drawn face, a typed
+ * one, an old file's) becomes the wall of the entity **now** in that place
+ * (`e1:l4`); everything else — a cap, a wall already named by its entity, a
+ * face only the kernel knows (`e3.f0`), a name that is no face — is itself.
+ * Resolved once, here, when the relation is made or replayed; never again.
+ */
+export function faceRef(model: Model, name: string): string {
+  const p = parseFaceName(name);
+  if (!p || p.role !== "member" || p.entity !== undefined) return name;
+  const f = model.features.get(p.feature);
+  const m = f ? members(f)[p.member] : undefined;
+  return m ? wallName(p.feature, memberName(m.base)) : name;
+}
+
+/**
+ * The solid kernel's tags for the faces a name is **this build** — what a
+ * drawn face carries (`Face.name`), so a face named by its entity can be found
+ * among the faces on screen and lit: every place its entity bounds the profile
+ * in. A cap, a place and a kernel-only name are their own tag.
+ */
+export function faceKernelNames(model: Model, name: string): string[] {
+  const p = parseFaceName(name);
+  if (!p || p.entity === undefined) return [name];
+  const f = model.features.get(p.feature);
+  return f ? placesOf(f, p.entity).map((k) => `${p.feature}.m${k}`) : [];
 }
 
 /** Whether `name` is a face of a feature the model holds, and flat — a cap, or a line's wall. */
@@ -184,7 +273,7 @@ const cross = (a: Dual[], b: Dual[]): Dual[] => [
  * Duals — so a relation on a wall can turn the wall by turning its line.
  */
 export function readPlane(model: Model, face: string): PlaneRead {
-  const s = faceSource(model, face);
+  const s = heldSource(model, face);
   if (!s) throw new Error(`"${face}" is no face of a feature this drawing holds`);
   if (s.kind === "cap") {
     const pts = capPoints(model, s.feature, s.which);
@@ -219,7 +308,7 @@ export function readPoint(model: Model, ref: string): PointRead {
     };
   }
   if (e?.kind === "circle" || e?.kind === "arc") return readPoint(model, e.center);
-  const s = faceSource(model, ref);
+  const s = heldSource(model, ref);
   if (s?.kind === "cap") return readPoint(model, capPoints(model, s.feature, s.which)[0]);
   if (s?.kind === "wall" && s.shape === "plane") return readPoint(model, s.entity);
   throw new Error(`"${ref}" is not a point, a line, a circle or a flat face`);
@@ -257,18 +346,20 @@ export function edgeSource(model: Model, edge: string): string | null {
   const wall = a.role === "member" ? a : b.role === "member" ? b : null;
   const other = wall === a ? b : a;
   if (!wall) return null;
-  const m = ms[wall.member];
+  // An edge is the kernel's name, so its walls are places; one written by its entity reads too.
+  const place = (w: FaceName) => (w.entity !== undefined ? placesOf(f, w.entity)[0] ?? -1 : w.member);
+  const m = ms[place(wall)];
   if (!m || typeof m.base !== "string") return null;
   if (other.role === "base") return m.base;
   if (other.role === "lid") return m.twin;
-  const n = ms[other.member];
+  const n = ms[place(other)];
   if (!n) return null;
   const shared = memberPoints(model, m.base).find((p) => memberPoints(model, n.base).includes(p));
   if (!shared) return null;
   return f.walls.find((w) => model.entities.get(w)?.kind === "line" && model.line(w).refs.includes(shared)) ?? null;
 }
 
-/** A face's hover line: `e1.lid  lid of e1` — what it is, and what it was swept from. */
+/** A face's hover line: `e1.lid  lid of e1`, `e1:l2  wall of e1 from l2  flat` — what it is, and what it was swept from. */
 export function describeFace(model: Model, name: string): string {
   const s = faceSource(model, name);
   if (!s) return `${name}  face`;
@@ -298,15 +389,22 @@ export function describeFace(model: Model, name: string): string {
  *
  * Read lazily (`readPlane`, `readPoint`), so it follows a lid `set` moved and
  * a profile a fillet regenerated. 3D only: a face is a solid's.
+ *
+ * **Journalled by the entities the walls are swept from** (`faceRef`): a wall
+ * given by its place — `fdist("e1.m1", "e2.m3", 40)`, typed or in an old file
+ * — is the wall of the line then in that place, and is held as
+ * `fdist("e1:l2", "e2:l8", 40)` from then on, whatever a trim, a split or a
+ * fillet does to either profile's order.
  */
-export function faceDistance(model: Model, a: string, b: string, target: number): string {
+export function faceDistance(model: Model, aGiven: string, bGiven: string, target: number): string {
   if (model.dim !== 3) throw new Error("fdist is a distance to a solid's face — a 3D model's");
   if (typeof target !== "number" || !Number.isFinite(target) || target < 0) {
     throw new Error(`fdist needs a distance of 0 or more, got ${JSON.stringify(target)}`);
   }
+  const [a, b] = [faceRef(model, aGiven), faceRef(model, bGiven)];
   const [face, other] = isPlanarFace(model, a) ? [a, b] : isPlanarFace(model, b) ? [b, a] : [null, null];
   if (face === null || other === null) {
-    throw new Error(`fdist measures square to a flat face of a solid — neither "${a}" nor "${b}" is one (e1.lid, e1.base, e1.m0)`);
+    throw new Error(`fdist measures square to a flat face of a solid — neither "${aGiven}" nor "${bGiven}" is one (e1.lid, e1.base, e1:l2)`);
   }
   // Read both now: a name that reads nothing refuses where it was typed.
   readPlane(model, face);
@@ -330,7 +428,7 @@ export function faceDistance(model: Model, a: string, b: string, target: number)
 }
 
 /**
- * **`onplane(p, "e1.m3")`** — a point held on a solid's flat face
+ * **`onplane(p, "e1:l2")`** — a point held on a solid's flat face
  * (docs/plans/click-on-face.md; the owner: *"if i am hovering over a face
  * without an active on-plane constraint, it should constrain to the plane i
  * am hovering over"*). The same op, journal entry, glyph (▱) and `del` as an
@@ -348,12 +446,16 @@ export function faceDistance(model: Model, a: string, b: string, target: number)
  * square. Refuses a face that is not flat, or that the model has no source
  * for (a fillet's), with the reason: nothing in the model holds such a face,
  * so nothing could hold a point to it.
+ *
+ * A wall is journalled by the entity it is swept from (`faceRef`): given by
+ * its place (`"e1.m3"`), it is the wall of the line then there, from then on.
  */
-export function onFace(model: Model, pointName: string, face: string): string {
+export function onFace(model: Model, pointName: string, given: string): string {
   if (model.dim !== 3) throw new Error("onplane on a solid's face needs a 3D model");
   const p = model.point(pointName);
+  const face = faceRef(model, given);
   const s = faceSource(model, face);
-  if (!s) throw new Error(`"${face}" is no face of a feature this drawing holds — a face is named e1.lid, e1.base or e1.m3`);
+  if (!s) throw new Error(`"${given}" is no face of a feature this drawing holds — a face is named e1.lid, e1.base, or e1:l2 for the wall swept from l2`);
   if (!(s.kind === "cap" || s.shape === "plane")) {
     throw new Error(`"${face}" is not flat — it is swept from ${s.entity}, and no relation holds a point on a round face yet (TODO.md: onsurface)`);
   }
@@ -369,8 +471,8 @@ export function onFace(model: Model, pointName: string, face: string): string {
 }
 
 /**
- * A flat face as a **direction** — its normal — for `par`, `perp` and `ang`:
- * `par("c1", "e1.m3")` holds a circle's normal to a wall's, which is how a
+ * A flat face as a **direction** — its normal — for `par` and `perp`:
+ * `par("c1", "e1:l2")` holds a circle's normal to a wall's, which is how a
  * curve drawn on a face is kept in it (tools/place.ts's `holdCurve`), as
  * `par("c1", "p1.p2.p3")` keeps one on three points' plane. Null for anything
  * that is not a flat face of a feature the model holds. A cap's normal is a

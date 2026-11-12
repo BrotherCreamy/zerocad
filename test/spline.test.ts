@@ -315,7 +315,7 @@ test("deleting a spline takes its own equations with it; deleting a through-poin
 
 test("save and open: the current version, the spline replayed with its equations, its control points and an onspline's parameter restored", async () => {
   await loadKernel();
-  assert.equal(VERSION, 19);
+  assert.equal(VERSION, 20);
   const m = new Model(2);
   const pts = wavy(m);
   addSpline(m, pts);
@@ -327,7 +327,7 @@ test("save and open: the current version, the spline replayed with its equations
   ok(m);
   const text = save(m);
   const saved = JSON.parse(text);
-  assert.equal(saved.version, 19);
+  assert.equal(saved.version, 20);
   assert.equal(saved.values.splines.sp1.length, 2 * pts.length);
   assert.equal(saved.values.params[r].length, 1);
   const back = open(text);
