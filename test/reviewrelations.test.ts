@@ -340,6 +340,7 @@ test("a conflict names a relation among many once, and an agreeing one counts on
   const ends = (l: string) => m.line(l).refs as [string, string];
   const d1 = dist(m, ...ends(ls[1]), 10);
   const d2 = dist(m, ...ends(ls[4]), 20);
+  m.searchMs = Infinity; // what is named is asked of the trials, not of a loaded box's clock
   const names = m.conflicting(m.solve()).relations;
   assert.deepEqual([...names].sort(), [d1, d2, r].sort(), "the relation, once, and the two lengths it cannot hold together");
 

@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded, type ResidualBlock } from "../src/kernel/problem.ts";
 import type { Dual } from "../src/kernel/dual.ts";
-import { COLLAPSE, Model, SEARCH_MS, quickXplain, type ModelSolveReport } from "../src/model.ts";
+import { COLLAPSE, Model, SEARCH_MS, SEARCH_TRIALS, quickXplain, type ModelSolveReport } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { angle, parallel, perpendicular, pointOnLine, tangent } from "../src/relations/geometry.ts";
 import { addEllipse } from "../src/kinds/ellipse.ts";
@@ -444,7 +444,30 @@ test("quickXplain finds an irreducible conflict, preferring the earlier items", 
 
 // --- what it costs ------------------------------------------------------------------------
 
-test("the cost: the check on every solve, and the search, on the largest fixtures and a large sketch", async () => {
+/**
+ * **The cost is measured in work, and the clock is only printed.** Every
+ * kernel solve the model asks for is counted (a trial of the conflict search
+ * is one or two; a steer, one more), with its iterations; a wall-clock figure
+ * is printed beside it. The old assertion — the search under 2000 ms — was
+ * a flake by construction on a shared box: it read 2255 ms, 2888 ms, with
+ * other workers' suites on the same four cores, and passed alone. Set
+ * NEOCAD_TIMING to assert the clock as well, on a machine that is yours.
+ */
+function counting(m: Model): { solves: () => number; iterations: () => number; reset: () => void } {
+  const orig = m.problem.solve.bind(m.problem);
+  let solves = 0;
+  let iterations = 0;
+  m.problem.solve = (...args: Parameters<typeof orig>) => {
+    const r = orig(...args);
+    solves++;
+    iterations += r.iterations;
+    return r;
+  };
+  return { solves: () => solves, iterations: () => iterations, reset: () => { solves = 0; iterations = 0; } };
+}
+const TIMING = process.env.NEOCAD_TIMING !== undefined;
+
+test("the cost: the check on every solve, and the search, on the largest fixtures and a large sketch — counted in solves and iterations, the clock printed", async () => {
   const fixtures = ["pre-explicit-regions", "shapes-v15", "features-v12"];
   for (const name of fixtures) {
     const text = await readFile(new URL(`./fixtures/${name}.neocad.json`, import.meta.url), "utf8");
@@ -467,16 +490,24 @@ test("the cost: the check on every solve, and the search, on the largest fixture
     // 500 ms budget ran out and the fallback named others (found merging
     // #86, 1 run in 3 alone at load ~18). The time is still measured.
     m.searchMs = Infinity;
+    const work = counting(m);
     let t0 = performance.now();
     const report = m.solve();
     const solveMs = performance.now() - t0;
+    const solveWork = `${work.solves()} solves, ${work.iterations()} iterations`;
+    work.reset();
     t0 = performance.now();
     const named = m.conflicting(report).relations;
     const searchMs = performance.now() - t0;
     console.log(`${name}: ${m.entities.size} entities, ${m.relations.size} relations — solve ${bare.toFixed(2)} ms bare, `
-      + `${checked.toFixed(2)} ms checked; with a conflict made in it, solve ${solveMs.toFixed(1)} ms, search ${searchMs.toFixed(1)} ms → ${named.join(" ")}`);
+      + `${checked.toFixed(2)} ms checked; with a conflict made in it, solve ${solveMs.toFixed(1)} ms (${solveWork}), `
+      + `search ${searchMs.toFixed(1)} ms (${work.solves()} solves, ${work.iterations()} iterations) → ${named.join(" ")}`);
     assert.equal(report.solved, false, `${name}: the par and the perp conflict`);
     for (const r of made) assert.ok(named.includes(r), `${name}: ${r} named among ${named}`);
+    // A conflict between two relations on one pair of lines is found in a
+    // handful of trials, whatever the drawing around it: the search is
+    // bounded at 200 and never came near it here (5 to 9 solves, measured).
+    assert.ok(work.solves() <= 40, `${name}: the search took ${work.solves()} solves`);
   }
 
   // Forty rectangles in a row, tied to each other (sketchrelations.test.ts's
@@ -509,27 +540,54 @@ test("the cost: the check on every solve, and the search, on the largest fixture
   console.log(`40 rectangles, a drag's frame: ${median(frames.bare).toFixed(1)} ms bare, ${median(frames.checked).toFixed(1)} ms checked`);
   m.solve();
   const p = parallel(m, "r20e0", "r20e1");
+  const work = counting(m);
   t0 = performance.now();
   const report = m.solve();
   const solveMs = performance.now() - t0;
+  const solveWork = `${work.solves()} solves, ${work.iterations()} iterations`;
   // What is named, asked of the trials alone (as above): under load the
   // budget ran out here too and the fallback named eight (merging #83).
   m.searchMs = Infinity;
+  work.reset();
   t0 = performance.now();
   const c = m.conflicting(report);
   const searchMs = performance.now() - t0;
-  // And the budget does bound it: the same search with the product's budget
-  // returns within it, give or take one trial, whatever it names.
-  m.searchMs = SEARCH_MS;
-  t0 = performance.now();
-  m.conflicting(report);
-  const boundedMs = performance.now() - t0;
-  assert.ok(boundedMs < SEARCH_MS + 1000, `bounded: ${boundedMs} ms`);
-  console.log(`40 rectangles, a par across a corner: solve ${solveMs.toFixed(1)} ms (collapsed ${report.collapsed}), search ${searchMs.toFixed(1)} ms → ${c.relations.join(" ")}`);
+  const searchSolves = work.solves();
+  console.log(`40 rectangles, a par across a corner: solve ${solveMs.toFixed(1)} ms (${solveWork}; collapsed ${report.collapsed}), `
+    + `search ${searchMs.toFixed(1)} ms (${searchSolves} solves, ${work.iterations()} iterations) → ${c.relations.join(" ")}`);
   assert.equal(report.solved, false);
   assert.ok(c.relations.includes(p), "the par is named");
   assert.ok(c.relations.length <= 4, `minimal: ${c.relations}`);
-  assert.ok(searchMs < 2000, `${searchMs} ms`);
+  // **The search's cost, in its own units.** With the clock lifted it must
+  // still finish inside the product's trial budget — then the product's
+  // search, bounded by both, names the same thing on an unloaded machine.
+  // Measured 25 solves (130 iterations); the bound is 200 trials.
+  assert.ok(searchSolves <= SEARCH_TRIALS, `the search took ${searchSolves} solves for a budget of ${SEARCH_TRIALS} trials`);
+  if (TIMING) assert.ok(searchMs < 2000, `${searchMs} ms (NEOCAD_TIMING is set)`);
+
+  // **And the clock bound does bound it** — on a clock the test turns, so the
+  // result is the same on any machine: each reading of `performance.now()`
+  // is 100 ms after the last, the budget is the product's 500 ms, and the
+  // search stops at the sixth reading, five trials in (5 solves, measured,
+  // against 25 with the clock lifted) — the culprit still named,
+  // its set not found (`found` false), which is what the app shows past the
+  // bound (*against a set not found in time*).
+  m.searchMs = SEARCH_MS;
+  work.reset();
+  const realNow = performance.now.bind(performance);
+  let fakeNow = 0;
+  performance.now = () => (fakeNow += 100);
+  let bounded: ReturnType<Model["conflicting"]>;
+  try {
+    bounded = m.conflicting(report);
+  } finally {
+    performance.now = realNow;
+  }
+  console.log(`40 rectangles, the same search on the product's budget with 100 ms a reading: ${work.solves()} solves → ${bounded.relations.join(" ")}, found ${bounded.conflicts.map((k) => k.found)}`);
+  assert.ok(work.solves() < searchSolves, `bounded: ${work.solves()} solves, against ${searchSolves} with the clock lifted`);
+  assert.ok(work.solves() <= 8, `bounded: ${work.solves()} solves on a budget of five readings`);
+  assert.deepEqual(bounded.relations, [p], "past the bound the culprit is named alone");
+  assert.deepEqual(bounded.conflicts.map((k) => k.found), [false]);
 });
 
 test("ε is a share of the drawing's size: the same rectangle conflicts at a micron and at a kilometre", () => {

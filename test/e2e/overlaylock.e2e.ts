@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { openApp, settled, type AppContext, type OpenOptions } from "./harness.ts";
 import { build, look, lookAlong } from "./scenes.ts";
 import { fingers, type Fingers } from "./fingers.ts";
+import { TAIL_HOLD_MS, TAIL_LIFE_MS, tailOpacity } from "../../src/logtail.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const apps: AppContext[] = [];
@@ -174,6 +175,20 @@ async function grab(app: AppContext, box: Box, css: string): Promise<number[][]>
 }
 
 /**
+ * **The log's tail is sampled as a fresh line is drawn — its fade held.**
+ * A tail line is whole for 3 s and gone at 10 (logtail.ts), by a CSS
+ * animation; the four shots of one sample are four screenshots, and under
+ * load (four suites on four cores) one screenshot took 1.7 s, once 7.7 s —
+ * so the line was sampled at opacity 0.5, or shot after it had gone, and A
+ * and B agreed at every pixel: "some ink to sample (0 pixels)", 2 runs of 2
+ * on the base. The line's contrast when a person reads it is the fresh
+ * line's, so the fade is held off (opacity 1, as the keyframes' first 30 %
+ * draw it) for the length of the sample and no longer; the mouse test of
+ * the fade itself, further down, does not go through here.
+ */
+const FRESH = ".otail .tline{animation:none !important}";
+
+/**
  * **The contrast of text against what it is read on**, sampled: the text's
  * box shot as drawn (A), and again with its glyphs' fill taken away but its
  * halo left (B) — so B at each pixel is what is behind the ink there. The ink
@@ -181,21 +196,62 @@ async function grab(app: AppContext, box: Box, css: string): Promise<number[][]>
  * anti-aliased edges); the contrast is WCAG's ratio between A and B at those,
  * the median taken. The same with the halo off too (C, D) says what the halo
  * is worth. `ground` is D's median luminance: what the text is over.
+ *
+ * Sampled once what is behind the text is what the test put there (`over`:
+ * the dark ground, or a light lid) — polled, not slept: the lid is drawn
+ * once the solid is built and the view has caught up, and a 300 ms sleep
+ * read the dark ground under it at load 45. And if the element is gone by
+ * the end of the sample (a tail line that aged out during four slow shots:
+ * the fade is held, its removal at 10 s is not), the caller's `renew` says
+ * it again and the sample is taken afresh, three times at most.
  */
-async function contrast(app: AppContext, selector: string, fill: string): Promise<{ halo: number; bare: number; ground: number }> {
-  const box = await app.page.$eval(selector, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-  assert.ok(box.w > 4 && box.h > 4, `${selector} is drawn: ${JSON.stringify(box)}`);
+async function contrast(app: AppContext, selector: string, fill: string, over: "ground" | "lid", renew?: () => Promise<void>): Promise<{ halo: number; bare: number; ground: number }> {
   const noFill = `${fill}{-webkit-text-fill-color:transparent !important;color:transparent !important}`;
   const noHalo = `${fill}{text-shadow:none !important}`;
-  const [A, B, C, D] = [await grab(app, box, ""), await grab(app, box, noFill), await grab(app, box, noHalo), await grab(app, box, noFill + noHalo)];
-  const core = (X: number[][], Y: number[][]) => {
-    const d = X.map((p, i) => Math.hypot(p[0] - Y[i][0], p[1] - Y[i][1], p[2] - Y[i][2]));
-    const top = Math.max(...d);
-    const ink = d.map((v, i) => [v, i] as const).filter(([v]) => v >= 0.6 * top && v > 0).map(([, i]) => i);
-    assert.ok(ink.length >= 6, `${selector}: some ink to sample (${ink.length} pixels)`);
-    return median(ink.map((i) => ratio(X[i], Y[i])));
-  };
-  return { halo: core(A, B), bare: core(C, D), ground: median(D.map(luminance)) };
+  const overIt = (g: number) => (over === "ground" ? g < 0.02 : g > 0.3);
+  const boxOf = () => app.page.$eval(selector, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const there = () => app.page.$eval(selector, () => true).catch(() => false);
+  // **The tail's lines are kept young for the length of the sample**: their
+  // stamps in the docked log (`data-at`, what the tail ages them by) are set
+  // to now before each shot, so the app's own rule keeps them when its timer
+  // next looks. The fade is held off above; this holds off the removal at
+  // 10 s, which at load 30–40 (four screenshots of up to 7.7 s each) took
+  // the line out in 1 sample of 5 even with it said again twice.
+  const young = () => app.page.evaluate(() => {
+    for (const d of Array.from(document.querySelectorAll<HTMLElement>("#log > div")).slice(-3)) d.dataset.at = String(Date.now());
+  });
+  const shoot = async (css: string) => { await young(); return grab(app, box!, css); };
+  let box: Box | null = null;
+  for (let attempt = 1; ; attempt++) {
+    // Said by `app.type`, the line is in the log once the entry has run —
+    // and `solve()` over the plate and the bodies ran for seconds at load 40.
+    await app.page.waitForSelector(selector, { timeout: 30_000 });
+    // Drawn: a box, polled — at load 40 the line found was read 0×0 once.
+    box = await until(boxOf, (b) => b.w > 4 && b.h > 4);
+    assert.ok(box.w > 4 && box.h > 4, `${selector} is drawn: ${JSON.stringify(box)}`);
+    // What the text is over, polled until it is what the test drew there.
+    const groundNow = async () => median((await shoot(FRESH + noFill + noHalo)).map(luminance));
+    const deadline = Date.now() + 8000;
+    let ground = await groundNow();
+    while (!overIt(ground) && Date.now() < deadline) {
+      await app.page.waitForTimeout(100);
+      ground = await groundNow();
+    }
+    const [A, B, C, D] = [await shoot(FRESH), await shoot(FRESH + noFill), await shoot(FRESH + noHalo), await shoot(FRESH + noFill + noHalo)];
+    if (!(await there()) && renew && attempt < 3) {
+      console.log(`  ${selector} went while it was being sampled (attempt ${attempt}): said again`);
+      await renew();
+      continue;
+    }
+    const core = (X: number[][], Y: number[][]) => {
+      const d = X.map((p, i) => Math.hypot(p[0] - Y[i][0], p[1] - Y[i][1], p[2] - Y[i][2]));
+      const top = Math.max(...d);
+      const ink = d.map((v, i) => [v, i] as const).filter(([v]) => v >= 0.6 * top && v > 0).map(([, i]) => i);
+      assert.ok(ink.length >= 6, `${selector}: some ink to sample (${ink.length} pixels)`);
+      return median(ink.map((i) => ratio(X[i], Y[i])));
+    };
+    return { halo: core(A, B), bare: core(C, D), ground: median(D.map(luminance)) };
+  }
 }
 
 // ---- the suite, one way at a time -------------------------------------------------
@@ -364,11 +420,15 @@ for (const way of WAYS) {
 
     // **Contrast**: over the dark ground — the view turned away from the model — then over a light lid.
     await lookAlong(app, [0.2, -0.3, 1], 0.05, [5000, 5000]);
-    await app.type("solve()"); // a fresh line for the log's tail
-    await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    await app.page.waitForTimeout(250);
+    // A fresh line for the log's tail; what `contrast` calls to say one
+    // again if the line aged out of the tail while it was being sampled.
+    const sayAgain = async () => {
+      await app.type("solve()");
+      await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    };
+    await sayAgain();
     for (const [sel, fill] of SAMPLES) {
-      const c = await contrast(app, sel, fill);
+      const c = await contrast(app, sel, fill, "ground", sayAgain);
       console.log(`  ${way.name} — ${sel} over the ground (${c.ground.toFixed(3)}): ${c.halo.toFixed(2)}:1 with the halo, ${c.bare.toFixed(2)}:1 without`);
       assert.ok(c.ground < 0.02, `${way.name}: ${sel} is over the dark ground (${c.ground})`);
       assert.ok(c.halo >= 4.5, `${way.name}: ${sel} over the ground at ${c.halo.toFixed(2)}:1`);
@@ -380,12 +440,10 @@ for (const way of WAYS) {
       const b = (window as never as { __neocad: { bodies?: { settled: boolean } } }).__neocad.bodies;
       return !b || b.settled;
     }, undefined, { timeout: 20_000 });
-    await app.type("solve()");
-    await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    await app.page.waitForTimeout(300);
+    await sayAgain();
     await shot(app, `${slug}-over-a-light-lid`);
     for (const [sel, fill] of SAMPLES) {
-      const c = await contrast(app, sel, fill);
+      const c = await contrast(app, sel, fill, "lid", sayAgain);
       console.log(`  ${way.name} — ${sel} over the lid (${c.ground.toFixed(3)}): ${c.halo.toFixed(2)}:1 with the halo, ${c.bare.toFixed(2)}:1 without`);
       assert.ok(c.ground > 0.3, `${way.name}: ${sel} is over a light lid (${c.ground})`);
       assert.ok(c.halo >= 4.5, `${way.name}: ${sel} over a light lid at ${c.halo.toFixed(2)}:1`);
@@ -566,16 +624,42 @@ test("mouse: the log's see-through lines fade with age and are gone after ten se
   await app.type("panels({ overlay: true })");
   for (const src of ["1 + 1", "2 + 2"]) await app.type(src);
   await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  const tail = () => app.page.$$eval(".otail .tline", (ls) => ls.map((l) => ({ text: l.textContent, opacity: Number(getComputedStyle(l).opacity) })));
+  // Each tail line with its opacity as drawn and its age as the docked log
+  // stamps it, read in one go. **The fade is checked against the age, not
+  // the clock**: under load (28 on four cores) the two typed lines took over
+  // 3 s to land, and a line read as "new" was 4.2 s old and fading, exactly
+  // as it should have been — the rule held and the test failed.
+  const tail = () => app.page.$$eval(".otail .tline", (ls) => {
+    const stamps = Array.from(document.querySelectorAll<HTMLElement>("#log > div")).slice(-ls.length).map((d) => Number(d.dataset.at));
+    return ls.map((l, i) => ({ text: l.textContent, opacity: Number(getComputedStyle(l).opacity), age: Date.now() - stamps[i] }));
+  });
+  // The fade is a CSS animation started at the line's age; its clock is the
+  // browser's frame clock, which under load runs behind the wall clock the
+  // age is read on (0.52 at 7043 ms, where the rule says 0.42: 700 ms
+  // behind, at load 40) and never ahead of it. So a line may be up to 3 s
+  // less faded than its age says, and never more.
+  const byTheRule = (lines: { text: string | null; opacity: number; age: number }[], what: string) => {
+    for (const l of lines) {
+      const [least, most] = [tailOpacity(l.age) - 0.05, tailOpacity(Math.max(0, l.age - 3000)) + 0.05];
+      assert.ok(l.opacity >= least && l.opacity <= most, `${what}: ${JSON.stringify(l)} — the rule says ${tailOpacity(l.age).toFixed(2)} at ${l.age} ms, or up to ${most.toFixed(2)} with the frame clock behind`);
+    }
+  };
   const now = await tail();
   assert.equal(now.length, 3, "three lines");
   assert.deepEqual(now.map((l) => l.text), (await app.page.$$eval("#log > div", (ds) => ds.slice(-3).map((d) => d.textContent))), "the docked log's last three");
-  assert.ok(now.every((l) => l.opacity > 0.95), `new, whole: ${JSON.stringify(now)}`);
+  byTheRule(now, "new");
+  for (const l of now) if (l.age < TAIL_HOLD_MS) assert.ok(l.opacity > 0.95, `whole within the hold: ${JSON.stringify(l)}`);
   await shot(app, "mouse-log-tail");
   await app.page.waitForTimeout(6_500);
   const later = await tail();
-  assert.ok(later.every((l) => l.opacity < 0.8 && l.opacity > 0.1), `fading: ${JSON.stringify(later)}`);
-  // A click on a line: the whole log, docked, until a click outside.
+  byTheRule(later, "later");
+  assert.ok(later.every((l) => l.age > TAIL_HOLD_MS && l.opacity < 1), `fading: ${JSON.stringify(later)}`);
+  // A click on a line: the whole log, docked, until a click outside. The
+  // line clicked is a fresh one if the two above have aged out meanwhile.
+  if (!(await app.page.$(".otail .tline:last-child"))) {
+    await app.type("3 + 3");
+    await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  }
   const line = await app.page.$eval(".otail .tline:last-child", (el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
   await app.page.mouse.click(line[0], line[1]);
   await app.page.mouse.move(line[0] + 400, line[1] - 300);
@@ -585,7 +669,12 @@ test("mouse: the log's see-through lines fade with age and are gone after ten se
   await app.page.mouse.click(line[0] + 400, line[1] - 300);
   await app.page.waitForTimeout(300);
   assert.equal(await app.page.$eval('.panel[data-panel="log"]', (el) => el.classList.contains("pinned")), false, "a click outside puts it back");
-  await app.page.waitForTimeout(4_000);
+  // Gone at ten seconds: once the newest line is past its life (and the
+  // 20 ms the tail gives itself to take it off), the tail is empty.
+  await app.page.waitForFunction((past) => {
+    const last = document.querySelector<HTMLElement>("#log > div:last-child");
+    return !!last && Date.now() - Number(last.dataset.at) > past;
+  }, TAIL_LIFE_MS + 300, { timeout: TAIL_LIFE_MS + 5000 });
   assert.deepEqual(await tail(), [], "ten seconds on, the tail is empty");
   assert.deepEqual(app.pageErrors, []);
 });

@@ -35,7 +35,19 @@ async function press(combo: string): Promise<void> {
   await app.page.waitForTimeout(150);
 }
 
-const note = () => app.page.$eval("#stepnote", (el) => el.textContent ?? "");
+/**
+ * The note beside the verdict, once it says `want` — or whatever it says at
+ * the deadline, for the assertion to name. The note clears itself after
+ * 1.6 s (STEP_NOTE_MS); read at a fixed 150 ms after the key it was once
+ * already gone under load (`'' !== 'nothing to redo'`, one full run at load
+ * ~45), with the log's line — which does not fade — read right before it.
+ * Waiting for the words is the only read that cannot race the fade either
+ * way; a note that never says them still fails, saying what it said.
+ */
+async function note(want: string): Promise<string> {
+  await app.page.waitForFunction((w) => document.getElementById("stepnote")?.textContent === w, want, { timeout: 3000 }).catch(() => undefined);
+  return app.page.$eval("#stepnote", (el) => el.textContent ?? "");
+}
 const focused = () => app.page.evaluate(() => {
   const at = document.activeElement;
   return at === document.body ? "body" : at ? `${at.tagName.toLowerCase()}${at.id ? `#${at.id}` : ""}` : "none";
@@ -110,12 +122,12 @@ test("with nothing to undo, the chord says so — in the log and beside the verd
   await press("Control+z");
   assert.equal(await saved(), here);
   assert.equal(await lastLog(), "nothing to undo");
-  assert.equal(await note(), "nothing to undo", "the status readout answers, not only the log");
+  assert.equal(await note("nothing to undo"), "nothing to undo", "the status readout answers, not only the log");
   assert.equal(await app.status(), "SOLVED", "...beside the verdict, which it does not replace");
 
   await press("Control+y");
   assert.equal(await lastLog(), "nothing to redo");
-  assert.equal(await note(), "nothing to redo");
+  assert.equal(await note("nothing to redo"), "nothing to redo");
 
   // And the note goes again: it says what just happened, not what is.
   await app.page.waitForFunction(() => document.getElementById("stepnote")?.textContent === "", null, { timeout: 4000 });
@@ -140,11 +152,11 @@ test("focus on the empty command line", async () => {
   await app.page.focus("#cmd");
   await press("Control+z");
   assert.equal(await saved(), before);
-  assert.equal(await note(), "undid");
+  assert.equal(await note("undid"), "undid");
   assert.match(await lastLog(), /^undid — /);
   await press("Control+y");
   assert.notEqual(await saved(), before, "and redo, from the same place");
-  assert.equal(await note(), "redid");
+  assert.equal(await note("redid"), "redid");
   await press("Control+z");
 });
 
@@ -353,7 +365,7 @@ test("the menu's Undo and Redo type undo() and redo(), on an entity's menu and o
   await choose("Undo");
   assert.equal(await saved(), before);
   assert.match(await app.log(), /> undo\(\)\s*undid — /, "the log shows the command it typed, and what it did");
-  assert.equal(await note(), "undid");
+  assert.equal(await note("undid"), "undid");
 
   // Empty canvas, with a step each way now.
   await rightClick(500, 160);

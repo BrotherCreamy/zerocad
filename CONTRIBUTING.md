@@ -48,7 +48,14 @@ npm run test:all    # all of the above
 ```
 
 `npm run test:e2e` starts and stops its own dev server, or reuses one you
-already have running. `test/e2e/pwa.e2e.ts` also runs `build:pwa` into a
+already have running. It watches the one it started: if the server dies
+mid-run (it has, under four workers' load) the run says so in a banner —
+when, how, what it last wrote — restarts it on the same port, and says
+again at the end which failures to run alone before believing; a third
+death stops the run. A crashed page ("Target crashed", the memory cgroup's
+OOM killer on a loaded box) fails its test and never holds the suite: open
+CDP sessions through `timedCdp`, close browsers with `closeBounded`
+(harness.ts), and every test has a 15 minute timeout. `test/e2e/pwa.e2e.ts` also runs `build:pwa` into a
 temporary folder and serves it under a sub-path itself, so the hosted build
 is tested on every run with nothing left in `dist-pwa/`.
 
@@ -61,7 +68,7 @@ never registered on the dev server, which would otherwise serve yesterday's
 code from its cache.
 
 **Run the e2e suite for anything that touches the app**, not just when it
-feels risky. Seventy-eight bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
+feels risky. Seventy-nine bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
 within seconds of opening the page — the list is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The unit tests cover the
 mathematics; they cannot see a stale readout or an event that never fires.

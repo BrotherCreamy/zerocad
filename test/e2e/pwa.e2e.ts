@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } fr
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { devices, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
-import { APP_URL, launchBrowser } from "./harness.ts";
+import { APP_URL, closeBounded, launchBrowser, timedCdp } from "./harness.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
 const BASE = "/zerocad/";
@@ -120,7 +120,7 @@ before(async () => {
   work = mkdtempSync(join(tmpdir(), "neocad-pwa-"));
 });
 after(async () => {
-  await browser?.close();
+  await closeBounded(browser);
   rmSync(work, { recursive: true, force: true });
 });
 
@@ -354,7 +354,7 @@ async function phone(options: { landscape?: boolean } = {}): Promise<{ context: 
   const device = devices[options.landscape ? "iPhone 13 landscape" : "iPhone 13"];
   const context = await browser.newContext({ ...device });
   const page = await context.newPage();
-  return { context, page, cdp: await context.newCDPSession(page) };
+  return { context, page, cdp: timedCdp(await context.newCDPSession(page)) };
 }
 
 async function centreOf(page: Page, selector: string): Promise<Pt> {

@@ -180,6 +180,37 @@ system's font scale)*. No `<meta name="text-scale">`: it would scale `medium`
 too and the factor would be counted twice. Not measured on a phone: that a real
 Pixel's variable follows Settings → Display → Font size.
 
+**Chromium 153 tells only a page that asks** (measured 2026-11-12, when the
+browser under the suite became 153.0.8010.12 and the e2e above read *text
+size 1.00* under a scale of 1.3 on every run; browser-only bug 79). The same
+flag, Pixel 7, the page's `text-size-adjust: 100%`:
+
+| Read, Chromium 153 | scale 1.0 | scale 1.3 | scale 1.3, browser font 20 px | scale 1.3, font 13 px |
+|---|---|---|---|---|
+| `env(preferred-text-scale)`, the page as it stands | 1 | **1** | 1 | 1 |
+| the same, with `<meta name="text-scale" content="scale">` in the document | 1 | **1.3** | **1.625** | **1.05625** |
+| `font-size: medium`, the page as it stands | 16 px | 16 px | 20 px | 13 px |
+| the same, with the meta in | 16 px | 21 px | 26 px | 17 px |
+| `env(preferred-text-scale)` once the meta is taken out again | 1 | 1 | 1 | 1 |
+
+So the variable is the meta's: without it the page is told 1, and with it
+the page is told **the system's scale × the browser's own font size ÷ 16**
+(`scaleAllFontsIfNoMetaTextScaleTag`, `TextScaleMetaTag` in the binary's
+strings) and `medium` moves too — which is why the page cannot simply carry
+the meta. CDP's `Emulation.setEmulatedOSTextScale` sets the same scale and
+is told to the same pages. What the app does (`measureDevice`, main.ts;
+`systemTextScale`, uiscale.ts): reads the variable as the page stands; where
+that is exactly 1 on Android under a finger, appends the meta, reads again,
+and takes it out in the same task, before anything is drawn (measured:
+`medium` back to 16 px and the variable to 1); divides what the asked
+reading says by the browser's own font size over 16, so the rule above —
+the system's scale × the browser's own — counts the browser's once. Chromium
+141 is unchanged by this: its first reading is not 1, and nothing is asked.
+The e2e says which reading this browser gives, by version, and fails saying
+so if neither does — rather than at the `ui()` string further down. Also
+checked there: 1.15 with a 20 px browser font reads *text size 1.44*, not
+1.80 held to 1.50. Still not measured on a phone.
+
 **The back-gesture rule** (`backstack.ts`). Back closes the top-most open
 thing — the tooltip, Add workbench…'s question or the missing-workbench offer,
 the context menu, a flyout, the app menu — through the same `closeTop` Escape

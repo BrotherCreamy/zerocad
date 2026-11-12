@@ -28,13 +28,13 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { devices, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
-import { APP_URL, forgetAutosave, launchBrowser } from "./harness.ts";
+import { APP_URL, closeBounded, forgetAutosave, launchBrowser, timedCdp } from "./harness.ts";
 import { ANDROIDS, IPHONES, androidWindowOf, windowOf, type Insets, type Turn } from "../devices.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const errors: string[] = [];
 let browser: Browser | null = null;
-after(async () => { await browser?.close(); });
+after(() => closeBounded(browser));
 
 interface Way { name: string; descriptor: "iPhone 13" | "Pixel 7"; screen?: { width: number; height: number }; win: (turn: Turn) => { w: number; h: number; insets: Insets } }
 const iphone = (w: number, h: number): Way => {
@@ -66,7 +66,7 @@ async function open(way: Way, turn: Turn, scale = 1, dsf?: number): Promise<Phon
   const page = await context.newPage();
   const mine: string[] = [];
   page.on("pageerror", (e) => { mine.push(String(e)); errors.push(String(e)); });
-  const cdp = await context.newCDPSession(page);
+  const cdp = timedCdp(await context.newCDPSession(page));
   await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: win.insets });
   await page.goto(APP_URL, { waitUntil: "networkidle" });
   await ready(page);

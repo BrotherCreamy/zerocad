@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { devices, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
-import { APP_URL, forgetAutosave, launchBrowser, settled } from "./harness.ts";
+import { APP_URL, closeBounded, forgetAutosave, launchBrowser, settled, timedCdp } from "./harness.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const INSETS = {
@@ -34,7 +34,7 @@ async function theBrowser(): Promise<Browser> {
   browser ??= await launchBrowser();
   return browser;
 }
-after(async () => { await browser?.close(); });
+after(() => closeBounded(browser));
 
 interface Phone { context: BrowserContext; page: Page; cdp: CDPSession }
 
@@ -48,7 +48,7 @@ async function phone(orientation: Orientation = "portrait", context?: BrowserCon
   const ctx = context ?? await (await theBrowser()).newContext({ ...device, viewport: SIZE[orientation] });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
-  const cdp = await ctx.newCDPSession(page);
+  const cdp = timedCdp(await ctx.newCDPSession(page));
   await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: INSETS[orientation] });
   await page.goto(APP_URL, { waitUntil: "networkidle" });
   await ready(page);
