@@ -27,13 +27,13 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { devices, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
-import { APP_URL, forgetAutosave, launchBrowser } from "./harness.ts";
+import { APP_URL, closeBounded, forgetAutosave, launchBrowser, timedCdp } from "./harness.ts";
 import { IPHONES, androidWindowOf, everyAndroidWay, windowOf, type IPhone, type Mode, type Turn } from "../devices.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const errors: string[] = [];
 let browser: Browser | null = null;
-after(async () => { await browser?.close(); });
+after(() => closeBounded(browser));
 
 interface Phone { context: BrowserContext; page: Page; cdp: CDPSession }
 
@@ -51,7 +51,7 @@ async function phone(): Promise<Phone> {
   const context = await browser.newContext(device);
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
-  const cdp = await context.newCDPSession(page);
+  const cdp = timedCdp(await context.newCDPSession(page));
   await page.goto(APP_URL, { waitUntil: "networkidle" });
   await ready(page);
   return { context, page, cdp };
@@ -470,7 +470,7 @@ async function android(): Promise<Phone> {
   });
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
-  const cdp = await context.newCDPSession(page);
+  const cdp = timedCdp(await context.newCDPSession(page));
   await page.goto(APP_URL, { waitUntil: "networkidle" });
   await ready(page);
   return { context, page, cdp };

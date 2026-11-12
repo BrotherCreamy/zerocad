@@ -18,7 +18,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { CDPSession } from "playwright";
-import { forgetAutosave, openApp, type AppContext } from "./harness.ts";
+import { forgetAutosave, openApp, timedCdp, type AppContext } from "./harness.ts";
 import { fingers, type Fingers } from "./fingers.ts";
 
 let app: AppContext;
@@ -27,7 +27,7 @@ let f: Fingers;
 
 before(async () => {
   app = await openApp({ device: "iPhone 13" });
-  cdp = await app.page.context().newCDPSession(app.page);
+  cdp = timedCdp(await app.page.context().newCDPSession(app.page));
   await forgetAutosave(app.page);
   await app.page.reload({ waitUntil: "networkidle" });
   await app.page.waitForFunction(() => document.getElementById("status")?.textContent?.includes("ready"), null, { timeout: 20_000 });

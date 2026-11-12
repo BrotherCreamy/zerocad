@@ -147,7 +147,13 @@ async function main(): Promise<number> {
       // Files named on the command line instead of the suite: how the depth
       // measurement (depth.measure.ts, `npm run measure:depth`) gets the same
       // private server without being part of every run.
-      ["--experimental-strip-types", "--test", "--test-concurrency=2", ...(process.argv.length > 2 ? process.argv.slice(2) : ["test/e2e/*.e2e.ts"])],
+      // Every test has a timeout: a wait on a crashed target that nothing
+      // bounds (harness.ts's `bounded` has the story) ends as that test's
+      // failure, not as a runner that waits forever. Fifteen minutes is far
+      // past the slowest test seen (the see-through contrasts, ~100 s at
+      // load 40; fits' every-device loops, minutes) and far short of the
+      // fifty a hung file cost twice.
+      ["--experimental-strip-types", "--test", "--test-concurrency=2", "--test-timeout=900000", ...(process.argv.length > 2 ? process.argv.slice(2) : ["test/e2e/*.e2e.ts"])],
       { cwd: root, stdio: "inherit", env: { ...process.env, NEOCAD_E2E_URL: url } },
     );
     let givenUp = false;

@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CDPSession } from "playwright";
-import { axisFrame, forgetAutosave, openApp, PARKED, type AppContext } from "./harness.ts";
+import { axisFrame, forgetAutosave, openApp, PARKED, timedCdp, type AppContext } from "./harness.ts";
 import { fingers, type Fingers } from "./fingers.ts";
 import { ANDROIDS, androidWindowOf, type AndroidMode, type Turn } from "../devices.ts";
 
@@ -91,7 +91,7 @@ let cdp: CDPSession;
 let f: Fingers;
 before(async () => {
   app = await openApp({ device: "Pixel 7", init: { fn: platform } });
-  cdp = await app.page.context().newCDPSession(app.page);
+  cdp = timedCdp(await app.page.context().newCDPSession(app.page));
 });
 after(async () => { await app.close(); });
 
