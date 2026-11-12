@@ -16,9 +16,13 @@
 // frame drew (main.ts hands them over each frame, with their occlusion
 // answer, built once) — occlusion.ts's `nearestFace`, the e2e oracle's own
 // question, so the face picked is the face shown. A face has no reach: it is
-// under the pixel or it is not. Named as the kernel names it (`e1.lid`,
-// `e1.m3` — faces.ts's `Face.name`), whichever built the body. In the wire
-// view no faces are drawn, so none pick.
+// under the pixel or it is not. A drawn face carries the kernel's tag (`e1.lid`,
+// `e1.m3` — faces.ts's `Face.name`), whichever built the body; the pick is
+// handed on under the face's **written** name, the entity a wall is swept from
+// (`e1:l2`), by the function the host gives (`written`, the engine's:
+// solidref.ts's `faceRef`), and a face is lit by the tags its name is this
+// build (`faceShade`, handed `faceKernelNames`). In the wire view no faces
+// are drawn, so none pick.
 //
 // Pure: faces, an occlusion over them, a pixel — no canvas, no model state.
 
@@ -52,13 +56,16 @@ export function faceUnder(drawn: DrawnFaces | null, sx: number, sy: number): { n
  * a curve, a kernel edge — or a sketch's own geometry) where there is one,
  * else the face under the pixel as a `kind: "face"` pick, said by `describe`.
  * A glyph `pick` found is passed on as it is: whether a label under the hand
- * is a place to put another is the tool's question.
+ * is a place to put another is the tool's question. `written` turns the drawn
+ * face's tag into the name a relation holds (a wall's entity, not its place).
  */
 export function pickSolid(pick: Pick | null, drawn: DrawnFaces | null, sx: number, sy: number,
-  describe: (face: string) => string): Pick | null {
+  describe: (face: string) => string, written: (tag: string) => string = (tag) => tag): Pick | null {
   if (pick) return pick;
   const f = faceUnder(drawn, sx, sy);
-  return f ? { name: f.name, kind: "face", distance: 0, body: f.feature, tag: describe(f.name) } : null;
+  if (!f) return null;
+  const name = written(f.name);
+  return { name, kind: "face", distance: 0, body: f.feature, tag: describe(name) };
 }
 
 /** How finely a lit face is filled, in screen pixels: the cell a face is asked whether it is in front at. */
@@ -71,12 +78,14 @@ export const SHADE_PX = 3;
  * face in front of it — seen in the browser: the back wall of a step lit
  * across the front one — and a 2D canvas has no depth test to stop it, so the
  * same question the pick asks (`nearestFace`) is asked cell by cell, over the
- * face's own screen box only.
+ * face's own screen box only. `tags` is the drawn faces' own names — one, or
+ * every place a wall named by its entity is drawn as this build.
  */
-export function faceShade(drawn: DrawnFaces | null, name: string, view: View): { cells: [number, number][]; runs: [number, number][][] } {
+export function faceShade(drawn: DrawnFaces | null, tags: string | readonly string[], view: View): { cells: [number, number][]; runs: [number, number][][] } {
   if (!drawn) return { cells: [], runs: [] };
+  const wanted = new Set(typeof tags === "string" ? [tags] : tags);
   const mine = new Set<number>();
-  drawn.faces.forEach((f, i) => { if (f.name === name) mine.add(i); });
+  drawn.faces.forEach((f, i) => { if (f.name !== undefined && wanted.has(f.name)) mine.add(i); });
   if (!mine.size) return { cells: [], runs: [] };
   let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
   for (const i of mine) {

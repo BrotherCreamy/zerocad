@@ -40,10 +40,10 @@ export interface PointerInfo {
   plane?: Plane;
   /**
    * **The solid's face the pixel landed on** (docs/plans/click-on-face.md),
-   * in a 3D model with no sketch plane chosen: named as the kernel names it
-   * (`e1.lid`, `e1.m3`), and whether it is flat. `world` is on it, and
+   * in a 3D model with no sketch plane chosen: named by what it is swept from
+   * (`e1.lid`, `e1:l2`), and whether it is flat. `world` is on it, and
    * `plane` is its plane facing the viewer. A point placed on a flat face is
-   * held there — `onplane(p, "e1.m3")`, place.ts — and on a round one only
+   * held there — `onplane(p, "e1:l2")`, place.ts — and on a round one only
    * placed. Absent on the ground, and whenever a sketch plane is chosen,
    * where every click lands on that plane whatever is under it (case 1,
    * sketch-mode.md).
@@ -120,7 +120,7 @@ export interface ToolContext {
    * before an edge before a face (docs/plans/smart-dimension.md): `pick`'s
    * answer where it has one (a point, a curve, a line, a kernel edge), and
    * where it has none, the face of a solid the point is on, as a `kind:
-   * "face"` pick named as the kernel names it (`e1.lid`). For a tool that
+   * "face"` pick named by what it is swept from (`e1.lid`, `e1:l2`). For a tool that
    * takes faces — the dimension tool, a relation to a face. Faces still pick
    * nowhere else (ARCHITECTURE.md: a click on a face is a click on nothing).
    * Absent outside a viewport, like `pick`.

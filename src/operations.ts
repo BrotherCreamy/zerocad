@@ -28,6 +28,7 @@ import {
 } from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
 import { ungroup } from "./groups.ts";
+import { leaveFor, shrinkFor } from "./among.ts";
 
 function unit(v: number[]): number[] {
   const len = Math.hypot(...v);
@@ -3953,9 +3954,20 @@ function cascade(model: Model, name: string): string[] {
   // an axis (`par("l1","f.x")`) still takes that relation with it, and so
   // does a face's `"p1.p2.p3"` any of its three points — see
   // `Model.relationsNaming`.
-  const relations = [...model.relations.values()]
-    .filter((r) => asked.has(r.name) || r.args.some((a) => referentsOf(a).some((n) => doomed.has(n))))
-    .map((r) => r.name);
+  //
+  // **A relation among many loses a member and stays** (among.ts,
+  // docs/plans/review-relations.md): `par("l1", "l2", "l3", "l4")` with `l1`
+  // on its way out is `par("l2", "l3", "l4")` afterwards, under its name —
+  // whichever member it was, so the first one picked is no more load-bearing
+  // than the last. Down to two; with one left it goes like any other.
+  const shrinking = new Map<string, string[]>();
+  const relations: string[] = [];
+  for (const r of model.relations.values()) {
+    if (!asked.has(r.name) && !r.args.some((a) => referentsOf(a).some((n) => doomed.has(n)))) continue;
+    const leaving = asked.has(r.name) ? null : shrinkFor(model, r, doomed);
+    if (leaving) shrinking.set(r.name, leaving);
+    else relations.push(r.name);
+  }
   // Every record naming anything on the way out — the inward rule — plus the
   // feature asked for.
   const going = new Set([...doomed, ...relations]);
@@ -4001,6 +4013,9 @@ function cascade(model: Model, name: string): string[] {
     model.deleteRelation(r);
     removed.push(r);
   }
+  // The members going leave the relations that stay — journalled as a `leave`
+  // each, ahead of the deletions, so a replay leaves them the same way.
+  for (const [r, leaving] of shrinking) if (model.relations.has(r)) leaveFor(model, r, leaving);
   // Then entities, dependents before the things they depend on. A pass at a
   // time rather than a hand-written order, so this stays right if an entity
   // kind that references another entity is ever added.
