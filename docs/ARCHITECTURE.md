@@ -2618,7 +2618,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-six bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-seven bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -3026,6 +3026,13 @@ of running the app:
    something cuts is an edge to edit now, its place the point of it drawn
    under the pixel (`placeOn`, editdraw.ts), and a lid's corner offers the
    cut edges through it.
+77. The trim tool's click on a line a fillet had shortened trimmed the
+   construction line lying along it (docs/plans/fillets-one-thing.md): the
+   two were exactly as near the pixel, and the first in entity order won —
+   the one set aside. On the iPhone the offset tool's chain from the same
+   pick was one line, since a chain runs past construction curves. The unit
+   tests call `trim` and `offset` by name and passed. A pick's tie within
+   half a pixel goes to the real curve now (`hitTest`).
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

@@ -26,7 +26,7 @@ import { REPOINTED, construction, del, extrude, fillet, region, regen, set, stan
 import { chamfer } from "../src/sketchedit.ts";
 import { chamferEdges, filletEdges, profileCorner } from "../src/blends.ts";
 import { dist, fix, onPlane } from "../src/relations/basic.ts";
-import { parallel, perpendicular, pointOnLine } from "../src/relations/geometry.ts";
+import { angle, parallel, perpendicular, pointOnLine } from "../src/relations/geometry.ts";
 import { open, save, VERSION } from "../src/persist.ts";
 import { linksOf } from "../src/twins.ts";
 import { findLoops } from "../src/loops.ts";
@@ -39,6 +39,8 @@ import { menuFor } from "../src/menu.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { chamferFaceRefusal, chamferOfFace } from "../src/tools/sketch.ts";
 import { cornerAt } from "../src/tools/fillet.ts";
+import { hitTest } from "../src/picking.ts";
+import { worldToScreen } from "../src/view.ts";
 import { faceKernelNames } from "../src/relations/solidref.ts";
 import { tiltedFrame } from "./frames.ts";
 import { polygon } from "./profiles.ts";
@@ -134,6 +136,12 @@ test("a sketch fillet on an extruded corner keeps the two lines and the corner �
     assert.ok(len(sub(sub(m.coords(t), m.coords(b)), [0, 0, 16])) < 1e-6, `${b} → ${t} is the chord`);
   }
   assert.deepEqual(m.diagnose().redundant, [], "nothing redundant: the join form of the tangency, not the distance form");
+  // An angle typed afterwards, on a line from a corner, is met (a probe once
+  // read a conflict here: it had named the fillet's own shorter line, l5).
+  const far = m.addPoint([60, 120, 0]).name;
+  const l5 = m.addLine(P[1], far).name;
+  angle(m, L[0], l5, Math.PI / 6);
+  ok(m, "an angle after the fillet");
 });
 
 test("the body, measured: V − (4 − π)/4 · r² · depth, every face accounted for, no kernel blend in the chain", { skip }, async () => {
@@ -256,6 +264,19 @@ test("the fillet tool's corner click: a corner already cut at the far end has a 
   fillet(m, L[0], L[1], 5);
   assert.deepEqual(cornerAt(m, P[2])?.sort(), [standsFor(m, L[1]), L[2]].sort(), "l2 is construction now; its piece and l3 bound there");
   assert.deepEqual(cornerAt(m, P[1]), [L[0], L[1]], "with no real line at the old corner, the two construction ones");
+});
+
+test("a click on the shorter line, which lies along the construction line it was cut from, picks the shorter line: a real curve wins the tie", async () => {
+  const { m, L } = await block();
+  fillet(m, L[0], L[1], 5);
+  const view = { ox: 400, oy: 300, scale: 6 };
+  // Halfway along the bottom edge both lines pass; the sharp corner's end is the construction line's alone.
+  const [sx, sy] = worldToScreen(view, [20, 0, 0]);
+  assert.equal(hitTest(m, view, sx, sy + 1)?.name, standsFor(m, L[0]), "the shorter line, not the construction line over it");
+  // Between the tangent point (35, 0) and the corner (40, 0), just below the
+  // line: clear of both points' reach and of the arc's at this scale.
+  const [cx, cy] = worldToScreen(view, [38.5, -0.5, 0]);
+  assert.equal(hitTest(m, view, cx, cy)?.name, L[0], "where only the construction line runs, it picks");
 });
 
 // --- anything can be construction ----------------------------------------------------------------

@@ -55,6 +55,16 @@ otherwise.
   - **A line set aside stands for the shorter line made in its place** when
     a loop is named by it (`extrude("l1")`, `revolve`, `region`): the
     construction line is what still carries the name a person sees.
+  - **A chain (offset, trim, extend) runs past a construction curve** unless
+    asked from it: the corner's line set aside ends where the shorter line
+    begins, and a chain that turned onto it would offset the sharp corner
+    with the rounded one. The curve the chain was asked from is never
+    skipped, construction or not.
+  - **A real curve wins a pick's tie with a construction curve** (`hitTest`,
+    half a pixel): the shorter line lies along the line set aside, and a
+    trim, an offset or a click there is after the real one. Where only the
+    construction line runs — between the tangent point and the sharp corner
+    — it picks as before.
   - **The corner point is construction only once nothing real ends at it**:
     a record told to regenerate nothing (a version-8 file's fillet) keeps a
     wall standing on the corner, which stays a real point.

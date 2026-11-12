@@ -138,7 +138,7 @@ test("the workbench is the document's: saved in its head, opened back, and no un
   await app.type("pt(1, 2)");
   const text = (await app.repl("save()")).value as string;
   assert.equal(JSON.parse(text).workbench, "sketch");
-  assert.equal(JSON.parse(text).version, 21);
+  assert.equal(JSON.parse(text).version, 22);
   await app.type('workbench("part")');
   await app.type("undo()");
   assert.equal((await app.repl("workbench()")).value, "part", "undo does not switch workbench back");

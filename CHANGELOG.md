@@ -40,7 +40,15 @@ with review item 7; format 22).
   end shortens the shorter line in place; four rounded corners are four
   construction lines, four real ones, four arcs. `extrude("l1")`,
   `revolve` and `region` named by a line set aside take the line made in
-  its place (`standsFor`).
+  its place (`standsFor`). A chain (`offset`, `trim`, `extend`,
+  `chainThrough` in sketchedit.ts) runs past a construction curve unless
+  asked from it, so an offset of the rounded outline is five copies, the
+  shorter lines' and the arc's, not the sharp corner's too. A pick
+  (`hitTest`, picking.ts) within half a pixel of both prefers the real
+  curve: the trim tool's click on the shorter line took the construction
+  line over it, and the offset tool's chain from it was one line —
+  browser-only bug 77 (docs/ARCHITECTURE.md), found by the sketch-edit e2e
+  with the unit suite green. Seventy-seven.
 - **A record standing on the corner sets its half aside and is rebuilt on
   the rounded loop** (`regenerateRounded`, `ExtrudeFeature.aside`): the
   twin lines, the twin corner and the chord between the corners stay,
@@ -83,7 +91,7 @@ with review item 7; format 22).
   (what it named, no partner); the marks stay on save.
   `test/fixtures/fillets-v21.neocad.json`, saved by the build before this
   one, opens to the model it was.
-- Unit: `test/filletsonething.test.ts` (16); the suites that asserted the
+- Unit: `test/filletsonething.test.ts` (17); the suites that asserted the
   re-pointing fillet now assert the kept corner. E2E, mouse and iPhone 13:
   `filletsonething.e2e.ts`. Decisions in TODO.md's register; what was tried
   and dropped in CONVERSATION_LOG.md.

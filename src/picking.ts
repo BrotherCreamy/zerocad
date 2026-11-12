@@ -127,6 +127,16 @@ export function hitTest(
   const screenOf = (name: string) => projectPoint(model, view, name);
   const seen = (world: number[]) => inSight(occ, world);
   const shown = [...model.entities.values()].filter((e) => !model.hidden.has(e.name));
+  // Does a curve at distance d beat the best so far? Within half a pixel it is
+  // a tie, and a construction curve loses one to a real curve: a corner's line
+  // set aside by a fillet lies along the shorter line made in its place
+  // (docs/plans/fillets-one-thing.md), and a trim or an offset asked there is
+  // after the real one. Two of a kind keep the first found, as before.
+  const closer = (d: number, name: string): boolean => {
+    if (!best) return true;
+    if (Math.abs(d - best.distance) > 0.5) return d < best.distance;
+    return model.isConstruction(best.name) && !model.isConstruction(name);
+  };
 
   // Tier 1: points.
   let best: Pick | null = null;
@@ -163,7 +173,7 @@ export function hitTest(
     } else {
       continue;
     }
-    if (d >= rCurve || (best && d >= best.distance)) continue;
+    if (d >= rCurve || !closer(d, e.name)) continue;
     if (occ && !seen(screen.lift([sx, sy]))) continue;
     best = { name: e.name, kind: e.kind, distance: d };
   }
@@ -182,7 +192,7 @@ export function hitTest(
   for (const e of shown) {
     if (e.kind !== "line") continue;
     const near = toSegment(sx, sy, screenOf(e.refs[0]), screenOf(e.refs[1]));
-    if (!near || near.d >= rLine || (best && near.d >= best.distance)) continue;
+    if (!near || near.d >= rLine || !closer(near.d, e.name)) continue;
     if (occ) {
       // Orthographic projection is affine, so the fraction along the segment
       // on screen is the fraction along the edge in the world.

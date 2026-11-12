@@ -207,7 +207,7 @@ test("the fillet tool picks a corner of the base, and Enter rounds it, and the l
   await app.page.waitForTimeout(300);
   const after = await app.model();
   assert.equal(after.byKind.arc, 2, "the arc, and its twin on the lid");
-  assert.equal(after.byKind.line, m.byKind.line + 1, "one line more: the lid's wall at the new tangent point");
+  assert.equal(after.byKind.line, m.byKind.line + 6, "six lines more: a shorter line in each leg's place on the base, their twins on the lid, and a wall at each tangent point — the corner's two lines and its wall stay, construction");
   assert.equal(await app.status(), "SOLVED");
   await shot("7-fillet");
 });

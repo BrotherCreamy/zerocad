@@ -1062,6 +1062,10 @@ export function chainThrough(model: Model, curve: string): string[] {
   const order = [...model.entities.keys()];
   for (const c of model.entities.values()) {
     if (c.kind !== "line" && c.kind !== "arc" && c.kind !== "spline") continue;
+    // A construction curve is no part of an outline's chain (a corner's line
+    // set aside by a fillet ends where the shorter line in its place begins),
+    // unless it is the curve the chain was asked from.
+    if (c.name !== curve && model.isConstruction(c.name)) continue;
     for (const p of chainEnds(c)) at.set(keyOf(p), [...(at.get(keyOf(p)) ?? []), c.name]);
   }
   const found = new Set([curve]);

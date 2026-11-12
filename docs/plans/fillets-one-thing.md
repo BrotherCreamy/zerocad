@@ -82,7 +82,11 @@ piece whose identity survives; regions walk past construction already. So:
    piece), so a rectangle rounded at four corners is four construction
    lines, four real ones and four arcs. A line set aside **stands for** the
    shorter line made in its place wherever a loop is named by it
-   (`standsFor`: `extrude("l1")`, `revolve`, `region`).
+   (`standsFor`: `extrude("l1")`, `revolve`, `region`). Where the two lie
+   along each other, the real one is what is meant: a chain (`offset`,
+   `trim`, `extend`; `chainThrough`) runs past a construction curve unless
+   asked from it, and a pick within half a pixel of both (`hitTest`) takes
+   the real curve.
 2. **A record standing on the corner follows, and sets aside its half**
    (`regenerateRounded`): the twin lines and corner, and the chord between
    the two corners, go on the record's `aside` list — kept, construction, no

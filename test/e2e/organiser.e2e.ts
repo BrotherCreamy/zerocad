@@ -146,7 +146,7 @@ test("the open marker closes it; the eye hides and shows; a row tap selects", as
   assert.equal(await app.page.$eval(row("g1"), (e) => e.classList.contains("on")), true, "the row is lit while its members are selected");
 });
 
-test("an extrude is a Features row; its eye hides it; its menu offers Edit e1 and Delete", async () => {
+test("an extrude is a Features row; its eye hides it; its menu offers Edit e1, Construction and Delete", async () => {
   await app.repl("select()");
   const m = await app.model();
   await app.type(`extrude("${m.lines[0].name}", 20)`);
@@ -162,7 +162,7 @@ test("an extrude is a Features row; its eye hides it; its menu offers Edit e1 an
   assert.equal(await lastTyped(app), 'show("e1")');
   await app.page.click(`${row("e1")} .oname`, { button: "right" });
   await app.page.waitForTimeout(150);
-  assert.deepEqual(await menuItems(app), ["Edit e1", "Delete"]);
+  assert.deepEqual(await menuItems(app), ["Edit e1", "Construction", "Delete"], "one construction row on every kind: a body's too (docs/plans/fillets-one-thing.md)");
   await shot(app, "desktop-feature-menu");
   await app.page.keyboard.press("Escape");
   await app.page.mouse.click(5, 790);

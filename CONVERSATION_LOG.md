@@ -68,8 +68,16 @@ flagged construction stops being the plane extrudes default to.
 **The e2e pictures.** `SOLVED` fades from the status by design, so two of
 the pictures show the counts without the verdict; nothing is unsolved. The
 hidden-line view doubles every mark, which crowds the corner in 490 and
-491 — the linked-profiles register already files that. No browser-only bug
-was found by this package; the count stays at seventy-six.
+491 — the linked-profiles register already files that.
+
+**Browser-only bug 77.** The unit suite passed with the kept corner; the
+sketch-edit e2e did not: the trim tool's click halfway along the shorter
+line typed `trim("l3", …)` — the construction line lying along it, first in
+entity order and exactly as near — and on the iPhone the offset tool's chain
+from that pick was one line, since a chain runs past construction curves.
+Nothing in the unit tests clicks. `hitTest` gives a tie within half a pixel
+to the real curve now; where only the construction line runs, between the
+tangent point and the sharp corner, it picks as before.
 
 ## 2026-11-12 — "there is no such thing as a sketch"
 

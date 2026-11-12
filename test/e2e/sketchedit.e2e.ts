@@ -107,7 +107,7 @@ test("a rectangle with the rectangle tool, its corner bevelled by a click on the
   await key("Enter");
   const typed = (await typedLines(app)).at(-1)!;
   assert.match(typed, /^chamfer\("l\d+", "l\d+", 12\)$/);
-  assert.equal((await app.model()).byKind.line, 5, "the corner cut by a line");
+  assert.equal((await app.model()).byKind.line, 7, "the corner cut by a line: its two edges kept as construction, two shorter lines, the chamfer's");
   await app.page.mouse.move(10, 10);
   await shot(app, "2-bevelled");
   await undoesInOne(before);
@@ -124,7 +124,7 @@ test("the offset tool: a click on an edge, the cursor outside, ✓ — the bevel
   const typed = (await typedLines(app)).at(-1)!;
   assert.match(typed, /^offset\(\["l\d+"(,"l\d+"){4}\], 6\)$/, typed);
   const m = await app.model();
-  assert.equal(m.byKind.line, 10, "five copies");
+  assert.equal(m.byKind.line, 12, "five copies: the chain runs through the shorter lines and the chamfer's, past the two edges kept as construction");
   // The bottom edge's copy is six below it.
   assert.ok(Object.values(m.points).some((p) => Math.abs(p[1] + 46) < 1e-6), "a copy at y = −46");
   await key("Escape");

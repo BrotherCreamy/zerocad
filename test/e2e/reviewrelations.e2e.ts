@@ -415,13 +415,15 @@ test("desktop: the wall under the hand is named by its line before the click, an
   const p = held[0].args[0] as string;
   const was = await coords(desk, p);
   assert.ok(Math.abs(was[0]) < 1e-6, `on x = 0: ${was}`);
-  // The profile's first corner rounded: an arc joins it at place 1, and every
-  // wall after it — l4's among them — is one place further on. The point
-  // stays on l4's wall; held by the place, it went to the next wall's.
+  // The profile's first corner rounded: its two lines are construction and
+  // the profile is walked from the first edge still as drawn — l3, l4, then
+  // the shorter lines either side of the arc — so every wall has another
+  // place. The point stays on l4's wall; held by the place, it would have
+  // gone to another wall's.
   await type(h, 'select; fillet("l1", "l2", 6)');
   assert.equal(await h.app.status(), "SOLVED");
   const loops = await desk.page.evaluate(() => (window as never as Probe).__neocad.model.features.get("e1")!.loops[0].map((x) => (typeof x === "string" ? x : x.name)));
-  assert.equal(loops.indexOf("l4"), 4, `l4 is in place 4 now: ${loops}`);
+  assert.equal(loops.indexOf("l4"), 1, `l4 is in place 1 now: ${loops}`);
   const now = await coords(desk, p);
   assert.ok(Math.abs(now[0]) < 1e-6 && Math.abs(now[1] - was[1]) < 1e-3, `still on x = 0, where it was put: ${was} → ${now}`);
 });
