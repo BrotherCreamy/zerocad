@@ -1,8 +1,10 @@
 # Plan: Through all is a relation to the far side's own geometry — and Up to face is the same relation
 
-**Status: queued, after `linked-profiles.md`** (2026-11-12), which it stands
-on (the lid is the twin profile, and a feature relates to its geometry rather
-than owning it). Review item 8 of 2026-11-09, which the owner passed with
+**Status: built** (2026-11-12, branch `claude/through-all-relation`; *The
+design made exact against the code* below was written before the code, and
+*As built* at the end says what was made, what was measured and what was
+taken out again). Stands on `linked-profiles.md` (the lid is the twin
+profile, and a feature relates to its geometry rather than owning it). Review item 8 of 2026-11-09, which the owner passed with
 *"All good"*: *"`defineThroughReach`: a relation reading kernel geometry
 through a hook keeps the layer rule's letter; Through all should be a
 relation to the far face's defining geometry."* The owner's principle:
@@ -326,3 +328,120 @@ words when typed without one — nothing in the model says where it is.
   timeline and stays one here.
 - A lid that is not flat (up to a slanted or curved face, as SolidWorks'
   Up To Surface trims) needs a loft or a trim in the kernel.
+
+## As built (2026-11-12)
+
+### What is where
+
+- `src/relations/extrusion.ts`: `lidReach` lives here (blind: the depth;
+  symmetric: half; **held**: the chord's own length, signed as the depth),
+  and the chord's length row **gives no row while `endRelation` finds a
+  relation holding the end** — asked by name at every evaluation, so the row
+  is back the moment the relation goes, by `setEnd`, by `del`, by a cascade.
+- `src/model.ts`: `Extent` gains `"upto"`; `ExtrudeFeature.upto` is the
+  face; `endName`, `endRelation`, `extrudeOfEnd`, `endLabel` — names and
+  structure, no positions. `defineThroughReach` is gone.
+- `src/farside.ts` (new, at the operations' height, may read the solids
+  layer): `farSide` — the features the swept profile **meets** (a walk of
+  the profile's interior along the way, each feature's own insideness; not
+  cuts, not open or unbuilt features), the farthest of their vertices (both
+  profiles' line and arc ends, and centres), *placed* where something of a
+  met solid stands farther; ties: a corner before a centre, then the lower
+  name; `prefer` keeps an end already on a farthest vertex. `stopsShort` for
+  the organiser, with the dear half (which features are met) kept between
+  redraws. `faceAhead` for up to face.
+- `src/operations.ts`: `extrude` with `{ end: "through" | "upto", face, to,
+  at }`; `setEnd(feature, end, a?, b?)`; `endThrough`, `endUpto`, `seatEnd`,
+  `seatEnds` (every held end seated after every `set`), `rechooseEnds`
+  (after every regeneration), `releaseEnd` (what `del("e2_through")` and the
+  far vertex's deletion journal: `setEnd("e2", "blind", <depth it stood
+  at>)`), `endSaid` for the log; `set` on a held depth across zero re-picks
+  the far side (through) or is refused (upto).
+- `src/solids.ts`: `extrudeSpan` runs a held through *cut's* tool
+  `throughPast` beyond its lid; `throughReach` is gone.
+- `src/persist.ts`: format 23; a file of 22 or before has each through end
+  found once after its values are restored and written as a `setEnd` at the
+  journal's end.
+- `src/tools/feature.ts`, `extrude.ts`, `edit.ts`: "Up to face" in the end
+  row; one more press, on the face (`uptoPickAt`); the Cut tool the same.
+- `src/organiser.ts`: a through cut that stops short says *short*, with the
+  one-tap fix in the open marker's place and "Go through again" on its menu.
+- `src/glyphs.ts`: the depth's label is `endLabel`'s ("through all",
+  "through (placed)", "up to e1:l2"); the through relation is marked on the
+  far vertex and on the cut's far rim.
+- `src/kernel/problem.ts`: `rowsOf(handle)`, point-blind, for the test that
+  counts an extrusion's rows.
+
+### Measured (`test/through.measure.ts`, both builds, a squared plate on a tilted frame)
+
+Before:
+
+## a through cut's solve
+| case | solved | iterations | ms (least of 5) | the cut's chord: lean, length | the lid off the plate's far face | the dragged corner moved |
+|---|---|---|---|---|---|---|
+| a hole: the plate set from 10 to 20 deep | true | 35 | 63.42 | 5.6e-9, 22.0000 | -2.0000 | — |
+| a hole: at rest | true | 0 | 0.27 | 1.5e-9, 11.0000 | -1.0000 | — |
+| a hole: a top corner dragged 8 along its x: a resize, twelve frames and a solve | true | 67 | 291.78 | 9.2e-10, 11.0000 | — | 0.000 of 8 |
+| a hole: a top corner dragged 8 up, off its top: a fight with the base's hold, twelve frames and a solve | true | 33 | 408.12 | 3.1e-10, 11.0000 | — | 0.000 of 8 |
+| a hole and a pocket: the plate set from 10 to 20 deep | true | 9 | 49.81 | 2.9e-9, 22.0000 | -2.0000 | — |
+| a hole and a pocket: at rest | true | 0 | 0.46 | 4.9e-9, 11.0000 | -1.0000 | — |
+| a hole and a pocket: a top corner dragged 8 along its x: a resize, twelve frames and a solve | true | 68 | 874.19 | 1.9e-10, 11.0000 | — | 0.000 of 8 |
+| a hole and a pocket: a top corner dragged 8 up, off its top: a fight with the base's hold, twelve frames and a solve | true | 37 | 451.41 | 5.8e-10, 11.0000 | — | 0.000 of 8 |
+
+As built:
+
+## a through cut's solve
+| case | solved | iterations | ms (least of 5) | the cut's chord: lean, length | the lid off the plate's far face | the dragged corner moved |
+|---|---|---|---|---|---|---|
+| a hole: the plate set from 10 to 20 deep | true | 7 | 8.36 | 1.2e-8, 20.0000 | -0.0000 | — |
+| a hole: at rest | true | 0 | 0.25 | 1.9e-14, 10.0000 | -0.0000 | — |
+| a hole: a top corner dragged 8 along its x: a resize, twelve frames and a solve | true | 108 | 154.82 | 9.1e-12, 10.0000 | — | 8.000 of 8 |
+| a hole: a top corner dragged 8 up, off its top: a fight with the base's hold, twelve frames and a solve | true | 127 | 262.37 | 1.5e-10, 10.0000 | — | 0.002 of 8 |
+| a hole and a pocket: the plate set from 10 to 20 deep | true | 8 | 13.21 | 2.0e-10, 20.0000 | 0.0000 | — |
+| a hole and a pocket: at rest | true | 0 | 0.39 | 1.9e-14, 10.0000 | -0.0000 | — |
+| a hole and a pocket: a top corner dragged 8 along its x: a resize, twelve frames and a solve | true | 335 | 1623.30 | 3.2e-9, 10.0000 | — | 8.000 of 8 |
+| a hole and a pocket: a top corner dragged 8 up, off its top: a fight with the base's hold, twelve frames and a solve | true | 275 | 2383.47 | 2.8e-10, 10.0000 | — | 0.002 of 8 |
+
+- The plate set deeper: **35 → 7 iterations, 63 → 8 ms**; with a pocket 9 →
+  8 and 50 → 13. The lid is on the far face (0.0000), not a unit past it.
+- **On the build before, a plate with a through hole could not be dragged**:
+  a corner pulled 8 moved **0.000**, along the plate and off it. As built the
+  resize moves 8.000 in 108 iterations and 155 ms (a hole), 335 and 1.6 s (a
+  hole and a pocket; three of twelve frames at the kernel's sixty — filed).
+  The fight with the base's hold moves 0.002 either way.
+- The "leaned and never settled" case (`throughReach`'s comment): a cut
+  through a plate set deeper. Lean 1.2e-8 of 20 after 7 iterations; a second
+  solve has nothing to do (`test/throughrelation.test.ts`, "it follows,
+  settled").
+- `farSide` on a plate with a hole and a boss: 3.4 ms a call. It is called by
+  operations and by the organiser's `stopsShort`, which keeps the met set
+  for half a second or until the journal grows.
+
+### Deviations from the design, and what was measured and taken out
+
+- **The row is exact in both points, not in the lid's turn.** `readPlane`
+  reads a cap's normal as a datum (#89). Made a column — the chord pair's
+  six variables — it settled a fighting drag that had stalled 6e-4 off after
+  two hundred iterations; and it let a `dist` of 15 on a through cut's chord
+  through a plate 10 thick be met by sliding the hole 150 along the top and
+  leaning the cut 0.5° against its `par`, every row under the offender
+  threshold: SOLVED where it is a conflict. Scaling the perpendicular's
+  curve-normal rows by the chord's length moved the slide to the `par`.
+  The lever is a unit angle row (review-solver's `k = 1` for normals) times a
+  free in-plane translation; closing it is that decision's, not this one's.
+  The datum was kept; both are in the register and TODO.md.
+- **The marks are quiet** until a conflict, as a point's marks are; and the
+  far rim's mark is behind the plate from above.
+- **"The far point is searched over the bodies the swept profile meets"** —
+  as designed, and a cut is not one: the second through cut stood a tenth
+  past the first one's tool before.
+- **Deleting the extrude**: a round hole's `e2_through` goes with the record
+  (one lid point, nothing to re-hold on); a pocket's becomes `coplanar` over
+  three lid points under its name — linked-profiles' rule, nothing added.
+- **A fillet on the far corner of a slanted block** turns a held end into a
+  placed one, in the fillet's own entry; the held-to-held re-pick is tested
+  with `regen` after a turn.
+- **Up to face behind the sketch** turns the extrude round first, as its own
+  journalled `set` (typed) or by the depth negated in the entry (the call).
+- **Pictures**: 510–521, six each by mouse and on an iPhone 13; 522–524 were
+  not needed.

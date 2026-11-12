@@ -25,7 +25,8 @@
 // built once where nobody will keep it. The copy is asked for again only when
 // the picks, the values or the model change, never per frame.
 
-import { Tool, press, type FeatureDialog, type FeatureLine, type FeaturePreview, type FeatureStep, type Hand, type RegionHit, type RenderContext } from "./tool.ts";
+import { Tool, press, type FeatureDialog, type FeatureLine, type FeaturePreview, type FeatureStep, type Hand, type RegionHit, type RenderContext, type ToolContext } from "./tool.ts";
+import { isPlanarFace } from "../relations/solidref.ts";
 import type { Model } from "../model.ts";
 import { describeFeature } from "../picking.ts";
 import { featureFaces, faceColour, type Face } from "../faces.ts";
@@ -54,12 +55,16 @@ export function modeOptions(values: Record<string, unknown>): FeatureOptions | n
 
 /**
  * How an extrude ends (docs/plans/solid-tools-intuitive.md): **Blind** — the
- * depth, as an extrude has always been — **Through all** or **Symmetric**, in
- * the words a SolidWorks user looks for, a drop-down in the depth's row. Not
- * remembered: a hole through one plate is not the next boss's.
+ * depth, as an extrude has always been — **Through all**, **Up to face** or
+ * **Symmetric**, in the words a SolidWorks user looks for, a drop-down in the
+ * depth's row. Not remembered: a hole through one plate is not the next
+ * boss's. Up to face takes one more press, on the face (`uptoPickAt`):
+ * through all and up to a face are the same relation, the far side's vertex
+ * on this lid or this lid's point on that face
+ * (docs/plans/through-all-relation.md).
  */
 export const END_OPTION = {
-  default: "blind", choices: { blind: "Blind", through: "Through all", symmetric: "Symmetric" }, remember: false, label: "end",
+  default: "blind", choices: { blind: "Blind", through: "Through all", upto: "Up to face", symmetric: "Symmetric" }, remember: false, label: "end",
   // A drop-down where the depth's label was — "Blind ▾ [10] ⇅", SolidWorks'
   // Direction 1 — not a row of its own: as a row of buttons it cost the panel a
   // row, and an iPhone held sideways then had no layout that fit (touch.e2e.ts).
@@ -71,11 +76,34 @@ export const DEPTH_OPTION = {
   default: DEFAULT_DEPTH, unit: "length", flip: true, check: (v: unknown) => (v === 0 ? "cannot be 0" : null),
 } as const;
 
-/** A tool's mode and end options as one call's options — nothing for auto and blind, which leave the call as it always was. */
-export function featureOptions(values: Record<string, unknown>): FeatureOptions | null {
+/**
+ * A tool's mode and end options as one call's options — nothing for auto and
+ * blind, which leave the call as it always was. Up to face is said only with
+ * the face it was pointed at (`upto`).
+ */
+export function featureOptions(values: Record<string, unknown>, upto: UptoPick | null = null): FeatureOptions | null {
   const end: FeatureOptions["end"] | null = values.end === "through" || values.end === "symmetric" ? values.end : null;
-  const o: FeatureOptions = { ...(modeOptions(values) ?? {}), ...(end ? { end } : {}) };
+  const to = values.end === "upto" && upto ? { end: "upto" as const, face: upto.face, ...(upto.at ? { at: upto.at } : {}) } : {};
+  const o: FeatureOptions = { ...(modeOptions(values) ?? {}), ...(end ? { end } : {}), ...to };
   return Object.keys(o).length ? o : null;
+}
+
+/**
+ * The face an up-to-face end was pointed at: its written name (`e1:l2`,
+ * `e1.base`, a kernel-only `e3.f0`), and — for a face nothing in the model
+ * says the place of, a round one or the kernel's own — where the press
+ * landed on it, which is where the lid is then placed.
+ */
+export interface UptoPick { face: string; at: number[] | null }
+
+/** The face under a press, as an up-to-face end takes it — or null off every face. */
+export function uptoPickAt(ctx: ToolContext, screen: [number, number]): UptoPick | null {
+  const pick = ctx.pickSolid?.(screen) ?? null;
+  if (pick?.kind !== "face") return null;
+  const flat = isPlanarFace(ctx.model, pick.name);
+  // A rounded number: this is typed into the command line, and is a place on a face, not a coordinate to hold.
+  const at = flat ? null : ctx.solids?.faceAt(screen)?.at.map((c) => Math.round(c * 1000) / 1000) ?? null;
+  return { face: pick.name, at };
 }
 
 /** A cut's previewed tool solid: a warm red, edge-on to square-on, as faceColour runs a body's tones. */

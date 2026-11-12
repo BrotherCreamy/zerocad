@@ -238,6 +238,20 @@ export class Problem {
   }
 
   /**
+   * How many rows a stored block gives **now** (its function is asked at the
+   * current values), or 0 for no such block. A block may give a different
+   * number from one evaluation to the next — a profile's edges change, a
+   * length that another relation has taken over gives none — so the count is
+   * asked, not remembered.
+   */
+  rowsOf(handle: BlockHandle): number {
+    const e = this.blocks.find((x) => x.id === handle);
+    if (!e) return 0;
+    const vars = resolve(e.block.varIndices);
+    return e.block.fn(vars.map((gi, li) => Dual.variable(this.values[gi], li))).length;
+  }
+
+  /**
    * **What can move with these variables**: the connected component of
    * `seed` in the graph whose edges are the stored blocks. A variable is
    * joined to every block reading it, and a block to every variable it reads.

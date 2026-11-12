@@ -39,7 +39,8 @@ import {
 } from "../operations.ts";
 import { FULL_TURN } from "../relations/revolution.ts";
 import { drawLoops, outlineLoops } from "./region.ts";
-import { DEPTH_OPTION, END_OPTION, FeatureTool, callText } from "./feature.ts";
+import { DEPTH_OPTION, END_OPTION, FeatureTool, callText, uptoPickAt, type UptoPick } from "./feature.ts";
+import { faceSource } from "../relations/solidref.ts";
 
 /** The value a feature's dimension holds now: its depth, or its angle. */
 function valueOf(model: Model, f: FeatureEntry): number {
@@ -53,7 +54,8 @@ function valueOf(model: Model, f: FeatureEntry): number {
  * `set` on the dimension when `value` is not what it holds. Empty when nothing
  * changes.
  */
-export function editSteps(feature: string, toggled: readonly number[][], value: number | null, end: string | null = null): FeatureStep[] {
+export function editSteps(feature: string, toggled: readonly number[][], value: number | null, end: string | null = null,
+                          upto: UptoPick | null = null): FeatureStep[] {
   const steps: FeatureStep[] = toggled.map((at) => (m) => {
     const f = m.featureOf(feature);
     const r = featureRegion(m, f);
@@ -73,7 +75,19 @@ export function editSteps(feature: string, toggled: readonly number[][], value: 
   if (end !== null) {
     steps.push((m) => {
       const f = m.featureOf(feature);
-      if (f.kind !== "extrude" || (f.extent ?? "blind") === end) return null;
+      if (f.kind !== "extrude") return null;
+      // Up to face: the face the row's press landed on (and, for one nothing
+      // in the model places, where). With none pressed, an extrude that
+      // already ends on a face keeps it.
+      if (end === "upto") {
+        if (!upto) {
+          if (f.extent === "upto") return null;
+          throw new Error("up to face: press the face it ends on");
+        }
+        const args = [feature, "upto", upto.face, ...(upto.at ? [upto.at] : [])];
+        return { text: callText("setEnd", args), direct: () => setEnd(m, feature, "upto", upto.face, upto.at ?? undefined) };
+      }
+      if ((f.extent ?? "blind") === end) return null;
       return { text: callText("setEnd", [feature, end]), direct: () => setEnd(m, feature, end) };
     });
   }
@@ -131,17 +145,22 @@ abstract class EditTool extends FeatureTool {
     if (!f) return null;
     const v = values[this.option];
     const end = typeof values.end === "string" ? values.end : null;
-    return editSteps(f.name, this.toggled, typeof v === "number" && Number.isFinite(v) ? v : null, end);
+    return editSteps(f.name, this.toggled, typeof v === "number" && Number.isFinite(v) ? v : null, end, this.upto);
   }
 
+  /** Up to face: the face the end row's press landed on, until the picks go (docs/plans/through-all-relation.md). */
+  protected upto: UptoPick | null = null;
+
   protected picksKey(): string {
-    return `${this.ctx.target ?? ""}:${this.toggled.map((p) => p.map((c) => c.toFixed(6)).join(",")).join("|")}`;
+    return `${this.ctx.target ?? ""}:${this.toggled.map((p) => p.map((c) => c.toFixed(6)).join(",")).join("|")}`
+      + (this.upto ? `>${this.upto.face}@${this.upto.at?.join(",") ?? ""}` : "");
   }
 
   protected dropPicks(): boolean {
-    const had = this.toggled.length > 0;
+    const had = this.toggled.length > 0 || this.upto !== null;
     this.toggled = [];
     this.under = null;
+    this.upto = null;
     return had;
   }
 
@@ -192,6 +211,17 @@ abstract class EditTool extends FeatureTool {
     if (!r || !f) {
       this.guide(f ? `${f.name}'s outline cannot be found — regen("${f.name}") says why` : "the feature is gone");
       return;
+    }
+    // Up to face: the end row asks for a face, and this press is on one — not
+    // one of the feature's own, which are where its loops are toggled.
+    if (this.values().end === "upto") {
+      const face = uptoPickAt(this.ctx, p.screen);
+      if (face && faceSource(this.ctx.model, face.face)?.feature.name !== f.name) {
+        this.upto = face;
+        this.guide(`up to ${face.face} — ✓ to apply`);
+        this.ctx.requestRender();
+        return;
+      }
     }
     const i = this.loopUnder(r, p.screen);
     if (i === r.outline) {

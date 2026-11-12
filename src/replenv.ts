@@ -12,7 +12,7 @@
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import { Dual } from "./kernel/dual.ts";
-import { Model, parseFaceName, parsePointTriple, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
+import { Model, endRelation, parseFaceName, parsePointTriple, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
 import { join, leave } from "./among.ts";
 import * as shapes from "./tools/shapes.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
@@ -24,7 +24,7 @@ import * as geom from "./relations/geometry.ts";
 import { measure } from "./relations/measure.ts";
 import {
   add, construction, del, extrude, fillet, hole, intersect, loopOfMember, orientingPlane, peelOptions, regen, region,
-  regionText, revolve, set, setEnd, subtract, unhole,
+  regionText, revolve, set, setEnd, endSaid, subtract, unhole,
 } from "./operations.ts";
 import { chamferEdges, describeBlend, filletEdges, setEdges } from "./blends.ts";
 import { describeSurface, noSuchSurface, surfaceBlend } from "./surfaces.ts";
@@ -725,8 +725,21 @@ export function neocadScope(h: EnvHandles): Bag {
         : (noSuchSurface(model, "chamfer", a), Array.isArray(b)) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, (d as number | null | undefined) ?? null, regenerated),
     /** A fillet's or chamfer's edges, replaced in place: `setEdges("e3", [...])` — the feature dialog's ✓. */
     setEdges: (feature: string, edges: string[]) => setEdges(model, feature, edges),
-    /** How an extrude ends, changed afterwards: `setEnd("e2", "through")` — "blind", "through" or "symmetric"; the edit dialog's end row. */
-    setEnd: (feature: string, end: unknown) => setEnd(model, feature, end),
+    /**
+     * How an extrude ends, changed afterwards — the edit dialog's end row:
+     * `setEnd("e2", "through")` (through all: the far vertex of what it goes
+     * through, held on its lid by the relation `e2_through`),
+     * `setEnd("e2", "upto", "e1:l2")` (up to a face: its lid point on that
+     * face, `e2_upto`), `"symmetric"`, `"blind"`. The log says what holds the
+     * end — and says so when nothing can (a round far side is placed, not
+     * held). The last argument is the journal's: what the end resolved to.
+     */
+    setEnd: (feature: string, end: unknown, a?: unknown, b?: unknown) => {
+      const out = setEnd(model, feature, end, a, b);
+      const said = endSaid(model, out);
+      if (said) h.log?.(said);
+      return out;
+    },
     /**
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
@@ -782,7 +795,14 @@ export function neocadScope(h: EnvHandles): Bag {
       const { args, options } = peelOptions(rest, "extrude", 3);
       const [depth, given, loops] = args as [number | null | undefined, string | null | undefined, ProfileMember[][] | null | undefined];
       const frame = given == null && loops == null ? planeForFeature(member, "extrude") : given;
-      return namingRegion(() => extrude(model, member, depth ?? null, frame ?? null, loops ?? null, null, options));
+      const out = namingRegion(() => extrude(model, member, depth ?? null, frame ?? null, loops ?? null, null, options));
+      // An end no relation holds is said, not faked (docs/plans/through-all-relation.md).
+      const f = model.features.get(out);
+      if (f?.kind === "extrude" && (f.extent === "through" || f.extent === "upto") && !endRelation(model, f)) {
+        const said = endSaid(model, out);
+        if (said) h.log?.(said);
+      }
+      return out;
     },
     /**
      * Revolves the closed loop a member is in about an axis — `revolve("l1",

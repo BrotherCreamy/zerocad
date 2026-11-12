@@ -10,16 +10,19 @@ import { addEllipse, addEllipticArc, checkEllipse, ellipseOf, semiAxes } from ".
 import { addBSpline, splineOf } from "./kinds/spline.ts";
 import { addSpline } from "./relations/spline.ts";
 import {
-  Model, ORIGIN, SETTABLE_PROPERTY, entityKind, lidReach, isClosedEntity, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
-  EXTENTS, FEATURE_MODES, parseFaceName, type BlendFeature, type Entity, type Expansion, type Extent, type FeatureEntry, type FeatureMode,
-  type Portion, type ProfileMember, type RegionEntry, type RegionOp, type RegionStep, type SurfaceEntry,
+  Model, ORIGIN, SETTABLE_PROPERTY, endName, endRelation, entityKind, extrudeOfDepth, extrudeOfEnd, isClosedEntity, isCurveKind, memberName,
+  parseValueRef, referentOf, referentsOf, valueArgIndex,
+  EXTENTS, FEATURE_MODES, parseFaceName, type BlendFeature, type Entity, type Expansion, type Extent, type ExtrudeFeature, type FeatureEntry,
+  type FeatureMode, type Portion, type ProfileMember, type RegionEntry, type RegionOp, type RegionStep, type SurfaceEntry,
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
-import { coplanar, dist } from "./relations/basic.ts";
-import { capPoints, faceSource } from "./relations/solidref.ts";
+import { faceAhead, farSide, lidOff } from "./farside.ts";
+import { throughPast } from "./solids.ts";
+import { coplanar, dist, onPlane } from "./relations/basic.ts";
+import { capPoints, faceRef, faceSource, planeNow } from "./relations/solidref.ts";
 import { followWith, linksOf, partnersOf, syncTwins } from "./twins.ts";
 import { angle, arcEndpoints, diameter, majorAxis, minorAxis, onCircle, onEllipse, perpendicular, pointOnLine, radius, tangent } from "./relations/geometry.ts";
-import { chordPair, extrusion } from "./relations/extrusion.ts";
+import { chordPair, extrusion, extrusionChord, lidReach } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, seatTurned, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, featurePlane, framePlaneAxes, planeAxes } from "./curveplane.ts";
@@ -409,12 +412,29 @@ export interface FeatureOptions {
   mode?: FeatureMode;
   into?: string;
   /**
-   * How an extrude ends when not blind: `"through"` (through all) or
-   * `"symmetric"` (half each side) — `Extent`. An extrude's only; journalled
-   * as given, beside the mode (docs/plans/solid-tools-intuitive.md).
+   * How an extrude ends when not blind: `"through"` (through all), `"upto"`
+   * (up to a face) or `"symmetric"` (half each side) — `Extent`. An extrude's
+   * only; journalled beside the mode, **with what it found resolved**
+   * (docs/plans/through-all-relation.md): a replay runs on seeds and searches
+   * nothing.
    */
   end?: Extent;
+  /**
+   * What the end resolved to (`EndTo`) — the journal's, never typed: for
+   * through all, the far vertex held on the lid (`"p7"`), the depth it was
+   * placed at where the far side has no vertex (`-15.4`), or null where
+   * nothing was met; for up to a face, the depth a face that cannot be held
+   * was placed at. Absent in a typed call, which finds it.
+   */
+  to?: EndTo;
+  /** Up to a face: the face, as a relation writes one — `"e1:l2"`, `"e1.base"`. */
+  face?: string;
+  /** Up to a face only the kernel knows: the point it was picked at, which is where the lid is placed. Never journalled. */
+  at?: number[];
 }
+
+/** What a through-all or up-to-face end resolved to: a point held, a depth placed at, or nothing met. */
+export type EndTo = string | number | null;
 
 /**
  * A feature call's arguments with its options taken off the end: the first
@@ -431,9 +451,10 @@ export function peelOptions(rest: readonly unknown[], op: string, positional: nu
   }
   if (at !== end - 1) throw new Error(`${op}'s options — { mode: "cut" } — come last`);
   const raw = rest[at] as Record<string, unknown>;
-  const keys = op === "extrude" ? ["mode", "into", "end"] : ["mode", "into"];
+  const keys = op === "extrude" ? ["mode", "into", "end", "face", "to", "at"] : ["mode", "into"];
+  const said = op === "extrude" ? ["mode", "into", "end", "face"] : keys;
   for (const k of Object.keys(raw)) {
-    if (!keys.includes(k)) throw new Error(`${op} has no option ${JSON.stringify(k)} — its options are { ${keys.join(", ")} }`);
+    if (!keys.includes(k)) throw new Error(`${op} has no option ${JSON.stringify(k)} — its options are { ${said.join(", ")} }`);
   }
   const options: FeatureOptions = {};
   if (raw.mode !== undefined && raw.mode !== null) {
@@ -448,11 +469,36 @@ export function peelOptions(rest: readonly unknown[], op: string, positional: nu
   }
   if (raw.end !== undefined && raw.end !== null && raw.end !== "blind") {
     if (typeof raw.end !== "string" || !(EXTENTS as readonly string[]).includes(raw.end)) {
-      throw new Error(`${op}'s end is "blind" (the depth), "through" (through all) or "symmetric" (half each side) — not ${JSON.stringify(raw.end)}`);
+      throw new Error(`${op}'s end is ${ENDS} — not ${JSON.stringify(raw.end)}`);
     }
     options.end = raw.end as Extent;
+    if (options.end === "upto") {
+      if (typeof raw.face !== "string") throw new Error(`${op}'s end "upto" ends on a face — { end: "upto", face: "e1:l2" } — and got ${JSON.stringify(raw.face)}`);
+      options.face = raw.face;
+      if (raw.at !== undefined && raw.at !== null) options.at = givenPoint(raw.at, `${op}'s at`);
+    }
+    if ("to" in raw && raw.to !== undefined) options.to = givenEndTo(raw.to, options.end, op);
   }
   return { args: rest.slice(0, Math.min(at, positional)), options };
+}
+
+/** The ends an extrude can be told, as every refusal lists them. */
+const ENDS = '"blind" (the depth), "through" (through all), "upto" (up to a face) or "symmetric" (half each side)';
+
+/** Three finite numbers, or the refusal that says what was given. */
+function givenPoint(at: unknown, what: string): number[] {
+  if (!Array.isArray(at) || at.length !== 3 || !at.every((c) => typeof c === "number" && Number.isFinite(c))) {
+    throw new Error(`${what} is a point, [x, y, z] — got ${JSON.stringify(at)}`);
+  }
+  return [...at] as number[];
+}
+
+/** A journal's resolved end (`EndTo`), checked for shape: a point's name, a depth, or null for through; a depth for up to a face. */
+function givenEndTo(to: unknown, end: Extent, op: string): EndTo {
+  const depth = typeof to === "number" && Number.isFinite(to) && to !== 0;
+  if (end === "through" && (to === null || typeof to === "string" || depth)) return to as EndTo;
+  if (end === "upto" && depth) return to as number;
+  throw new Error(`${op}'s "to" is what its end resolved to — a point's name or a depth for "through", a depth for "upto" — not ${JSON.stringify(to)}`);
 }
 
 /** The refusals options can have before anything is made: a body that is no feature, a new body told one. */
@@ -584,23 +630,43 @@ function extruded(model: Model, head: string, d: number, profile: Profile, x: Ex
   const z = planeAxes(model, profile.frame)!.n;
   const live = model.journalling;
   let chosen: FeatureOptions[] = [];
+  // What the end resolved to, known once the body is made: journalled, so a replay searches nothing.
+  let ended: Pick<FeatureOptions, "end" | "face" | "to"> = {};
+  // The depth as journalled: the one typed, or turned round where a face to end on stood behind the sketch.
+  let depth = d;
   // The end condition rides with the mode in one options object — a new body's
   // has no mode to say, but a through or symmetric one still says how it ends.
   const said = (): FeatureOptions[] => {
-    const o = { ...(chosen[0] ?? {}), ...(options.end ? { end: options.end } : {}) };
+    const o = { ...(chosen[0] ?? {}), ...ended };
     return Object.keys(o).length ? [o] : [];
   };
   // Options after the expansion: written out when there are options, so they do not land in its place.
   const tail = () => (said().length ? [x === EXPANSION.extrude ? null : x, ...said()] : expansionArgs(x, "extrude"));
-  return model.asOperation("extrude", () => [head, d, plan.frame, resolvedLoops(plan), ...tail()],
+  return model.asOperation("extrude", () => [head, depth, plan.frame, resolvedLoops(plan), ...tail()],
     () => {
-      // Seeded where the lid will stand when it is symmetric; a through lid's
-      // reach needs the record, and the solve after the call puts it there.
+      // Seeded where the lid will stand when it is symmetric; a held end's lid
+      // is seated on what holds it once the record says what that is.
       const name = extrudeBody(model, member, d, plan, z, x, options.end === "symmetric" ? d / 2 : d);
       const f = model.featureOf(name, "extrude");
       if (region !== null) f.region = region;
       // Before the mode is chosen: the default reads the solid the end condition makes.
-      if (options.end) f.extent = options.end;
+      if (options.end === "symmetric") {
+        f.extent = "symmetric";
+        ended = { end: "symmetric" };
+      } else if (options.end === "through") {
+        // A typed call finds the far side; a replay is handed it — or, from a
+        // file older than the relation, is handed nothing and holds nothing
+        // until the file's values are back (persist.ts).
+        const to = "to" in options ? options.to! : live ? throughTo(model, f) : undefined;
+        if (to === undefined) f.extent = "through";
+        else endThrough(model, f, to);
+        ended = { end: "through", ...(to === undefined ? {} : { to }) };
+      } else if (options.end === "upto") {
+        const r = live && !("to" in options) ? uptoTo(model, f, options.face!, options.at ?? null) : { face: options.face!, to: options.to as number | undefined, turn: false };
+        if (r.turn) { turnDepth(model, f); depth = -d; }
+        endUpto(model, f, r.face, r.to);
+        ended = { end: "upto", face: r.face, ...(r.to === undefined ? {} : { to: r.to }) };
+      }
       chosen = chooseMode(model, name, options, "extrude", live);
       return name;
     });
@@ -1839,7 +1905,7 @@ function sweptFrames(model: Model, frame: string, x: Expansion, given: unknown):
  * seeds, where a profile of free lines has no loop to be found, so a replay is
  * handed the profile and walks it by its joins.
  */
-export type Regenerated = [string, ProfileMember[][]] | [string, ProfileMember[][], "open"];
+export type Regenerated = [string, ProfileMember[][]] | [string, ProfileMember[][], "open"] | [string, ProfileMember[][], "end", EndTo];
 
 /** Every feature whose profile names one of `names` — whole, or a portion of it — in creation order. */
 export function featuresOnProfile(model: Model, names: readonly string[]): FeatureEntry[] {
@@ -1930,14 +1996,21 @@ export function regenerateNamed(model: Model, features: readonly string[], given
 /** A journal's (or a typed call's) list of regenerated features, checked for shape and copied. */
 export function givenRegenerated(list: unknown, op: string): Regenerated[] {
   const ok = Array.isArray(list)
-    && list.every((e) => Array.isArray(e) && (e.length === 2 || (e.length === 3 && e[2] === "open")) && typeof e[0] === "string" && Array.isArray(e[1]));
+    && list.every((e) => Array.isArray(e) && (e.length === 2 || (e.length === 3 && e[2] === "open") || (e.length === 4 && e[2] === "end"))
+      && typeof e[0] === "string" && Array.isArray(e[1]));
   if (!ok) throw new Error(`${op}'s regenerated features are [feature, loops] pairs — the profile each was brought into step with`);
-  return (list as Regenerated[]).map(([name, loops, how]): Regenerated => (how === "open" ? [name, loops, how] : [name, loops]));
+  return (list as Regenerated[]).map((e): Regenerated => (e[2] === "open" ? [e[0], e[1], "open"]
+    : e[2] === "end" ? [e[0], [], "end", givenEndTo(e[3], "through", op)] : [e[0], e[1]]));
 }
 
 function regenerateGiven(model: Model, given: Regenerated[]): void {
-  for (const [name, loops, how] of given) {
+  for (const [name, loops, how, to] of given) {
     const f = model.featureOf(name);
+    // A through-all end chosen again by the regeneration (`rechooseEnds`): handed, not searched for.
+    if (how === "end") {
+      if (f.kind === "extrude") endThrough(model, f, to as EndTo);
+      continue;
+    }
     if (how === "open" && f.kind === "extrude") {
       rebuildOpen(model, f, loops);
       continue;
@@ -1945,6 +2018,7 @@ function regenerateGiven(model: Model, given: Regenerated[]): void {
     const profile = givenProfile(model, f.member, f.frame, loops, f.kind === "extrude" ? EXTRUDE : REVOLVE);
     rebuildFeature(model, f, planSweep(model, profile));
   }
+  unheld.delete(model);
 }
 
 /**
@@ -2052,6 +2126,8 @@ function regenerateFound(model: Model, start: string[], first: SweepPlan | null,
     out.push([name, loops]);
     for (const g of featuresOnProfile(model, touched)) if (!seen.has(g.name)) queue.push(g.name);
   }
+  // The bodies are as they will be: every through-all end's far point, chosen again.
+  if (out.length) out.push(...rechooseEnds(model));
   return out;
 }
 
@@ -2548,8 +2624,13 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   // plain inward rule, not the linked one: a twin made again is going because
   // its profile was restructured, and its partner on the base is what stays.
   const keep = new Set(owns);
-  releaseTwins(model, new Set(f.owns.filter((n) => !keep.has(n) && model.entities.has(n))));
+  const going = new Set(f.owns.filter((n) => !keep.has(n) && model.entities.has(n)));
+  releaseTwins(model, going);
+  // An end held on a point that is going lets go of it first (`unholdEndsOn`).
+  const hadUpto = f.kind === "extrude" && f.extent === "upto" && endRelation(model, f) !== null;
+  unholdEndsOn(model, entityClosure(model, [...going]));
   for (const n of f.owns) if (!keep.has(n) && model.has(n)) delOne(model, n, false);
+  if (hadUpto) reholdUpto(model, f.name);
   // The perpendicular stands on the chord's pair; if what went took a point of
   // it, it is made again on the new chord — it was the feature's, not deleted
   // by anyone. One the user had deleted stays deleted.
@@ -2562,40 +2643,377 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
  * still a cut of the same body. And its region: a regenerated feature still
  * stands on the region it was made from.
  */
-function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into" | "region"> & { extent?: Extent } {
+function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into" | "region"> & { extent?: Extent; upto?: string } {
   return {
     ...(f.mode === undefined ? {} : { mode: f.mode }), ...(f.into === undefined ? {} : { into: f.into }),
     ...(f.region === undefined ? {} : { region: f.region }),
     ...(f.kind === "extrude" && f.extent !== undefined ? { extent: f.extent } : {}),
+    ...(f.kind === "extrude" && f.upto !== undefined ? { upto: f.upto } : {}),
   };
+}
+
+// --- how an extrude ends: through all and up to a face are relations ----------
+//
+// docs/plans/through-all-relation.md. Review item 8, which the owner passed:
+// *"Through all should be a relation to the far face's defining geometry."*
+// And his principles: *"correct relationships BETWEEN entities …
+// bidirectional relationships everywhere by default"*; *"I should be able to
+// pull on anything"*; *"hierarchies do exist, but they are not timeline
+// based."*
+//
+// So a through-all extrude's lid is held by an ordinary relation — the far
+// vertex of what it goes through, on its lid: `onplane("p7", "e2.lid")`,
+// named `e2_through` — and an up-to-face one by the same relation the other
+// way round, its lid point on the face: `onplane("p12", "e1:l2")`, `e2_upto`.
+// Visible, deletable, both ways, with an exact row. What is here is the
+// structure round that relation: making it, seating the lid on it, taking it
+// away. **Which** point is farside.ts's to say, once, when the end is set.
+
+/**
+ * Where a through-all end resolves to, as the drawing stands: the far vertex
+ * (held), the depth to place it at where the far side has no vertex — the
+ * measure and a tenth past, signed as the depth — or null where the swept
+ * profile meets nothing. A call's question, never a replay's.
+ */
+function throughTo(model: Model, f: ExtrudeFeature, held?: string | null): EndTo {
+  const far = farSide(model, f, held);
+  if (far.kind === "point") return far.point;
+  if (far.kind === "none") return null;
+  const d = model.relationOf(f.depth).args[1] as number;
+  return Math.sign(d) * (far.off + throughPast(far.off));
+}
+
+/**
+ * Where an up-to-face end resolves to: the face as a relation writes it,
+ * held (no `to`) or the depth it is placed at, and whether the extrude has to
+ * be turned round first — the face stands behind its sketch, the way its
+ * depth now goes. Throws farside.ts's refusals, in words.
+ */
+function uptoTo(model: Model, f: ExtrudeFeature, face: string, at: readonly number[] | null): { face: string; to?: number; turn: boolean } {
+  const ahead = faceAhead(model, f, face, at);
+  const d = model.relationOf(f.depth).args[1] as number;
+  if (!(Math.abs(ahead.off) > 1e-9)) throw new Error(`"${ahead.face}" is in ${f.name}'s own sketch plane — an extrude up to it would have no depth`);
+  const turn = ahead.off < 0;
+  if (ahead.kind === "held") return { face: ahead.face, turn };
+  return { face: ahead.face, to: Math.sign(d) * ahead.off, turn: false };
+}
+
+/** An extrude's depth rebuilt at `value`, in place, and its lid seated there (`reseatLid`) — nothing journalled. */
+function redepth(model: Model, f: ExtrudeFeature, value: number): void {
+  const dim = model.relationOf(f.depth);
+  if (dim.args[1] === value) return;
+  const reachWas = lidReach(model, f.depth, dim.args[1] as number);
+  const args = [dim.args[0], value, ...dim.args.slice(2)];
+  model.rebuildRelation(f.depth, "extrusion", args, () => REBUILD.extrusion(model, args));
+  reseatLid(model, f.depth, reachWas);
+}
+
+/** An extrude turned to go the other way: its depth's sign, and its lid across its sketch. */
+function turnDepth(model: Model, f: ExtrudeFeature): void {
+  redepth(model, f, -(model.relationOf(f.depth).args[1] as number));
+}
+
+/** Takes away whatever relation holds `f`'s end, alone and unjournalled: the step every change of end begins with. */
+function unhold(model: Model, f: ExtrudeFeature): void {
+  for (const x of ["through", "upto"] as const) {
+    const r = model.relations.get(endName(f.name, x));
+    if (r) model.forgetRelation(r.name);
+  }
+}
+
+/**
+ * Makes `f` end **through all**, resolved: held on the far vertex `to`
+ * (`onplane(to, "e2.lid")`, named `e2_through`, and the lid seated on it);
+ * placed, at the depth `to`; or, null, through into nothing — the blind
+ * extrude it was typed as. Decides nothing: what a call found and a replay
+ * is handed.
+ */
+function endThrough(model: Model, f: ExtrudeFeature, to: EndTo): void {
+  const reachWas = lidReach(model, f.depth, model.relationOf(f.depth).args[1] as number);
+  unhold(model, f);
+  f.extent = "through";
+  delete f.upto;
+  if (typeof to === "string") {
+    model.namedRelation(endName(f.name, "through"), () => onPlane(model, to, `${f.name}.lid`));
+    seatEnd(model, f);
+    return;
+  }
+  // No relation holds it: the depth does, as a blind extrude's. Seated from
+  // where the lid stood, which the relation just taken away may have set.
+  if (typeof to === "number") {
+    const dim = model.relationOf(f.depth);
+    const args = [dim.args[0], to, ...dim.args.slice(2)];
+    model.rebuildRelation(f.depth, "extrusion", args, () => REBUILD.extrusion(model, args));
+  }
+  reseatLid(model, f.depth, reachWas);
+}
+
+/**
+ * Makes `f` end **up to `face`**: held — its lid's own point on the face,
+ * `onplane(<lid point>, face)` named `e2_upto` — or, given a depth, placed
+ * there. The lid point is the lid cap's first (`capPoints`), the point every
+ * relation on the lid reads it by, so there is nothing to choose.
+ */
+function endUpto(model: Model, f: ExtrudeFeature, face: string, to?: number): void {
+  const reachWas = lidReach(model, f.depth, model.relationOf(f.depth).args[1] as number);
+  unhold(model, f);
+  f.extent = "upto";
+  f.upto = face;
+  if (to === undefined) {
+    const lid = capPoints(model, f, "lid")[0];
+    if (lid === undefined) throw new Error(`${f.name}'s lid has no point to hold on "${face}"`);
+    model.namedRelation(endName(f.name, "upto"), () => onPlane(model, lid, face));
+    seatEnd(model, f);
+    return;
+  }
+  const dim = model.relationOf(f.depth);
+  const args = [dim.args[0], to, ...dim.args.slice(2)];
+  model.rebuildRelation(f.depth, "extrusion", args, () => REBUILD.extrusion(model, args));
+  reseatLid(model, f.depth, reachWas);
+}
+
+/**
+ * A held end's lid moved along its own chord onto what holds it — the plane
+ * of its lid through the far vertex, or its lid point onto the face.
+ * **Seeds, as `reseatLid`'s are**: where the solve starts, with the relation
+ * already met, so nothing is left for it to share out between this body and
+ * the one it goes through. Leaves the lid be where what holds it is behind
+ * the sketch or at it (a depth just turned round: the far point is about to
+ * be chosen again), and where the chord has no length to give a way.
+ */
+function seatEnd(model: Model, f: ExtrudeFeature): void {
+  const r = endRelation(model, f);
+  const dim = model.relations.get(f.depth);
+  if (!r || !dim || dim.op !== "extrusion") return;
+  const pair = chordPair(model, dim.args[0] as string, dim.args.slice(2) as string[]);
+  const chord = extrusionChord(model, f.depth);
+  if (!pair || !chord) return;
+  const len = Math.hypot(...chord);
+  if (!(len > 1e-12)) return;
+  const way = chord.map((c) => c / len);
+  const base = model.coords(pair.base);
+  let reach: number;
+  if (f.extent === "through") {
+    reach = dot3(sub3(model.coords(r.args[0] as string), base), way);
+  } else {
+    const plane = planeNow(model, r.args[1] as string);
+    if (!plane) return;
+    const along = dot3(plane.n, way);
+    if (!(Math.abs(along) > 1e-9)) return;
+    // The lid's point is its base moved by the chord, so the chord that puts it on the plane is this long.
+    const lidBase = (dim.args.slice(2) as string[])[(dim.args.slice(2) as string[]).indexOf(r.args[0] as string) - 1];
+    const from = lidBase !== undefined && model.entities.get(lidBase)?.kind === "point" ? model.coords(lidBase) : base;
+    reach = dot3(sub3(plane.p, from), plane.n) / along;
+  }
+  if (!(reach > 1e-9) || Math.abs(reach - len) <= 1e-12 * Math.max(1, len)) return;
+  seatTwins(model, f.depth, way.map((c) => c * reach));
+}
+
+/** Every held end in the model seated (`seatEnd`): what `set` ends with, since any depth may be what another body's end stands on. */
+function seatEnds(model: Model): void {
+  for (const f of model.features.values()) if (f.kind === "extrude" && f.extent !== undefined) seatEnd(model, f);
 }
 
 /**
  * How an extrude ends, changed afterwards — `setEnd("e2", "through")`, what
- * the edit dialog's end row types (docs/plans/solid-tools-intuitive.md):
- * `"blind"` (its depth), `"through"` (through all) or `"symmetric"` (half
- * each side). The record's `extent` and nothing else: the depth dimension reads
- * it at every evaluation (`lidReach`), so the next solve moves the lid, and the
- * dimension keeps its value — a through cut set back to blind is as deep as it
- * was before. An operation, journalled as the call; refuses a name that is no
+ * the edit dialog's end row types (docs/plans/solid-tools-intuitive.md,
+ * docs/plans/through-all-relation.md):
+ *
+ * - `"blind"` — its depth. The relation holding its end, if one did, goes,
+ *   and the depth is the number it had before: a through cut set back to
+ *   blind is as deep as it was. With a depth — `setEnd("e2", "blind", -10)` —
+ *   it is blind at that depth: what **deleting `e2_through`** journals, the
+ *   depth the lid stood at, so the cut stays where it is.
+ * - `"through"` — through all. A call finds the far side (farside.ts) and
+ *   journals what it found: `setEnd("e2", "through", "p7")`, the far vertex,
+ *   held on the lid by `e2_through`; a depth, where the far side has no
+ *   vertex and the lid is placed; `null`, where nothing was met. Typed again
+ *   on a through extrude it chooses the far point again — the one tap the
+ *   organiser offers when a turn has left another corner farther.
+ * - `"upto"` — up to a face: `setEnd("e2", "upto", "e1:l2")`. Held by
+ *   `e2_upto` for a flat face parallel to the sketch; placed for a round wall,
+ *   or at a point for a face only the kernel knows —
+ *   `setEnd("e2", "upto", "e3.f0", [x, y, z])` — journalled with the depth
+ *   it was placed at; refused, in words, for a face not parallel to the
+ *   sketch. A face behind the sketch turns the extrude round first, as its
+ *   own `set`.
+ * - `"symmetric"` — half each side.
+ *
+ * An operation, journalled as the call **with what it found resolved** — a
+ * replay runs on seeds and searches nothing. Refuses a name that is no
  * extrude, or an end that is none, before it changes anything. Returns the
  * feature's name.
  */
-export function setEnd(model: Model, feature: string, end: unknown): string {
+export function setEnd(model: Model, feature: string, end: unknown, a?: unknown, b?: unknown): string {
   checkFeatureName(model, feature, "setEnd");
   const f = model.featureOf(feature);
   if (f.kind !== "extrude") throw new Error(`setEnd changes how an extrude ends — ${feature} is a revolve, whose end is its angle`);
   if (end !== "blind" && !(typeof end === "string" && (EXTENTS as readonly string[]).includes(end))) {
-    throw new Error(`setEnd's end is "blind" (the depth), "through" (through all) or "symmetric" (half each side) — not ${JSON.stringify(end)}`);
+    throw new Error(`setEnd's end is ${ENDS} — not ${JSON.stringify(end)}`);
+  }
+  if (model.relations.get(f.depth)?.op !== "extrusion") throw new Error(`${feature} has no depth to end — its dimension is deleted`);
+  const live = model.journalling;
+  if (end === "through") {
+    const cur = endRelation(model, f);
+    const to = a !== undefined ? givenEndTo(a, "through", "setEnd") : live ? throughTo(model, f, f.extent === "through" ? cur?.args[0] as string | undefined : null) : null;
+    if (typeof to === "string" && model.entities.get(to)?.kind !== "point") throw new Error(`setEnd: "${to}" is not a point — a through-all end is held on a vertex of what it goes through`);
+    return model.asOperation("setEnd", [feature, "through", to], () => { endThrough(model, f, to); return feature; });
+  }
+  if (end === "upto") {
+    if (typeof a !== "string") throw new Error(`setEnd(${JSON.stringify(feature)}, "upto", face) ends on a face — "e1:l2", "e1.base" — and got ${JSON.stringify(a)}`);
+    const placed = typeof b === "number";
+    if (b !== undefined && b !== null && !placed) givenPoint(b, "setEnd's point on the face");
+    // A replay, or the journal's own form typed: the face as written and the depth it was placed at.
+    if (!live || placed) {
+      const to = placed ? givenEndTo(b, "upto", "setEnd") as number : undefined;
+      return model.asOperation("setEnd", [feature, "upto", a, ...(to === undefined ? [] : [to])], () => { endUpto(model, f, a, to); return feature; });
+    }
+    const r = uptoTo(model, f, a, Array.isArray(b) ? b as number[] : null);
+    // The face is behind the sketch: turned round first, as the `set` it is.
+    if (r.turn) set(model, `${f.depth}.${SETTABLE_PROPERTY}`, -(model.relationOf(f.depth).args[1] as number), true);
+    return model.asOperation("setEnd", [feature, "upto", r.face, ...(r.to === undefined ? [] : [r.to])], () => { endUpto(model, f, r.face, r.to); return feature; });
+  }
+  if (end === "blind") {
+    const at = a === undefined || a === null ? null : a;
+    if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at !== 0)) {
+      throw new Error(`setEnd(${JSON.stringify(feature)}, "blind", depth) takes a depth that is not zero — got ${JSON.stringify(a)}`);
+    }
+    return model.asOperation("setEnd", at === null ? [feature, "blind"] : [feature, "blind", at], () => {
+      const reachWas = lidReach(model, f.depth, model.relationOf(f.depth).args[1] as number);
+      unhold(model, f);
+      delete f.extent;
+      delete f.upto;
+      if (at !== null) {
+        const dim = model.relationOf(f.depth);
+        const args = [dim.args[0], at, ...dim.args.slice(2)];
+        model.rebuildRelation(f.depth, "extrusion", args, () => REBUILD.extrusion(model, args));
+      }
+      reseatLid(model, f.depth, reachWas);
+      return feature;
+    });
   }
   return model.asOperation("setEnd", [feature, end], () => {
     const reachWas = lidReach(model, f.depth, model.relationOf(f.depth).args[1] as number);
-    if (end === "blind") delete f.extent;
-    else f.extent = end as Extent;
+    unhold(model, f);
+    f.extent = end as Extent;
+    delete f.upto;
     // The lid seated at its new reach before the solve, as a depth set is (`reseatLid`).
     reseatLid(model, f.depth, reachWas);
     return feature;
   });
+}
+
+/**
+ * What the log says of an end just set — the relation by name where one
+ * holds it, and **said, not faked, where none does** (the spec's point 8): a
+ * round far side, a face only the kernel knows, nothing met. Null for blind
+ * and symmetric.
+ */
+export function endSaid(model: Model, feature: string): string | null {
+  const f = model.features.get(feature);
+  if (f?.kind !== "extrude" || (f.extent !== "through" && f.extent !== "upto")) return null;
+  const r = endRelation(model, f);
+  if (f.extent === "through") {
+    if (r) return `${f.name}: through all — ${r.args[0]} on its lid, held by ${r.name} (delete it for a blind depth where it stands)`;
+    const far = farSide(model, f);
+    if (far.kind === "placed") {
+      return `${f.name}: through ${far.feature} as it stands — a round far side is not held; set the end again after changing it`;
+    }
+    return `${f.name}: through all meets no solid that way — it stands at its depth; set the end again once there is one`;
+  }
+  if (r) return `${f.name}: up to ${r.args[1]} — ${r.args[0]} on that face, held by ${r.name}`;
+  return `${f.name}: up to ${f.upto} as it stands — a face that is round or the kernel's alone is not held; set the end again after changing it`;
+}
+
+/**
+ * **Deleting the relation that holds an end leaves a blind extrude where it
+ * stood** — `del("e2_through")` (docs/plans/through-all-relation.md: deletable,
+ * like `e1_perp`). One journalled step, `setEnd("e2", "blind", -10)`: the
+ * relation gone, the end condition cleared, and the depth the number the lid
+ * stood at, in the entry — a replay cannot measure it. The feature relates
+ * to the relation and does not own it; nothing else goes.
+ */
+function releaseEnd(model: Model, f: ExtrudeFeature): void {
+  const d = model.relationOf(f.depth).args[1] as number;
+  const stood = lidOff(model, f);
+  setEnd(model, f.name, "blind", stood > 0 ? Math.sign(d) * stood : d);
+}
+
+/**
+ * **A regeneration chooses the far point of every through-all end again**
+ * (docs/plans/through-all-relation.md): a body it goes through has been
+ * restructured, and the vertex it was held on may be a corner no longer, or
+ * gone. Each end that comes out different is changed and returned for the
+ * journal — `[feature, [], "end", to]`, in the regenerated list, so a replay
+ * is handed the choice. An end still on a farthest vertex is left alone
+ * (`farSide`'s `prefer`), and so is one that now meets nothing: the relation
+ * it has still says something true of a point that is still there.
+ */
+function rechooseEnds(model: Model): Regenerated[] {
+  const out: Regenerated[] = [];
+  for (const f of [...model.features.values()]) {
+    if (f.kind !== "extrude" || f.extent !== "through" || f.unbuilt !== undefined) continue;
+    if (model.relations.get(f.depth)?.op !== "extrusion") continue;
+    const held = endRelation(model, f)?.args[0] as string | undefined;
+    const d = model.relationOf(f.depth).args[1] as number;
+    let to: EndTo;
+    try {
+      to = throughTo(model, f, held ?? null);
+    } catch {
+      continue;
+    }
+    if (to === null) {
+      // Nothing met. One whose relation this regeneration took (its vertex went) stays where it stood, placed.
+      const stood = unheld.get(model)?.get(f.name);
+      if (held !== undefined || stood === undefined) continue;
+      to = stood;
+    }
+    if (typeof to === "string" ? to === held : held === undefined && Math.abs(to - d) <= 1e-9 * Math.max(1, Math.abs(d))) continue;
+    endThrough(model, f, to);
+    out.push([f.name, [], "end", to]);
+  }
+  unheld.delete(model);
+  return out;
+}
+
+/** Through-all ends a regeneration has just taken the relation of (their far vertex went), each with the depth it stood at — until `rechooseEnds` holds them again. */
+const unheld = new WeakMap<Model, Map<string, number>>();
+
+/**
+ * Before a regeneration deletes what has left a profile: an end held on one
+ * of those points lets go first, alone and unjournalled, so the cascade that
+ * takes the point does not turn the extrude blind in a step of its own
+ * (`releaseEnd` is a deletion's, and journals). A through-all end is chosen
+ * again as the regeneration ends (`rechooseEnds`); an up-to-face end of the
+ * feature being rebuilt is made again on its new lid point (`reholdUpto`).
+ */
+function unholdEndsOn(model: Model, going: ReadonlySet<string>): void {
+  for (const g of model.features.values()) {
+    if (g.kind !== "extrude") continue;
+    const r = endRelation(model, g);
+    if (!r || !going.has(r.args[0] as string)) continue;
+    const d = model.relationOf(g.depth).args[1] as number;
+    const stood = lidOff(model, g);
+    if (g.extent === "through") {
+      if (!unheld.has(model)) unheld.set(model, new Map());
+      unheld.get(model)!.set(g.name, stood > 0 ? Math.sign(d) * stood : d);
+    }
+    model.forgetRelation(r.name);
+  }
+}
+
+/** An up-to-face end whose relation a regeneration took with the old lid point, made again on the lid as it is now. */
+function reholdUpto(model: Model, name: string): void {
+  const f = model.features.get(name);
+  if (f?.kind !== "extrude" || f.extent !== "upto" || f.upto === undefined || endRelation(model, f)) return;
+  // Only one that was held: a placed one's depth is a number other than the one it was typed with, and has no relation to lose.
+  const lid = capPoints(model, f, "lid")[0];
+  if (lid === undefined || !faceSource(model, f.upto)) return;
+  try {
+    model.namedRelation(endName(f.name, "upto"), () => onPlane(model, lid, f.upto!));
+  } catch {
+    // The face is flat no longer: it stays where it stood, placed.
+  }
 }
 
 /**
@@ -3874,7 +4292,7 @@ const onlyDims = `only dist, rad, dia, ang, an ellipse's major and minor, an ext
  *
  * Returns the dimension's name, unchanged — that being the claim worth making.
  */
-export function set(model: Model, path: string, value: number): string {
+export function set(model: Model, path: string, value: number, turning = false): string {
   const { name } = parseValueRef(path);
   // One sentence for "there is nothing here to set", whatever the reason —
   // wrong kind of thing, or nothing of that name at all. What the reader needs
@@ -3899,7 +4317,19 @@ export function set(model: Model, path: string, value: number): string {
   args[at] = value;
   const rebuild = REBUILD[entry.op];
   if (!rebuild) throw new Error(`"${entry.op}" cannot be rebuilt`); // unreachable: DIMENSION_OPS and REBUILD agree
-  return model.asOperation("set", [path, value], () => {
+  // **The depth of an extrude whose end is held says only which way it goes**
+  // (docs/plans/through-all-relation.md): the relation holds the lid, and the
+  // number is the depth it has when set back to blind. Turned round — a set
+  // across zero — a through-all end's far side is the other one, chosen again
+  // below; an up-to-face end's face is on one side only, so that is refused.
+  const live = model.journalling;
+  const ended = entry.op === "extrusion" ? extrudeOfDepth(model, name) : null;
+  const turned = ended !== null && value !== 0 && Math.sign(value) !== Math.sign(entry.args[1] as number);
+  if (live && turned && !turning && ended.extent === "upto" && endRelation(model, ended)) {
+    throw new Error(`${name} only says which way ${ended.name} goes — it ends on ${ended.upto}, which is on this side of its sketch. `
+      + `setEnd("${ended.name}", "blind") first, or end it on a face the other way`);
+  }
+  const out = model.asOperation("set", [path, value], () => {
     const reachWas = entry.op === "extrusion" ? lidReach(model, name, entry.args[1] as number) : 0;
     model.rebuildRelation(name, entry.op, args, () => rebuild(model, args));
     // **A linked pair shares one value** (docs/plans/linked-profiles.md): the
@@ -3916,8 +4346,14 @@ export function set(model: Model, path: string, value: number): string {
     if (entry.op === "extrusion") reseatLid(model, name, reachWas);
     // And a revolve's end face, for the same reason (relations/revolution.ts).
     if (entry.op === "revolution") seatTurned(model, name);
+    // And every lid a relation holds on something this may just have moved — a
+    // cut through a plate, from the side the plate's depth grows on (`seatEnds`).
+    seatEnds(model);
     return name;
   });
+  // The far side, on the side it now goes: found at the call, journalled as the `setEnd` it is.
+  if (live && turned && !turning && ended.extent === "through") setEnd(model, ended.name, "through");
+  return out;
 }
 
 // --- deletion ---------------------------------------------------------------
@@ -3993,6 +4429,13 @@ export function del(model: Model, ...names: string[]): string[] {
     if (!model.has(n)) continue;
     if (model.groups.has(n)) {
       ungroup(model, n);
+      removed.push(n);
+      continue;
+    }
+    // The relation holding an extrude's end: the extrude is blind where it stood (`releaseEnd`).
+    const ends = model.relations.has(n) ? extrudeOfEnd(model, n) : null;
+    if (ends) {
+      releaseEnd(model, ends);
       removed.push(n);
       continue;
     }
@@ -4318,6 +4761,15 @@ function cascade(model: Model, name: string, extra: readonly string[] = []): str
   }
 
   const removed: string[] = [];
+  // A relation holding an extrude's end that is going with what it names —
+  // the far vertex deleted — while its extrude stays: the extrude is blind
+  // where it stood, journalled ahead of the deletion (`releaseEnd`).
+  for (const r of relations) {
+    const g = model.relations.has(r) ? extrudeOfEnd(model, r) : null;
+    if (!g || features.includes(g.name)) continue;
+    releaseEnd(model, g);
+    removed.push(r);
+  }
   // Records first, since they name relations and entities alike and the
   // primitives refuse while one does; then relations, since an entity cannot go
   // while something still constrains it.

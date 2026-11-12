@@ -99,6 +99,7 @@ test("Cut's lines replay: typed by hand into a twin, the same journal; saved and
   a.m.solve();
   b.m.solve();
   const { typed } = await confirmed(CutTool, a.m, a.repl, hitOn(a.m, onTop(a.p, 50, 30), a.p.t.uz), { depth: 4, end: "through" });
+  // Typed as the tool types it; the far vertex the call finds is the journal's, not the line's.
   assert.match(typed[0], /\{"mode":"cut","end":"through"\}\)$/, typed[0]);
   for (const line of typed) assert.equal((await b.repl.eval(line)).ok, true, line);
   assert.deepEqual(a.m.journal, b.m.journal);

@@ -41,7 +41,7 @@
 //     about as the drawing solves being the obvious one).
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
-import { extrudeOfDepth, parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
+import { endLabel, extrudeOfDepth, extrudeOfEnd, parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curveFrame, curvePath, curvePlaneOf } from "./curveplane.ts";
@@ -714,8 +714,14 @@ function labelOf(model: Model, r: RelationEntry): string | null {
     }
     return drivenLabel(model, r.args);
   }
-  // A through-all depth keeps only its sign: its number would be a lie (solid-tools-intuitive.md).
-  if (r.op === "extrusion" && extrudeOfDepth(model, r.name)?.extent === "through") return "through all";
+  // A depth whose end is through all or up to a face keeps only its sign: its
+  // number would be a lie (solid-tools-intuitive.md). The label says how it
+  // ends, and whether a relation holds that or it is only placed
+  // (docs/plans/through-all-relation.md, `endLabel`).
+  if (r.op === "extrusion") {
+    const ends = endLabel(model, extrudeOfDepth(model, r.name));
+    if (ends !== null) return ends;
+  }
   const own = LABELS.get(r.op);
   return own ? own(model, r) : labelFor(r.op, r.args);
 }
@@ -876,6 +882,20 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       return [atSegmentMid(model, view, str(args[2]), str(args[3]))];
     case "revolution":
       return [atRevolution(model, view, str(args[0]), args[1], args[2])];
+    case "onPlane": {
+      // **A through-all end is marked at both of the things it relates**
+      // (docs/plans/through-all-relation.md): on the far vertex it names, as
+      // any point on a plane is, and on the cut's own far rim — the lid's
+      // first edge, which is where a person looks for what holds the hole's
+      // end. One mark on a corner of the plate said nothing about the cut.
+      const ends = extrudeOfEnd(model, r.name);
+      const rim = ends?.extent === "through" ? ends.twins[0]?.[0] : undefined;
+      if (rim === undefined || !model.entities.has(rim) || !model.entities.has(str(args[0]))) {
+        const name = firstNamed(model, r);
+        return name ? [atEntity(model, view, name)] : [];
+      }
+      return [atPoint(model, str(args[0])), atEntity(model, view, rim)];
+    }
     default: {
       const name = firstNamed(model, r);
       return name ? [atEntity(model, view, name)] : [];

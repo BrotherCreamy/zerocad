@@ -9,7 +9,8 @@
 // Only calls both builds have, so the same file runs on either.
 
 import { Model } from "../src/model.ts";
-import { onPlane } from "../src/relations/basic.ts";
+import { dist, onPlane } from "../src/relations/basic.ts";
+import { perpendicular } from "../src/relations/geometry.ts";
 import { extrude, set } from "../src/operations.ts";
 import { pullTo } from "../src/tools/engine.ts";
 import { T, circleOn, loadSolver, onTop, plate, type Plate } from "./solids/scene.ts";
@@ -26,6 +27,11 @@ interface Scene { m: Model; p: Plate; hole: string; pocket: string | null }
 function scene(withPocket: boolean): Scene {
   const m = new Model(3);
   const p = plate(m);
+  // The plate's profile held as the rectangle tool holds one: square, and sized.
+  for (let i = 0; i < 3; i++) perpendicular(m, p.lines[i], p.lines[i + 1]);
+  dist(m, p.base[0], p.base[1], 100);
+  dist(m, p.base[1], p.base[2], 60);
+  m.solve();
   const top = p.lid.slice(0, 3).join(".");
   const hole = extrude(m, circleOn(m, top, onTop(p, 30, 30), 5, p.t.uz), -1, { mode: "cut", end: "through" });
   m.solve();
@@ -34,6 +40,9 @@ function scene(withPocket: boolean): Scene {
     const sq = [[60, 20], [80, 20], [80, 40], [60, 40]].map(([u, v]) => m.addPoint(onTop(p, u, v)).name);
     const sl = sq.map((q, i) => m.addLine(q, sq[(i + 1) % 4]).name);
     for (const q of sq) onPlane(m, q, top);
+    for (let i = 0; i < 3; i++) perpendicular(m, sl[i], sl[i + 1]);
+    dist(m, sq[0], sq[1], 20);
+    dist(m, sq[1], sq[2], 20);
     pocket = extrude(m, sl[0], -1, { mode: "cut", end: "through" });
     m.solve();
   }
@@ -51,8 +60,8 @@ function chord(s: Scene, feature: string): number[] {
 const least = (xs: number[]) => Math.min(...xs).toFixed(2);
 
 console.log("\n## a through cut's solve");
-console.log("| case | solved | iterations | ms (least of 5) | the cut's chord: lean, length | the lid off the plate's far face |");
-console.log("|---|---|---|---|---|---|");
+console.log("| case | solved | iterations | ms (least of 5) | the cut's chord: lean, length | the lid off the plate's far face | the dragged corner moved |");
+console.log("|---|---|---|---|---|---|---|");
 for (const withPocket of [false, true]) {
   const what = withPocket ? "a hole and a pocket" : "a hole";
   // 1. The plate set twice as deep: the cut follows.
@@ -67,7 +76,7 @@ for (const withPocket of [false, true]) {
       ms.push(performance.now() - t0);
       const c = chord(s, s.hole);
       // The plate's base is at 0 along the frame; the hole's sketch is on its top, 2T up.
-      line = `${r.solved} | ${r.iterations} | MS | ${Math.hypot(c[0], c[1]).toExponential(1)}, ${Math.abs(c[2]).toFixed(4)} | ${(2 * T - Math.abs(c[2])).toFixed(4)}`;
+      line = `${r.solved} | ${r.iterations} | MS | ${Math.hypot(c[0], c[1]).toExponential(1)}, ${Math.abs(c[2]).toFixed(4)} | ${(2 * T - Math.abs(c[2])).toFixed(4)} | —`;
     }
     console.log(`| ${what}: the plate set from ${T} to ${2 * T} deep | ${line.replace("MS", least(ms))} |`);
   }
@@ -81,26 +90,30 @@ for (const withPocket of [false, true]) {
       const r = s.m.solve();
       ms.push(performance.now() - t0);
       const c = chord(s, s.hole);
-      line = `${r.solved} | ${r.iterations} | MS | ${Math.hypot(c[0], c[1]).toExponential(1)}, ${Math.abs(c[2]).toFixed(4)} | ${(T - Math.abs(c[2])).toFixed(4)}`;
+      line = `${r.solved} | ${r.iterations} | MS | ${Math.hypot(c[0], c[1]).toExponential(1)}, ${Math.abs(c[2]).toFixed(4)} | ${(T - Math.abs(c[2])).toFixed(4)} | —`;
     }
     console.log(`| ${what}: at rest | ${line.replace("MS", least(ms))} |`);
   }
-  // 3. A drag: a corner of the plate's top pulled 8 along the top's normal in twelve frames.
-  {
+  // 3. A drag: a corner of the plate's top pulled 8 along the plate's own x in
+  // twelve frames — a resize of the plate, which the cut must follow — and then
+  // 8 up along its normal, which the base's hold on the frame fights.
+  for (const [how, axis] of [["along its x: a resize", "ux"], ["up, off its top: a fight with the base's hold", "uz"]] as const) {
     const ms: number[] = [];
     let line = "";
     for (let run = 0; run < 5; run++) {
       const s = scene(withPocket);
       const from = s.m.coords(s.p.lid[2]);
-      const by = s.p.t.uz.map((c) => 8 * c);
+      const by = s.p.t[axis].map((c) => 8 * c);
       let it = 0;
       const t0 = performance.now();
       for (let k = 1; k <= 12; k++) it += s.m.solveFrame(pullTo(s.m, s.p.lid[2], from.map((c, i) => c + (by[i] * k) / 12))).iterations;
       const r = s.m.solve();
       ms.push(performance.now() - t0);
       const c = chord(s, s.hole);
-      line = `${r.solved} | ${it + r.iterations} | MS | ${Math.hypot(c[0], c[1]).toExponential(1)}, ${Math.abs(c[2]).toFixed(4)} | —`;
+      // How far the corner went of the 8 asked: a drag that moves nothing is not a cheap drag.
+      const moved = Math.hypot(...sub(s.m.coords(s.p.lid[2]), from));
+      line = `${r.solved} | ${it + r.iterations} | MS | ${Math.hypot(c[0], c[1]).toExponential(1)}, ${Math.abs(c[2]).toFixed(4)} | — | ${moved.toFixed(3)} of 8`;
     }
-    console.log(`| ${what}: a top corner dragged 8 off the top, twelve frames and a solve | ${line.replace("MS", least(ms))} |`);
+    console.log(`| ${what}: a top corner dragged 8 ${how}, twelve frames and a solve | ${line.replace("MS", least(ms))} |`);
   }
 }
