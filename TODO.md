@@ -158,6 +158,40 @@ otherwise.
   - **The status does not open the palette**: `4 agreeing` is text. A tap
     on it that typed `ui({ show: "constraints" })` would be one line; not
     done, to keep the status's buttons the relation-selecting kind.
+- **Decided by the owner (2026-11-12), to build** — each in its spec:
+  - *"I should be able to pull on anything."* A free body moves when a point
+    held to its face is pulled (#89's both-ways `onplane`); nothing is made
+    a datum to stop it. Stands as built.
+  - Review items 1 and 3–8 below: *"All good."* All queued:
+    `review-solver.md` (1, 3), `linked-profiles.md` (4),
+    `review-relations.md` (5, 6), `fillets-one-thing.md` (7), and 8 after
+    linked profiles.
+  - **Deleting the extrude leaves both profiles and the chords**: *"Yes."*
+  - **An edit to one linked profile is an edit to both**: *"Deleting a line
+    would break it obviously. The other side of an extrude profile is an
+    identically linked profile/sketch entities. If you change one the other
+    follows automatically."* and *"If they are truly twinned profiles, then
+    reining in one side should trim on the other also."* A deleted line
+    takes its twin and the body is left open, said so; a trim lands on both
+    (`linked-profiles.md`, which this rewrote).
+  - **A fillet is one thing** (`fillets-one-thing.md`): a 2D fillet or
+    chamfer on a body's originating loop must not break the body, must give
+    the result a 3D fillet of that edge gives, and keeps the two lines and
+    the corner point, on both linked sketches, as construction. *"Anything
+    can be construction. Lines, points, planes, bodies. Anything is fair
+    game."*
+  - ***"Hierarchies do exist, but they are not timeline based."*** What
+    depends on what is the relations' doing, not the order things were
+    made in. To be said in ARCHITECTURE with the fillet package.
+  - **A tool says how to use it** (`tool-howto.md`): *"I don't even know how
+    to add a parallel relation. Maybe a little tooltip should pop up when I
+    hover over (desktop) or select (phone) a tool."*
+  - Edge snap on a face keeps `on` + `onplane` (*"Do what you think is
+    best"*). Left for now by the owner, not decided: faces in the wire
+    view, the palette's start state and height, a tap on the status count.
+  - **Open with the owner**: whether the status counts a flat drawing's
+    freedom to leave its plane (it does not today — `gaugePlanes`).
+
 - **Reviewed against the owner's principle (2026-11-09; CONVERSATION_LOG has
   the reasoning)** — *a relation between entities, never an owner; both
   ways; agreeing over-constraint is normal* — these register entries are

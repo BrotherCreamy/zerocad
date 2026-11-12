@@ -10,6 +10,47 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-12 — the owner's answers: pull on anything, twins edit together, a fillet is one thing
+
+The owner answered the standing questions. The register has each; what is
+not obvious from them:
+
+**"Hierarchies do exist, but they are not timeline based."** Until now the
+repo's line was "no hierarchy". The owner's refinement: a body does depend
+on its profiles, and a change to a profile must propagate through
+everything built on it — but the dependence is carried by relations that
+read both ways, not by an order of creation that can only be replayed
+forward. So "a 2D fillet on the originating loop" and "a 3D fillet on that
+edge" must be the same edit with the same result, and neither may delete
+what something else names: the old corner stays, as construction, on both
+linked profiles. That is `fillets-one-thing.md`, queued behind
+`linked-profiles.md` because it needs twins to exist first.
+
+**Deleting a line of one profile.** I had proposed that the extrude goes
+and the other profile stays whole. The owner: it *"would break it
+obviously"*, and the two profiles are *"identically linked … if you change
+one the other follows automatically"*. Read with the trim answer (*"reining
+in one side should trim on the other also"*), an edit to one profile is an
+edit to both while the link stands: the twin line goes too and the body is
+open. What "broken" looks like was mine to choose: the surviving edges are
+still swept (an edge extrude is the fundamental feature), drawn as open
+walls, the row marked open, and closing the loop makes it a solid again.
+**Rejected**: deleting the extrude record on the first missing line — it
+turns a slip of the finger into the loss of the feature, and the owner had
+just said deleting the *extrude* is the act that leaves plain geometry.
+
+**I explained the status's z exception badly, twice** ("z gauge", and a
+claim that moving the whole drawing is not counted — it is: a rectangle of
+four perps reads 5 free, which is 2 for position, 1 for turning, 2 for
+size). What is true: the count leaves out exactly one thing, a flat
+drawing's freedom to leave its plane, though nothing holds it there. Asked
+again in plain words; open.
+
+**The container was recycled between the 9th and the 12th.** Everything was
+pushed. The mirror's mailmap was a local file and went with it; it is
+rebuilt from the history's own identities and proven by the rewritten tip
+matching the mirror's.
+
 ## 2026-11-09 — a click on a face lands on it, is held there, and says so first
 
 The owner: *"when i make a rectangular prism, i attempt to draw an e.g.
