@@ -25,8 +25,12 @@ it. Two places met:
 - Browser-only bugs renumbered: the solver's are 74 and 75, the trim tool on
   a lid's edge is 76. Seventy-six.
 
-Measured on the merge: typecheck 0; unit 2080 of 2080. The browser suite's
-result is in the commit that follows it.
+Measured on the merge: typecheck 0; unit 2080 of 2080; kernel 11 of 11;
+browser 813 tests, 790 passed, 2 picture skips, 21 failed — of which 20 were
+the suite's own dev server dying partway under four workers' load (`no dev
+server at …`, modefeedback onward), and those files rerun alone on a quiet
+machine were 55 of 56; the one left is the known Android font-scale
+measurement, which fails on this container's browser regardless of the code.
 
 ## 2026-11-12 — an extrude's two profiles are peers: every relation has a twin, an edit to one is an edit to both, and nothing is owned
 
