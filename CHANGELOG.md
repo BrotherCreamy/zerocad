@@ -9,6 +9,12 @@ decisions.
 
 ## 2026-11-12 — the solver's two measured costs: a kept size is pulled by a probe and a finish, and the drag frame's cost was never the kernel's
 
+*The gate, on the tree merged with the no-sketch merge (`3e67a6f`):
+typecheck 0; unit 2151/2151 (load 3–14, the box shared); the Rust crate
+11/11; the full browser suite 843 pass, 2 picture skips, 0 fail in 32
+minutes at a load of 3–12 with another worker's suite beside it — the
+touch harness's known lost first tap did not show.*
+
 docs/plans/solver-cost.md, built on `claude/solver-cost` from the review's
 two numbers (TODO.md's register, *The case to fix first*). Nothing visible
 changes: the pictures of the solver package hold (460–469), and the sizes
@@ -94,7 +100,7 @@ dev kernel, and the measure scripts print which kernel they were given.
   stand 3e-3 elsewhere after the drag's release, and a conflict's compromise
   is the nearest local one. Both paths are the design's and both have been
   seen on the base; the bound is 5 trials × 7 solves, said so.
-- **Tests**: unit 2143 (2137 before): `test/keptsizes.test.ts` (6) and the
+- **Tests**: unit 2151 on the merged tree (2145 before): `test/keptsizes.test.ts` (6) and the
   bound above; `test/keptsizes.measure.ts` and a census section in
   `test/solver.measure.ts` print the tables. E2E: `reviewsolver.e2e.ts` and
   `conflicts.e2e.ts` unchanged and green (17).
