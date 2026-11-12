@@ -18,7 +18,7 @@ import { defaultMode, resolveMode } from "./modes.ts";
 import { dist } from "./relations/basic.ts";
 import { angle, arcEndpoints, diameter, majorAxis, minorAxis, onCircle, onEllipse, perpendicular, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { chordPair, extrusion } from "./relations/extrusion.ts";
-import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
+import { FULL_TURN, axisReader, isFullTurn, revolution, seatTurned, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, featurePlane, framePlaneAxes, planeAxes } from "./curveplane.ts";
 import { sketchFrameFor } from "./sketchface.ts";
@@ -3813,6 +3813,8 @@ export function set(model: Model, path: string, value: number): string {
     const reachWas = entry.op === "extrusion" ? lidReach(model, name, entry.args[1] as number) : 0;
     model.rebuildRelation(name, entry.op, args, () => rebuild(model, args));
     if (entry.op === "extrusion") reseatLid(model, name, reachWas);
+    // And a revolve's end face, for the same reason (relations/revolution.ts).
+    if (entry.op === "revolution") seatTurned(model, name);
     return name;
   });
 }

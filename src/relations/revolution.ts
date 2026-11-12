@@ -259,6 +259,54 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
 }
 
 /**
+ * Seats a revolution's twins where its angle, **just set**, puts them: each
+ * twin point at its base turned through the angle about the axis, each twin
+ * curve's normal at its base's turned. What `reseatLid` is to an extrude's
+ * depth (operations.ts), and for its reason: a solve left to find the new
+ * angle from the old one shares the swing between the end face and the
+ * profile. Measured (test/revolve.test.ts) on a filleted rectangle revolved
+ * 270° and set to 180°: the profile slid 0.2 and its base edge came out 1%
+ * short while the profile's direction rows were products of its lines'
+ * lengths, which made the sketch some twenty times stiffer than the feature
+ * and hid most of it; with those rows at their proper size
+ * (docs/plans/review-solver.md) the profile slid 6. Seated first, the solve
+ * begins at a root and nothing has anything left to do.
+ *
+ * **Seeds only**, as the revolve's own are: every pair still holds both ways,
+ * and this is where the solve starts, not what it may do. A spline's control
+ * points are not seated; they follow its points by its own equations.
+ */
+export function seatTurned(model: Model, name: string): void {
+  const r = model.relations.get(name);
+  if (!r || r.op !== "revolution") return;
+  const [axis, angle, ...pairs] = r.args as [string, number, ...string[]];
+  const at = axisReader(model, axis).read();
+  const seated = new Set<string>();
+  const seat = (b: string, t: string) => {
+    if (b === t || seated.has(t)) return;
+    seated.add(t);
+    model.setCoords(t, turnPoint(model.coords(b), at, angle));
+  };
+  for (let i = 0; i < pairs.length; i += 2) {
+    const [b, t] = [pairs[i], pairs[i + 1]];
+    if (model.entities.get(b)?.kind === "point" && model.entities.get(t)?.kind === "point") seat(b, t);
+  }
+  for (let i = 0; i < pairs.length; i += 2) {
+    const [b, t] = [pairs[i], pairs[i + 1]];
+    if (b === t) continue;
+    const be = model.entities.get(b), te = model.entities.get(t);
+    if (be?.kind === "frame" && te?.kind === "frame") {
+      const [bp, tp] = [model.refsOf(be), model.refsOf(te)];
+      bp.forEach((p, k) => { if (tp[k] !== undefined) seat(p, tp[k]); });
+    } else if ((be?.kind === "circle" || be?.kind === "arc") && (te?.kind === "circle" || te?.kind === "arc")) {
+      if (curveNormal(model, b) && curveNormal(model, t)) {
+        model.setNormal(t, turnPoint(model.normalOf(b), { origin: [0, 0, 0], dir: at.dir }, angle));
+      }
+    }
+  }
+}
+
+/**
  * The axis as a block reads it: the variables it adds to the block's front
  * (`vars`, `width` of them — a line's two points, or none for a frame's axis),
  * and its point and unit direction as Duals over a block's locals (`at`). A
