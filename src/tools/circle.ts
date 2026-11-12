@@ -41,7 +41,7 @@
 // projected — and a tangent preview is the fitted circle itself
 // (`fitCircle`), so what is on the screen is what the click builds.
 
-import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { onCircle, tangent } from "../relations/geometry.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -72,6 +72,15 @@ const SAME_POINT_EPS = 1e-6;
 export class CircleTool extends Tool {
   static readonly options: OptionSpecs = { ...DRAWING_OPTIONS, method: methodOption(CIRCLE_METHODS) };
   static readonly summary = "Draws a circle: drag out from its centre, or click 3 points or edges";
+  static readonly how: How = (o) =>
+    o.method === "centre" ? ["Press at the centre and drag out to the rim.", "Locked to centre · radius: the options unlock it."]
+      : o.method === "3pt" ? ["{Tap} three points for it to pass through.", "Locked to 3 points: the options unlock it."]
+        : o.method === "tangent" ? ["{Tap} three lines or circles for it to touch.", "Locked to tangent: the options unlock it."]
+          : [
+            "Press at the centre and drag out to the rim.",
+            "Or {tap} three points for it to pass through.",
+            "A {tap} along a line or circle makes it touch that.",
+          ];
   readonly name = "circle";
   /** The clicks so far, kept whole so each one's snap survives to commit. */
   private clicks: PointerInfo[] = [];

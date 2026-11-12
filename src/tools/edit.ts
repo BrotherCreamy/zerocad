@@ -29,7 +29,7 @@
 // thing is no tool to pick up empty-handed — under `edit extrude` and `edit
 // revolve`, since each has one value of its own kind for the panel.
 
-import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type FeaturePreview } from "./tool.ts";
+import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type FeaturePreview, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { FeatureEntry, Model } from "../model.ts";
 import { loopAround } from "../loops.ts";
@@ -239,6 +239,11 @@ export class EditExtrudeTool extends EditTool {
     end: END_OPTION,
   };
   static readonly summary = "Changes an extrude: holes in or out, its depth, its way, how it ends";
+  static readonly how: How = [
+    "Change the depth and the end in the options.",
+    "{Tap} an outline inside it to make or fill a hole.",
+    "✓ applies; ✗ leaves it as it was.",
+  ];
   readonly name = "edit extrude";
   protected readonly option = "depth";
 }
@@ -251,6 +256,11 @@ export class EditRevolveTool extends EditTool {
     },
   };
   static readonly summary = "Changes a revolve: click holes in or out, or change the angle";
+  static readonly how: How = [
+    "Change the angle in the options.",
+    "{Tap} an outline inside it to make or fill a hole.",
+    "✓ applies; ✗ leaves it as it was.",
+  ];
   readonly name = "edit revolve";
   protected readonly option = "angle";
 }

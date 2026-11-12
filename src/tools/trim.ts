@@ -28,7 +28,7 @@
 // one line. Escape puts the surface down. What a press is on says which trim
 // it is, so a curve's trim is never a surface's by mistake.
 
-import { Tool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { callText } from "./feature.ts";
 import { SUBTRACT_RED } from "./regiontool.ts";
 import { anyCurve, curveUnder, ownedBySolid, pieceSamples, placeOn, rounded, strokeWorld } from "./editdraw.ts";
@@ -101,6 +101,10 @@ export function strokeOrder(model: Model, crossed: readonly Crossed[]): Crossed[
 
 export class TrimTool extends Tool {
   static readonly summary = "Trims a curve back to where others cut it: click or drag across pieces";
+  static readonly how: How = [
+    "{Tap} the piece of a curve to remove.",
+    "Or drag across several pieces at once.",
+  ];
   readonly name = "trim";
   readonly snaps = false;
   private hover: Hover | null = null;

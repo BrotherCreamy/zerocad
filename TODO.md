@@ -33,6 +33,83 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A tool says how to use it, as built** (the owner, 2026-11-12: *"I don't
+  even know how to add a parallel relation. Maybe a little tooltip should pop
+  up when I hover over (desktop) or select (phone) a tool."*;
+  docs/plans/tool-howto.md, built). The choices made building it, each
+  vetoable:
+  - **Three steps at most, and short**: a step is at most 68 characters, two
+    lines of an iPhone 13's tip; `defineTool` refuses a fourth. Reason: no
+    tip is then taller than 187 px on the phone, and it fits the chrome above
+    the drawing. Cost: some tools say less than they could (the constrain
+    tool's "tap one again to drop it" went; under a finger its first step
+    is "Tap the things to relate." with the examples left to the palette's
+    own line, to make room for "Pick several for one relation; hold a line
+    for Leave." after review-relations).
+  - **A nine-line tip ends 14–32 px inside the drawing's middle third** on
+    an iPhone 13 (twelve tools; the third starts at y 221, they end at
+    235–253). Reason: the summary is two lines and three steps are five.
+    The eight-line tips, Constrain's and Dimension's among them, are clear.
+  - **The words are the hand's**: `{tap}` is *click* under a mouse and *tap*
+    under a finger; a hover is a mouse's, a hold and a chosen tip a finger's.
+    Reason: "click" on a phone is the summaries' filed limitation, not to be
+    repeated.
+  - **A how may depend on the options**: a circle locked to 3 points says to
+    tap three points, on its hover too. Reason: the lock is remembered, and
+    a tip describing a gesture the tool will not take is worse than none.
+  - **The summary stays above the steps**, though they overlap ("click inside
+    it, then ✓" over "Tap inside a closed outline"). Reason: the spec's
+    "name, what it does, how", and the summaries are other tests' text.
+  - **Chosen by finger only**: a tap on a tray button or a flyout item, or a
+    slide onto one. Not a click, not `arm("x")` typed, not the context menu.
+    Reason: a mouse has the hover; a typed call is not a question.
+  - **An element of its own** (`#chosentip`, `role="status"`), not the
+    tooltip's. Reason: nothing asked for it and nothing closes it, so Escape
+    and Android's back, which close "what is open", must not see it. (And
+    `tooltips.e2e.ts`'s "a tap shows no tooltip" stays true of the tooltip.)
+  - **It takes no touch** (no pointer events) **and any press puts it away**,
+    not only one on the drawing. Reason: the tooltip's own rule, and a press
+    anywhere is the hand getting on with it.
+  - **The timing: a second and 40 ms a character, 3 s at least, 10 at most**
+    (`readingMs`); the constrain tool's is 9 s, the Hand's 8. Reason: 25
+    characters a second is a quick silent reader; shorter and it is not
+    read, longer and it is furniture. **Worked out, not felt**: no person
+    has timed it on a phone — the owner's to say.
+  - **The second-time rule: the steps alone, no name, 5 s at most**, counted
+    per tool per page load (a reload starts over). Every time after is the
+    same as the second. Reason: the spec's; a reload is a fresh session. Not
+    counted: a hold's tooltip, which is asked for.
+  - **Where it goes is worked out, not fixed** (`chosenPlacement`): bare
+    drawing 1 a pixel, the drawing's middle third 3 more, the action strip
+    and the command line a half, the log and the organiser nothing; never
+    the tray, the tool's options, the palette, the logo's corner. Reason: a
+    tap through the tip onto drawing nobody can see does something with a
+    tool armed; a tap through it onto the log does nothing.
+  - **It covers the action strip** (Undo, Redo, Delete, Cancel) on an
+    upright phone while it is up. Reason: the alternative is 65 px further
+    into the drawing. The buttons still work under it. The likeliest veto.
+  - **Every tip starts at the same line** (`STAY`: a place up to a third of
+    a tip's area worse than the best is taken for being the first reading
+    down). Reason: without it a short tip and a tall one settled a pane's
+    edge apart, and looked like two things.
+  - **A group's button says what else it holds**: *Hold this button for
+    Constrain.*, by name up to 44 characters, else *for 8 more tools.*
+    Reason: Constrain shares Dimension's button and nothing on the screen
+    said so — the owner's actual obstacle. Not in the spec.
+  - **The setting's name is `ui({ tips: false })`**, its row *Tips when a
+    tool is chosen* in the logo menu's View, stored under `neocad.tips.v1`,
+    on by default, never journalled. It turns off the chosen tip only: a
+    hover's and a hold's tooltip are asked for and have no switch.
+  - **The phone palette drops a section with nothing in it before it drops a
+    row** ("l1, l2 have / no relation yet"), only where the rows overflow.
+    Reason: 39 px of a 164 px pane; with it gone two relations fit, not one.
+  - **The palette's empty line keeps its first four words** (*pick what to
+    relate — two lines, a line and a circle…*). Reason: two suites match
+    them, and they were right.
+  - **The ✓'s tooltip now says "…and puts the tool down"** (bug 77). The
+    other way to make it true — keep the tool armed after a confirm — is a
+    behaviour change and the owner's call.
+
 - **An extrude's two profiles are peers; a feature relates, it does not own**
   (the owner, 2026-11-09 and 2026-11-12: *"kind of like mirror relations"*,
   *"i don't like the idea of anything being 'consumed'"*, *"If you change one
@@ -4590,13 +4667,48 @@ extended the way `defineTool` extends the tool registry would close it.
   one edge; whichever is right, the other should change. The walk is kept
   over the four panes it was written over, so the palette is out of it.
 
-- [ ] **The phone palette wastes a row (2026-11-09, review of #88).** Pictures
+- [x] **The phone palette wastes a row (2026-11-09, review of #88).** Pictures
   427, 431 and 432: one applicable row, a blank row, then "N more…". The fit
   budget in `src/constraints.ts` `sync` (`room = clientHeight − rest −
   oneRow`) leaves a whole row unused on a three-row pane, so the likeliest
   two should show and only one does. Find the slack (a margin on the
   more-row or the empty-section line, probably) and measure on the iPhone 13
   picture: one more row is Symmetric without a second tap.
+  **Fixed 2026-11-12** (docs/plans/tool-howto.md). Measured on the iPhone 13:
+  the body is 164 px, a heading 20.5, a row 44, and the slack was neither
+  margin — it was the whole section under the rows, "l1, l2 have / no
+  relation yet", 39.4 px. The budget was right about the room it was given.
+  Where the rows overflow, a section with nothing in it now gives way first:
+  two lines show Parallel, Perpendicular, "6 more…" (picture 481), 6.5 px to
+  spare. A selection that *has* relations still shows one row and its list.
+
+- [ ] **What the tool-howto package left (2026-11-12), each seen in the
+  browser:**
+  - **Landscape**: on an iPhone 13 on its side the chosen tip lies over the
+    command line's end, the strip, the log, the organiser's top **and the
+    drawing's right** (picture 487). The screen is 750 × 342 and the tip is
+    390 × 167; there is no place clear of the drawing at that width. The
+    answer is probably a narrow form of the tip down the right-hand column
+    (203 px), tried at each candidate width; not built.
+  - **The tools' guidance says "click" on a phone**: `constrain: click what
+    to relate`, `click what to dimension: a vertex…` are written into the
+    tools' `log` calls with no hand to ask. The chip shows them, in italics,
+    right beside a tip that says "tap". The tools' behaviour was out of this
+    package's scope.
+  - **The summaries say "click" on a phone** (filed with the tooltips
+    package): now directly above steps that say "tap". One line each, for
+    both hands; making them the hand's is a change to thirty strings and
+    the tests that quote them.
+  - **Most drawing tools put themselves down after one shape** (a point, a
+    rectangle, a circle…); the line tool, trim, extend, dimension and
+    constrain do not. Only the point's how says so. Whether one shape per
+    choice is right is the owner's.
+  - **Not tried on an iPhone**: the tip's place under real safe-area insets,
+    and whether nine seconds is the right time to read one, are the device's
+    to judge. (Whether iOS fires `click` as a pointer event is not relied
+    on: the last `pointerdown`'s type is what is read.)
+  - **A chosen tip for `arm()` typed or the context menu**: none. A person
+    who types a tool's name asked for nothing; could be revisited.
 
 - [x] **Pages reloading mid-test when a worker checks out a worktree
   (2026-11-05).** "Execution context was destroyed, most likely because of a

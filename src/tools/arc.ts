@@ -32,7 +32,7 @@
 // the arc lies on the first press's plane (`CurvePlane`, place.ts) and is held
 // there by `onplane` and `par`.
 
-import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { arcEndpoints, tangent } from "../relations/geometry.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -135,6 +135,15 @@ interface Leaving { curve: string; at: 0 | 1; arc: Arc3 }
 export class ArcTool extends Tool {
   static readonly options: OptionSpecs = { ...DRAWING_OPTIONS, method: methodOption(ARC_METHODS) };
   static readonly summary = "Draws an arc: drag end to end and click its bulge, or click its centre";
+  static readonly how: How = (o) =>
+    o.method === "3pt" ? ["{Tap} one end, the other, then where it bulges to.", "Locked to 3 points: the options unlock it."]
+      : o.method === "centre" ? ["{Tap} its centre, then its start, then its end.", "Locked to centre · ends: the options unlock it."]
+        : o.method === "tangent" ? ["Press on the end of a line or arc, then {tap} where this arc ends.", "Locked to tangent: the options unlock it."]
+          : [
+            "Drag from end to end, then {tap} where it bulges to.",
+            "Or {tap} its centre, then its start, then its end.",
+            "Start at a line's end and bulge it smoothly: it stays tangent.",
+          ];
   readonly name = "arc";
   private stage: Stage = { kind: "start" };
   /** The press in progress — down, not yet up — and whether it has moved past a click. */

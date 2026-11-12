@@ -40,7 +40,7 @@
 // tool lights its regions, and so are the named planes; a click on none of them
 // is answered with guidance, muted, never red — and the tool stays armed.
 
-import { Tool, press, type Hand, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { Tool, press, type Hand, type PointerInfo, type RegionHit, type RenderContext, type How } from "./tool.ts";
 import { REGION_GREEN, drawRegion, lightRegions, missedRegion, regionKey } from "./region.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
@@ -73,6 +73,11 @@ type Under =
 
 export class SketchTool extends Tool {
   static readonly summary = "Sketch on a face or Top, Front, Right: all you draw stays on it";
+  static readonly how: How = [
+    "{Tap} a lit face — or Top, Front or Right in the options.",
+    "The view turns to it; what you draw is held on it.",
+    "Done, at the top beside its name, leaves the sketch.",
+  ];
   /**
    * The ground's planes, one tap each (docs/plans/sketch-mode.md): pressing
    * one sketches on it at once. Never remembered — the next sketch starts by

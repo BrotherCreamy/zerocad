@@ -10,6 +10,24 @@ etc).
 
 ## What's working right now
 
+- **A tool says how to use it** (docs/plans/tool-howto.md, built). The owner:
+  *"I don't even know how to add a parallel relation. Maybe a little tooltip
+  should pop up when I hover over (desktop) or select (phone) a tool."* Every
+  tool declares its steps (`static how`, three lines at most, each written by
+  doing it in the browser; `{tap}` reads click or tap, and a tool whose
+  gesture depends on its options says the armed one). **A hover's tooltip
+  has them**; **a tool chosen by finger shows its tip unasked** — name, what
+  it does, how, and what else its button holds (*Hold this button for
+  Constrain.*: Constrain is behind Dimension) — in an element of its own that
+  takes no touch, lies over the log and the organiser, never over the tray,
+  the tool's options or the palette, and goes at the next press or once
+  read; the second time, the steps alone. `ui({ tips: false })` and the logo
+  menu's View turn it off. **The palette on a phone shows two relations
+  where it showed one** (a section with nothing in it gives way to a row),
+  and its empty state says what to pick. Bug 77: the ✓'s tooltip said the
+  tool stays armed. Landscape is a limitation (the tip lies over the
+  drawing's right). Unit: `test/toolhowto.test.ts`; e2e: `toolhowto.e2e.ts`
+  (iPhone 13 and mouse).
 - **An extrude's two profiles are peers, and a feature relates, it does not
   own** (docs/plans/linked-profiles.md, built; review item 4). The owner:
   *"i mean kind of like mirror relations"*, *"i don't like the idea of

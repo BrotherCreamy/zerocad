@@ -36,7 +36,7 @@
 // points and lines, and pick as any do. That last part is `solidRefAt` below,
 // on its own so a fuller picker can take its place.
 
-import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand, type ToolContext } from "./tool.ts";
+import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand, type ToolContext, type How } from "./tool.ts";
 import { Tool } from "./tool.ts";
 import { constraintsFor } from "../dimensioning.ts";
 import { sketchFrameFor } from "../sketchface.ts";
@@ -92,6 +92,18 @@ function onSolid(model: ToolContext["model"], members: string[]): boolean {
 
 export class ConstrainTool extends Tool {
   static readonly summary = "Relates what you pick: choose from the relations that apply";
+  // Short on purpose under a finger: the first two are one line each of an
+  // iPhone 13's tip, which is what leaves room for the third — several
+  // picked and one press make one relation among them all, and a thing's
+  // menu takes it out again (`leave`, docs/plans/review-relations.md) — and
+  // keeps the tip to eight lines, clear of the drawing's middle. What can be
+  // picked is said by the palette's own empty line, up at the same moment;
+  // a mouse's tooltip has the room, and no palette yet, so it says it here.
+  static readonly how: How = [
+    { mouse: "Click the things to relate: two lines, a line and a circle…", finger: "Tap the things to relate." },
+    "Then choose: Parallel, Tangent…",
+    { mouse: "Pick several for one relation; right-click a line for Leave.", finger: "Pick several for one relation; hold a line for Leave." },
+  ];
   readonly name = "constrain";
   readonly snaps = false;
   /** What is picked, in the order picked. */
