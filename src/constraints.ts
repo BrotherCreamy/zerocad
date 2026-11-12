@@ -24,6 +24,12 @@
 // **agreeing sets** (`Diagnosis.agreeing`): relations that say one thing
 // together, none of them wrong, which the status only counts.
 //
+// **A conflict is listed first, whatever is selected**
+// (docs/plans/review-solver.md): one heading, the relation that made it first
+// and marked as that, then what it cannot hold with, a delete on each. It is
+// what the viewer has to act on, and the press that made it (a row of this
+// pane, as often as not) left the selection where it was.
+//
 // **Room on a phone.** Where its rows do not fit the pane, the likeliest
 // relations show and a "more…" row opens the rest — measured against the
 // pane's real height, so a pane the viewer made taller shows more.
@@ -67,11 +73,37 @@ export interface HeldRow {
   deleteCommand: string;
   /** Whether the canvas's selection holds it. */
   selected: boolean;
+  /**
+   * Its part in a conflict that stands, wherever in the pane its row is:
+   * `culprit`, the relation that made one; `against`, one a culprit cannot
+   * hold with; `conflict`, one of a set with none singled out. Absent for a
+   * relation in no conflict.
+   */
+  role?: ConflictRole;
+}
+
+export type ConflictRole = "culprit" | "against" | "conflict";
+
+/** One conflict as the palette is told of it: `Model.conflicting`'s, by its shape. */
+export interface PaletteConflict {
+  culprit: string | null;
+  set: readonly string[];
+  found: boolean;
+}
+
+/** Each relation's part in the conflicts that stand (`HeldRow.role`). */
+export function conflictRoles(conflicts: readonly PaletteConflict[]): Map<string, ConflictRole> {
+  const roles = new Map<string, ConflictRole>();
+  for (const c of conflicts) {
+    for (const n of c.set) if (!roles.has(n)) roles.set(n, c.culprit === null ? "conflict" : "against");
+    if (c.culprit !== null) roles.set(c.culprit, "culprit");
+  }
+  return roles;
 }
 
 export interface PaletteSection {
-  /** `apply`, `held`, `all`, `agreeing` — what the DOM keys a section by. */
-  id: "apply" | "held" | "all" | "agreeing";
+  /** `conflict`, `apply`, `held`, `all`, `agreeing` — what the DOM keys a section by. */
+  id: "conflict" | "apply" | "held" | "all" | "agreeing";
   title: string;
   /** A word after the title, muted: how many, or what the set is. */
   note: string;
@@ -93,7 +125,7 @@ export function setCommand(name: string, value: number): string {
 const ANGLE_OPS = new Set(["angle", "revolution"]);
 
 /** A relation as the palette shows it. */
-export function heldRow(model: Model, r: RelationEntry, selection: readonly string[]): HeldRow {
+export function heldRow(model: Model, r: RelationEntry, selection: readonly string[], roles?: ReadonlyMap<string, ConflictRole>): HeldRow {
   let glyph: string;
   try {
     glyph = glyphText(model, r);
@@ -111,25 +143,51 @@ export function heldRow(model: Model, r: RelationEntry, selection: readonly stri
     tapCommand: `select(${quoted(r.name)})`,
     deleteCommand: `del(${quoted(r.name)})`,
     selected: selection.includes(r.name),
+    ...(roles?.has(r.name) ? { role: roles.get(r.name)! } : {}),
   };
+}
+
+/**
+ * A conflict as a section: the relation that made it first, then what it
+ * cannot hold with — or the set, where none is singled out. The note says
+ * which in a few words (the heading is cut at the pane's width).
+ */
+function conflictSection(model: Model, c: PaletteConflict, selection: readonly string[], roles: ReadonlyMap<string, ConflictRole>): PaletteSection | null {
+  const names = [...(c.culprit === null ? [] : [c.culprit]), ...c.set].filter((n) => model.relations.has(n));
+  if (!names.length) return null;
+  const note = c.culprit === null ? (c.set.length > 1 ? `${c.set.length} cannot all hold` : "cannot hold")
+    : !c.found ? `${c.culprit} made it · its set not found in time`
+      : c.set.length ? `${c.culprit} made it · against ${c.set.length}` : `${c.culprit} cannot hold`;
+  return { id: "conflict", title: "conflict", note, rows: names.map((n) => heldRow(model, model.relationOf(n), selection, roles)), empty: null };
 }
 
 /**
  * The palette's sections, read off the model — pure, so a test asks it what
  * the pane would show. `names` is what the palette is about (the tool's picks,
  * else the selection's entities); `selection` only lights rows; `agreeing` is
- * the last diagnosis's sets, listed with nothing selected.
+ * the last diagnosis's sets, listed with nothing selected; `conflicts` the
+ * last solve's (`Model.conflicting`), each listed first whatever is selected.
  */
 export function paletteFor(
   model: Model, names: readonly string[], selection: readonly string[] = [], agreeing: readonly (readonly string[])[] = [],
-  picking = false,
+  picking = false, conflicts: readonly PaletteConflict[] = [],
+): PaletteSection[] {
+  const roles = conflictRoles(conflicts);
+  const inConflict = conflicts.map((c) => conflictSection(model, c, selection, roles)).filter((s): s is PaletteSection => s !== null);
+  return [...inConflict, ...sectionsFor(model, names, selection, agreeing, picking, roles)];
+}
+
+/** The palette's sections but for the conflicts: what it is about, or the whole drawing. */
+function sectionsFor(
+  model: Model, names: readonly string[], selection: readonly string[], agreeing: readonly (readonly string[])[],
+  picking: boolean, roles: ReadonlyMap<string, ConflictRole>,
 ): PaletteSection[] {
   // What the palette is about: the names given, less any relation's — a
   // selected glyph lights its row and is nothing to relate. A face's
   // `"p1.p2.p3"`, a frame's arm `"f1.y"` and the solid kernel's own names are
   // kept: `constraintsFor` reads them (On face, Normal to plane, a greyed cell).
   const about = [...new Set(names)].filter((n) => !model.relations.has(n));
-  const newestFirst = (rs: RelationEntry[]) => rs.reverse().map((r) => heldRow(model, r, selection));
+  const newestFirst = (rs: RelationEntry[]) => rs.reverse().map((r) => heldRow(model, r, selection, roles));
   // The constrain tool armed with nothing picked yet: the palette says what
   // the tool is waiting for, where the list will be, rather than listing the
   // drawing as though nothing were going on.
@@ -155,7 +213,7 @@ export function paletteFor(
     { id: "all", title: "relations", note: all.length ? String(all.length) : "", rows: all, empty: "none — select something to relate it" },
   ];
   for (const set of agreeing) {
-    const rows = set.filter((n) => model.relations.has(n)).map((n) => heldRow(model, model.relationOf(n), selection));
+    const rows = set.filter((n) => model.relations.has(n)).map((n) => heldRow(model, model.relationOf(n), selection, roles));
     // Short enough for the pane at its default width: "4 say one thing together — none is wrong" was cut at "no…".
     if (rows.length) sections.push({ id: "agreeing", title: "agreeing", note: `${rows.length} say one thing — none is wrong`, rows, empty: null });
   }
@@ -344,6 +402,9 @@ export class ConstraintsPalette {
     const row = document.createElement("div");
     row.className = r.selected ? "crow on" : "crow";
     row.dataset.name = r.name;
+    // Its part in a conflict, for the stylesheet: the culprit's mark filled in
+    // the conflict's ink, what it is against outlined in the quieter one.
+    if (r.role) row.dataset.role = r.role;
     giveTip(row, () => ({ name: r.name, summary: `${r.text} — selects it; right-click for its menu`, command: r.tapCommand }),
       this.host.tooltip, { hold: false });
     const glyph = document.createElement("span");
