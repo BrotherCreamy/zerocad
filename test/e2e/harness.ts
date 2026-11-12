@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Seventy-six bugs so far were invisible to the unit tests and
+// once it is assembled. Seventy-seven bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
@@ -103,7 +103,8 @@ async function requireServer(): Promise<void> {
   if (await serverIsUp()) return;
   throw new Error(
     `no dev server at ${APP_URL}. Run the suite with \`npm run test:e2e\`, which starts its own ` +
-    "on a private port — or start one with `npm run dev` and point NEOCAD_E2E_URL at it.",
+    "on a private port — or start one with `npm run dev` and point NEOCAD_E2E_URL at it. " +
+    "In a run that had one, the server died: run.ts's banner (THE DEV SERVER DIED) says when and how, and this file is not a verdict on the app.",
   );
 }
 
