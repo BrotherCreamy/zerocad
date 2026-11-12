@@ -313,10 +313,9 @@ export const VERSION = 20;
 //   `parallel ["p1", "p2", "p3", "origin.x"]`. Two ops are new: `join` and
 //   `leave` (among.ts), a relation's members changed in place — a deletion's
 //   expansion writes a `leave` ahead of the `deleteEntity` of a member whose
-//   relation stays over the rest. A version-19 build would refuse the first by
-//   arity ("this takes two references, not three") and misread nothing, but
-//   it would also replay a `leave`-less deletion of a member as the deletion
-//   of the whole relation's name it then could not find.
+//   relation stays over the rest. A version-19 build would refuse such a file
+//   at its first set, by arity ("this takes two references, not three"), which
+//   is a riddle where "this file is version 20" says what is wrong.
 // - a wall in `onPlane`, `faceDistance`, `parallel`, `perpendicular` and
 //   `measure` is `"e1:l2"`, the wall of `e1` swept from `l2`, where it was
 //   `"e1.m3"`, the wall in place 3 of the profile. A version-19 build reads

@@ -8,8 +8,8 @@
 // a line, On, Midpoint and Distance; with two circles, Concentric, Coradial,
 // Equal and Tangent; with five lines, Equal for all five at once; and so on
 // (`constraintsFor`, the same list the context menu shows on a selection).
-// One press types one line — `par("l1", "l2")`, or for many at once
-// `eq("l1", "l2"); eq("l1", "l3")` — through the command line, so the log,
+// One press types one line — `par("l1", "l2")`, or for many at once one call,
+// `eq("l1", "l2", "l3", "l4", "l5")`, one relation among them (relations/among.ts) — through the command line, so the log,
 // the journal and the undo step are the typed line's. A row greyed in the
 // palette says why it cannot apply, and a press on it types nothing.
 //

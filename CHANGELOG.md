@@ -7,6 +7,85 @@ decisions.
 
 ---
 
+## 2026-11-12 — many at once is one relation among equals, and a wall is named by the line it is swept from
+
+Review items 5 and 6 of the register (docs/plans/review-relations.md), read
+against the owner's principle: *"correct relationships BETWEEN entities …
+bidirectional relationships everywhere by default"* — nothing privileged,
+nothing consumed. The owner, of the review: *"All good."*
+
+| | |
+|---|---|
+| ![Four lines picked with the constrain tool and Parallel (all 4) pressed: one relation, r5, typed as par("l1", "l2", "l3", "l4"); each line wears one // beside its length, and none of them wears three](docs/images/470-four-lines-parallel-one-relation-a-mark-on-each.png) | ![The first line picked deleted by hand, its two points left; the log says r5 par l2 l3 l4 — l1 left it, and it holds among the rest; one line's end dragged round and the other two turned with it](docs/images/471-the-first-pick-deleted-the-other-three-turn-together.png) |
+| ![Two blocks, the dimension tool armed, the +x wall of each lit green as picked, the 50 it will read beside the cursor](docs/images/472-two-walls-of-two-blocks-picked-each-named-by-its-line.png) | ![The near block's corner cut off with a line and two trims, a narrow new wall where the corner was; the mouse on the dimension's label, the two lines its walls are swept from lit amber, the tag reading d3 faceDistance e1:l2 e2:l14 50](docs/images/473-the-corner-trimmed-off-the-dimension-still-on-its-walls.png) |
+| ![iPhone 13: the four lines parallel, a // on each](docs/images/474-iphone-four-lines-parallel-one-relation.png) | ![iPhone 13: the first line deleted from the menu a held finger opens, the other three turned together by a finger's drag](docs/images/475-iphone-the-first-pick-deleted-the-rest-turn-together.png) |
+| ![iPhone 13: the two walls tapped with the dimension tool, both lit, 50 by the finger](docs/images/476-iphone-two-walls-of-two-blocks-picked.png) | ![iPhone 13: the corner trimmed off, the dimension's 50 tapped and selected, still drawn](docs/images/477-iphone-the-corner-trimmed-off-the-dimension-still-on-its-walls.png) |
+| ![The constraints palette listing eleven relations, the five lines' parallel among them once — // r5 par l1 l2 l3 l4 l5 — and a line's menu offering Leave r5 (// with l1, l2, l3, l5)](docs/images/478-the-palette-lists-the-relation-once-a-line-may-leave-it.png) | ![A block seen from behind with the point tool armed: the wall under the mouse lit amber, ▱ e1:l4 beside the ghost, the chip reading on e1:l4 · point · click where the point goes](docs/images/479-a-wall-under-the-hand-named-by-the-line-it-is-swept-from.png) |
+
+**What was true, found before anything changed.** Four lines picked and
+Parallel pressed made `par(l1, l2)`, `par(l1, l3)`, `par(l1, l4)`: delete
+`l1` and the other three were related by nothing. And `e1.m3` meant *the wall
+in place 3 of e1's profile*, counted loop by loop and read again at every
+evaluation — so a fillet of the profile's first corner, whose arc joins at
+place 1, moved every later wall up one: a point put on `l4`'s wall (x = 0) by
+`onplane(p, "e1.m3")` was taken to `l3`'s (y = 40). A chamfer's new line and
+a trim that re-finds the region did the same. Part of item 6 was already true
+and is left alone: two parallel walls of one extrude were already `dist` of
+their lines, and a round wall its circle.
+
+- **One relation among many** (`src/relations/among.ts`): `par`, `eq`, `col`,
+  `coin`, `conc`, `corad` and `eqrad` take any number of members —
+  `par("l1", "l2", "l3", "l4")` — and make one relation: one name, one
+  journal entry, a mark on each member. Points level or upright with each
+  other are `horizontal("p1", "p2", "p3")`, journalled `par("p1", "p2",
+  "p3", "origin.x")`. Its rows are the pair relation's own function, called
+  n − 1 times inside the one `model.relation`: no new equations. The
+  constrain list's many-at-once rows type one call each, and gained
+  **Collinear (all n)**.
+- **Nobody is first.** Deleting a member — the first as much as any — leaves
+  the relation over the rest, under its name, down to two; with one left it
+  goes. The log says which member left. A conflict names the relation once
+  (three names where a star gave four and a chain up to nine), an agreeing
+  set counts it once.
+- **A typed relation joins** (`src/among.ts`, `relate`): `par("l2", "l9")`
+  where `l2` is already in a `par` adds `l9` to that relation — one relation,
+  not two — and merges two relations it bridges, pairs included. `join("r3",
+  "l9")` and `leave("r3", "l2")` change who is in one by name; a line's menu
+  offers **Leave r3**. Each rebuilds the relation in place (as `set` does)
+  and is journalled as itself.
+- **A file replays as written**: a replay never joins, so an old file's star
+  reopens as the separate relations it was, re-saves the same, and is only
+  gathered into one relation when someone relates one of its members again.
+- **A wall is `e1:l2`**: the wall of `e1` swept from the line `l2`; the caps
+  stay `e1.lid` and `e1.base`. Resolved when read, in one file
+  (`src/relations/solidref.ts`: `faceSource`, `faceRef`, `faceKernelNames`),
+  so `onplane`, `fdist`, `par` and `perp` to a face, a driven `fangle`, the
+  dimension tool's picks, the name beside the hand and the chip all stay on
+  their wall through a trim, a split and a fillet of the profile. `e1.m3`
+  still reads, typed and in a file, as the wall then in place 3, and is
+  journalled by its line. Deleting the line takes what was held to its wall,
+  and the log says so: `r9 went with l4: it was held to e1:l4, the wall of e1
+  that l4 sweeps`.
+- **Two meeting walls are `corner(l1, l2, θ)`** — a new dimension: the angle
+  in the corner two lines make, each read out of the corner, so a wedge's
+  sharp edge reads 30° whichever way round its lines were drawn, and a fillet
+  of that corner leaves the dimension on its walls. It was `ang3` of three
+  points, which stays for three points a user picks.
+- **Format 20.** A file of 19 or before opens to the relations it had, name
+  for name; its walls are rewritten at their own step, so one in which a
+  fillet had renumbered them reopens holding the wall each relation was made
+  on (`test/reviewrelations.test.ts`, three fixtures saved by the build
+  before).
+
+Measured: three lines collinear in 3D from loose seeds solve by the star's
+rows and, by a chain's, fold the first line to a point — so the spanning set
+is each member with the one listed first, which nothing above the solver can
+tell. Free lines made parallel are still met by shortening as well as by
+turning (the first palette picture showed it); that is review item 1, another
+package's, and its fix lands under these rows.
+
+Typecheck 0 · unit **TBD** · kernel 11/11 · e2e **TBD**.
+
 ## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
 
 The owner: *"when i make a rectangular prism, i attempt to draw an e.g.
