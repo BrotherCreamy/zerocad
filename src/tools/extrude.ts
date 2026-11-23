@@ -190,6 +190,7 @@ export class ExtrudeTool extends FeatureTool {
     const depth = this.depthOf(values);
     const typed = !!this.ctx.perform;
     const options = featureOptions(values, this.upto);
+    const cutting = this.cutting(values);
     // Two clicks inside one named region are one region, extruded once.
     const seen = new Set<string>();
     return this.picks.regions.flatMap((r, i) => {
@@ -198,8 +199,62 @@ export class ExtrudeTool extends FeatureTool {
         if (seen.has(named)) return [];
         seen.add(named);
       }
-      return extrudeSteps(r, depth, typed, this.picks.without(i), options);
+      const without = this.picks.without(i);
+      if (!cutting) return extrudeSteps(r, depth, typed, without, options);
+      // **A cut goes into the material**, whichever tool asked for it. Asked
+      // of the model as the step finds it — after a plane the step before
+      // typed — which way is into the material, and the depth signed so
+      // (`cutWay`). The Cut tool always did this; the Extrude tool's mode row
+      // set to Cut kept the depth's own sign, away from the body a lid's
+      // sketch sits on, so the cut reached nothing, the organiser gained a
+      // feature and the body stood unchanged — "extrude cut doesn't work"
+      // (the owner, 2026-11-23, browser-only bug 80).
+      const step: FeatureStep = (m) => extrudeSteps(r, cutWay(m, r, depth, values.end).way * depth, typed, without, { ...options, mode: "cut" })[0](m);
+      return [step];
     });
+  }
+
+  /** Whether this tool, with these values, cuts: the Cut tool, or the Extrude tool's mode row set to Cut. */
+  protected cutting(values: Record<string, unknown>): boolean {
+    return values.mode === "cut";
+  }
+
+  /** The picks, values and model a cut's reach was last worked out for, and whether every cut reached a solid. */
+  private reachKey = "";
+  private reachesAll = true;
+  /** The picks and values the guidance last spoke for. */
+  private toldKey = "";
+
+  /** Whether every picked region's cut reaches a solid, worked out once per picks, values and model. */
+  private reaches(values: Record<string, unknown>): boolean {
+    const m = this.ctx.model;
+    const key = `${this.picksKey()}\n${JSON.stringify(values)}\n${m.journal.length}:${m.entities.size}`;
+    if (key !== this.reachKey) {
+      this.reachKey = key;
+      const d = this.depthOf(values);
+      this.reachesAll = this.picks.refresh(m).every((r) => cutWay(m, r, d, values.end).reaches);
+    }
+    return this.reachesAll;
+  }
+
+  /**
+   * Said once, muted, for what is picked as it is now: a cut that reaches no
+   * solid (`CUT_REACHES_NOTHING`), whichever tool is cutting. Not while ✓'s
+   * lines go in: the cut being made has taken the material the question
+   * would look for (seen: said once after every cut).
+   */
+  protected sayReach(): void {
+    if (this.busy) return;
+    if (!this.picks.size) {
+      this.toldKey = "";
+      return;
+    }
+    const v = this.values();
+    if (!this.cutting(v)) return;
+    if (!this.reaches(v) && this.toldKey !== this.reachKey && this.ctx.log) {
+      this.toldKey = this.reachKey;
+      this.ctx.log(`${this.name}: ${CUT_REACHES_NOTHING}`, "guide");
+    }
   }
 
   protected picksKey(): string {
@@ -293,6 +348,7 @@ export class ExtrudeTool extends FeatureTool {
    */
   render(r: RenderContext): void {
     const model = this.ctx.model;
+    this.sayReach();
     lightRegions(model, r, this.under);
     this.picks.refresh(model).forEach((picked, i) => {
       const out = leftOut(model, picked, this.picks.without(i));
@@ -528,66 +584,17 @@ export class CutTool extends ExtrudeTool {
     "✓ cuts it out.",
   ];
   readonly name: string = "cut";
-  /** The picks, values and model a reach was last worked out for, and whether every cut reached a solid. */
-  private reachKey = "";
-  private reachesAll = true;
-  /** The picks and values the guidance last spoke for. */
-  private toldKey = "";
 
   protected get verb(): string {
     return "cut";
   }
 
+  /** The Cut tool cuts whatever its values say: it has no mode row. */
+  protected cutting(): boolean {
+    return true;
+  }
+
   protected plan(values: Record<string, unknown>): FeatureStep[] | null {
-    if (!this.picks.size) return null;
-    const d = values.depth;
-    const depth = typeof d === "number" && Number.isFinite(d) && d !== 0 ? d : DEFAULT_DEPTH;
-    const typed = !!this.ctx.perform;
-    const end = values.end;
-    // Up to face with no face yet is not a plan (`wanting` asks for it).
-    if (end === "upto" && !this.upto) return null;
-    const options: FeatureOptions = { mode: "cut", ...(featureOptions(values, this.upto) ?? {}) };
-    const seen = new Set<string>();
-    return this.picks.regions.flatMap((r, i) => {
-      const named = namedRegionAt(this.ctx.model, r);
-      if (named) {
-        if (seen.has(named)) return [];
-        seen.add(named);
-      }
-      const without = this.picks.without(i);
-      // Asked of the model as the step finds it — after a plane the step
-      // before typed — which way is into the material, and the depth signed so.
-      const step: FeatureStep = (m) => extrudeSteps(r, cutWay(m, r, depth, end).way * depth, typed, without, options)[0](m);
-      return [step];
-    });
-  }
-
-  /** Whether every picked region's cut reaches a solid, worked out once per picks, values and model. */
-  private reaches(): boolean {
-    const m = this.ctx.model;
-    const v = this.values();
-    const key = `${this.picksKey()}\n${JSON.stringify(v)}\n${m.journal.length}:${m.entities.size}`;
-    if (key !== this.reachKey) {
-      this.reachKey = key;
-      const d = typeof v.depth === "number" && v.depth !== 0 ? v.depth : DEFAULT_DEPTH;
-      this.reachesAll = this.picks.refresh(m).every((r) => cutWay(m, r, d, v.end).reaches);
-    }
-    return this.reachesAll;
-  }
-
-  render(r: RenderContext): void {
-    super.render(r);
-    // Not while ✓'s lines go in: the cut being made has taken the material
-    // the question would look for (seen: said once after every cut).
-    if (this.busy) return;
-    if (!this.picks.size) {
-      this.toldKey = "";
-      return;
-    }
-    // Said once for what is picked as it is now — the guidance line, never red.
-    if (!this.reaches() && this.toldKey !== this.reachKey && this.ctx.log) {
-      this.toldKey = this.reachKey;
-      this.ctx.log(`${this.name}: ${CUT_REACHES_NOTHING}`, "guide");
-    }
+    return super.plan({ ...values, mode: "cut" });
   }
 }

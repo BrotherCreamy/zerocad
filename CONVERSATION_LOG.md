@@ -10,6 +10,26 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-23 — "Extrude cut still doesn't work": reproduced by finger before anything was read
+
+Four words from the owner and no picture. The deployed site was checked
+first (current: the Plane tool, Up to face and the solid kernel all in the
+page), then the owner's paths were walked by finger on an emulated iPhone,
+toolbar buttons and all, with a screenshot and the log after every step —
+not the test suite's `arm("cut")`, which passes, but the buttons a person
+sees. The Cut tool in the Extrude button's flyout worked. The Extrude button
+with Cut in its mode row did not (bug 80), and neither did a circle on a
+downward plate's own sketch plane (bug 81). Both left the same picture: a
+feature row, an unchanged body, a reason in small print.
+
+Rejected: making the Cut tool's reach check a refusal (✓ disabled) — the spec
+(solid-tools-intuitive) chose muted guidance so a cut can be made and then
+flipped; kept. Rejected: special-casing "a circle inside a named region" in
+the tool — the right rule was in `regionHolds`, one line: innermost of every
+loop, not of the region's faces, so the region tool's own click agrees with
+the feature tools'. Found and filed, not fixed: a circle started on a solid's
+edge is not drawn (the press takes the edge).
+
 ## 2026-11-12 — the solver's two costs: what the spec assumed, what the measurements said, and the kernel nobody had timed
 
 The brief was to build docs/plans/solver-cost.md exactly, and its first

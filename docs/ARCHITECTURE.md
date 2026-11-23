@@ -2668,7 +2668,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-nine bugs so far were invisible to the unit tests and obvious within seconds
+Eighty-one bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -3104,6 +3104,28 @@ of running the app:
    left in it scales `medium` as well and the factor would be counted twice
    — and divides out the browser's own font size, which the asked reading
    folds in (`systemTextScale`, uiscale.ts).
+80. The Extrude tool's mode row set to Cut kept the depth's own sign. A
+   circle on a plate's lid, the Extrude button, Cut in the mode row, ✓: the
+   depth stayed +10, up off the lid, the call was
+   `extrude("c1", 10, {"mode":"cut"})`, the kernel said "e2 cuts nothing from
+   e1 — it does not reach it" in the log's small print, the organiser gained
+   `e2 extrude · cut`, and the body stood unchanged. The Cut tool had always
+   signed its depth into the material (`cutWay`); the same row in the Extrude
+   tool had not. The unit tests of the Cut tool passed; the owner's "extrude
+   cut still doesn't work" (2026-11-23) was this path, the one the toolbar
+   puts first — the Cut tool is in the Extrude button's flyout. Both tools
+   take the Extrude tool's plan now, which signs a cut into the material and
+   says, muted, when it reaches nothing (`ExtrudeTool.cutting`).
+81. A named region took a tap inside a loop drawn within it later. A plate
+   extruded downward, a circle drawn on its sketch plane, Cut, a tap inside
+   the circle: `regionAtPoint` answered the plate's own region `rg1`, since
+   the tap was inside its face and the circle was no face of it, so the tool
+   cut the whole plate — `extrude("rg1", -10, {"mode":"cut"})` — and the
+   kernel refused ("nothing of the body would be left"), the body unchanged.
+   `regionHolds` judged the innermost loop among the region's *own* faces;
+   it judges the innermost loop of the drawing now, and a region holds a
+   tap only when that loop is one of its cells, as every tool's pick is the
+   innermost loop under the finger.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

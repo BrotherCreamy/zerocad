@@ -75,6 +75,44 @@ test("Cut on a lid: into the plate, down, with no minus sign typed — the extru
   assert.deepEqual([f.mode, f.into], ["cut", p.feature]);
 });
 
+test("the Extrude tool's mode row set to Cut, on a lid: into the plate, the same call the Cut tool types (browser-only bug 80)", async () => {
+  await loadSolver();
+  const { m, repl, p } = scene();
+  const top = p.lid.slice(0, 3).join(".");
+  const c = circleOn(m, top, onTop(p, 50, 30), 5, p.t.uz);
+  m.solve();
+  const hit = hitOn(m, onTop(p, 50, 30), p.t.uz);
+  // Before 2026-11-23 the mode row's Cut kept the depth's own sign — +10, up
+  // off the lid — and the cut reached nothing: a feature in the organiser,
+  // the body unchanged, and the owner's "extrude cut still doesn't work".
+  const { typed, refused, said } = await confirmed(ExtrudeTool, m, repl, hit, { depth: 10, end: "blind", mode: "cut" });
+  assert.deepEqual(refused, []);
+  assert.equal(typed.length, 1);
+  assert.match(typed[0], new RegExp(`^extrude\\("${c}", -10.*\\{"mode":"cut"\\}\\)$`), typed[0]);
+  const f = m.featureOf("e2", "extrude");
+  assert.deepEqual([f.mode, f.into], ["cut", p.feature]);
+  assert.ok(!said.some((l) => l.includes("reach")), `nothing said about the reach: ${said.join(" | ")}`);
+});
+
+test("the Extrude tool's Cut on a circle beside every body says it reaches nothing, muted, as the Cut tool does", async () => {
+  await loadSolver();
+  const { m, repl, p } = scene();
+  circleOn(m, p.t.name, p.t.at(L + 40, 30, 0), 5, p.t.uz);
+  m.solve();
+  const hit = hitOn(m, p.t.at(L + 40, 30, 0), p.t.uz);
+  const host = featureHost(m, repl);
+  const said: string[] = [];
+  const ctx = {
+    model: m, options: { depth: 10, end: "blind", mode: "cut" }, requestRender() {}, requestSolve() {}, finish() {},
+    regionAt: () => hit, perform: host.perform, log: (line: string) => said.push(line),
+  } as unknown as ToolContext;
+  const t = new ExtrudeTool(ctx);
+  t.onDown({ world: hit.at, screen: [0, 0] });
+  // What the tool's render says before it draws, asked without a canvas.
+  (t as unknown as { sayReach(): void }).sayReach();
+  assert.ok(said.some((l) => l.includes("doesn't reach any solid")), `said: ${said.join(" | ")}`);
+});
+
 test("Cut on the ground under a body: up into it; beside every body: the call's own way, and it reaches nothing", async () => {
   await loadSolver();
   const { m, p } = scene();

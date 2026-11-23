@@ -7,6 +7,48 @@ decisions.
 
 ---
 
+## 2026-11-23 — "extrude cut still doesn't work": the Extrude tool's Cut cut away from the body, and a region took the tap inside a circle drawn on it
+
+The owner, after eleven days with the build: *"Extrude cut still doesn't
+work."* Reproduced by finger on an emulated iPhone, every way a person
+reaches a cut from the toolbar, each step pictured and its log read. The Cut
+tool itself, reached through the Extrude button's flyout, cut a hole every
+time. Two other paths did not, and each left the same evidence a phone
+shows: a new `extrude · cut` row in the organiser, the body unchanged, and
+the reason in the log's small print.
+
+- **Browser-only bug 80 — the Extrude tool's mode row set to Cut.** The
+  first thing a person tries: the Extrude button, a circle on the lid, Cut
+  in the mode row, ✓. The depth kept its own sign, +10 up off the lid; the
+  call was `extrude("c1", 10, {"mode":"cut"})`, and the kernel said *e2 cuts
+  nothing from e1 — it does not reach it*. The Cut tool had always signed its
+  depth into the material (`cutWay`); the Extrude tool's Cut had not. Both
+  take one plan now (`ExtrudeTool.plan`, `cutting`): a cut goes into the
+  material whichever tool asked, and either tool says, muted, when a cut
+  reaches nothing. The Cut tool is the Extrude tool with Cut always on and
+  no mode row.
+- **Browser-only bug 81 — a named region took the tap inside a circle drawn
+  on it later.** A plate extruded downward (the ⇅ once), a circle drawn on
+  its top — its own sketch plane — the Cut tool, a tap inside the circle: the
+  tool took the plate's region `rg1`, cut the whole plate, and the kernel
+  refused (*nothing of the body would be left*). `regionHolds` judged the
+  innermost loop among the region's own faces; the circle was none of them.
+  It judges the innermost loop of the drawing now, and a region holds a tap
+  only when that loop is one of its cells — the rule every tool's pick
+  already follows. A consequence, written into the register: a tap inside a
+  circle drawn inside a region means the circle, until a step of the region
+  names it.
+
+Found and left (TODO.md, *Next up*): a circle whose first touch lands on a
+solid's edge is not drawn at all — the press takes the edge to drag, as a
+press on geometry does — so a hole meant to straddle the plate's edge needs
+its first touch off the edge.
+
+Tests: `test/cuttool.test.ts` (the Extrude tool's Cut types the Cut tool's
+call, and says the reach), `test/regionsops.test.ts` (a late loop inside a
+region's face), and `test/e2e/cutpaths.e2e.ts` — the owner's paths by finger
+on an iPhone and by mouse, pictures 541–544.
+
 ## 2026-11-12 — the solver's two measured costs: a kept size is pulled by a probe and a finish, and the drag frame's cost was never the kernel's
 
 *Merged into the working branch (`f085963`); one conflict, this file,

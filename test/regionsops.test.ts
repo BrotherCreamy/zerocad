@@ -27,7 +27,7 @@ import { UndoStack } from "../src/undo.ts";
 import {
   add, del, extrude, hole, intersect, region, regionArea, regionAtPoint, regionProfile, regionText, revolve, subtract, unhole,
 } from "../src/operations.ts";
-import { findLoops } from "../src/loops.ts";
+import { findLoops, loopAround } from "../src/loops.ts";
 import { featureFaces } from "../src/faces.ts";
 import { organiserSections, rowMenu } from "../src/organiser.ts";
 import { RegionTool } from "../src/tools/regiontool.ts";
@@ -396,6 +396,27 @@ test("typed: region, subtract, add, intersect — each one line, its chain in th
   const sql = sq.map((p, i) => m.addLine(p, sq[(i + 1) % 4]).name);
   await ok(`extrude("${sql[0]}", 5)`);
   assert.ok(log.some((l) => l.startsWith(`rg2 = ${sql[0]}–${sql[3]}  (made for e2)`)), log.join(" | "));
+});
+
+test("a loop drawn inside a region's face after it was made takes the click: the region holds only what its innermost loop is a cell of", async () => {
+  await loadKernel();
+  const { m, lines } = sheet();
+  const r = region(m, lines[0]);
+  assert.equal(regionAtPoint(m, [5, 5, 0]), r, "inside the sheet, off the ring: the region");
+  // A circle drawn later, inside the region's face and no face of the region
+  // — the plate's sketch with a hole's outline drawn on it. A tap inside the
+  // circle means the circle (browser-only bug 81: the Cut tool took the
+  // whole plate's region and cut it all away).
+  const late = m.addCircle(m.addPoint([10, 40, 0]).name, 4, "f").name;
+  m.solve();
+  assert.equal(regionAtPoint(m, [10, 40, 0]), null, "inside the late circle: not the region's");
+  assert.equal(loopAround(m, [10, 40, 0])?.members.map((x) => (typeof x === "string" ? x : x.name)).join(), late, "the circle's own loop");
+  assert.equal(regionAtPoint(m, [5, 5, 0]), r, "beside it, still the region");
+  // The same rule for the ring and the island the sheet was drawn with: a tap
+  // inside either means the innermost loop there, as every tool's pick does,
+  // until a step of the region names it (subtract, and the ring is a hole).
+  assert.equal(regionAtPoint(m, [30, 37, 0]), null, "inside the ring, off the island: the ring's own loop, not the region");
+  assert.equal(regionAtPoint(m, [30, 25, 0]), null, "inside the island: the island's");
 });
 
 test("the organiser's Regions: a row per region, its chain, the eye hiding it by name, Edit, Extrude and Delete", async () => {

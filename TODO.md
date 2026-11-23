@@ -33,6 +33,15 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A cut goes into the material whichever tool asked for it** (2026-11-23,
+  bug 80): the Extrude tool's mode row set to Cut signs the depth as the Cut
+  tool does, and says when the cut reaches nothing. **A named region holds a
+  tap only when the innermost loop under it is one of its cells** (bug 81):
+  a circle drawn inside a region's face later is what a tap inside it means,
+  as it is for every other tool; until a region step names that circle, the
+  region does not take the tap. Both from the owner's *"Extrude cut still
+  doesn't work"*, reproduced by finger.
+
 - **CLAUDE.md's kernel fallback is `build:kernel:noopt`, not `build:kernel:dev`**
   (the manager, 2026-11-12, after the solver-cost package found every timing
   of the day taken on wasm-pack's debug build, ten times slower in the
@@ -3015,6 +3024,18 @@ are flagged as such.
          **Built** (2026-10-22) — see Done.
 
 ## Next up
+
+- [ ] **A circle whose first touch lands on a solid's edge is not drawn**
+  (2026-11-23, found reproducing the owner's cut paths): with the circle
+  tool armed and the plane on the lid, a drag starting on the plate's rim
+  edge drew nothing — the press took the edge, as a press on geometry does
+  — so a hole meant to straddle an edge needs its first touch off the edge.
+  An armed drawing tool's press on an edge should probably draw, and a hold
+  take the edge; measure what the owner does first.
+- [ ] **A cut that would remove the whole body is refused by the kernel after
+  the feature is made** ("nothing of the body would be left"): the row stays
+  in the organiser and the body stands. Better said before ✓, as a cut that
+  reaches nothing is.
 
 - [x] **There is no sketch** (the owner, 2026-11-12; spec
   [`no-sketch.md`](docs/plans/no-sketch.md)). **Built** (2026-11-12, branch

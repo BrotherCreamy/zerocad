@@ -3782,12 +3782,23 @@ export function regionArea(model: Model, name: string): number {
 }
 
 /**
- * Whether a world point is in a region — the innermost of its faces that
- * holds the point decides. What a click inside asks of a region.
+ * Whether a world point is in a region — **the innermost loop of the drawing
+ * that holds the point decides**, and it must be one of the region's cells.
+ * What a click inside asks of a region.
+ *
+ * Innermost of *every* loop in the region's plane, not only of the region's
+ * own faces: a circle drawn inside a plate's sketch after the plate was made
+ * is a loop of its own inside the region's face and no face of the region,
+ * and a tap inside that circle means the circle. Judged among the region's
+ * faces alone, the region held the tap, the Cut tool took the whole plate's
+ * region, and the cut removed the whole plate — which the kernel refused, so
+ * the body stood unchanged and "extrude cut doesn't work" (the owner,
+ * 2026-11-23, browser-only bug 81; the plate extruded downward, the circle
+ * on its sketch plane).
  */
 export function regionHolds(model: Model, v: RegionValue, world: number[]): boolean {
   let best: number | null = null;
-  for (const i of v.parent.keys()) {
+  for (let i = 0; i < v.all.length; i++) {
     if (!insideLoop(model, v.all[i], world)) continue;
     if (best === null || Math.abs(v.all[i].area) < Math.abs(v.all[best].area)) best = i;
   }
