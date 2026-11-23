@@ -19,8 +19,10 @@
 // about nesting anywhere. And one wall per profile member: a quad between a
 // line and its twin, and between an arc or circle and its twin a ruled strip,
 // sampled at the resolution the curve is drawn at (`arcSegments`), one quad per
-// piece — so a curved wall shades round, piece by piece, rather than as one
-// flat slab. A member that is a *portion* of its entity (a region split by a
+// piece — and each piece carrying the round surface's own normal at its
+// corners (`Face.vertexNormals`), so the wall shades round *across* its
+// pieces too, not as a stack of flat strips (the owner, 2026-11-23:
+// *"rendering of curved surfaces is piecemeal not smooth"*). A member that is a *portion* of its entity (a region split by a
 // crossing or a T) is drawn between its two points as they are now — never
 // over a span found when the region was, which a drag would leave behind — so
 // the base cap and its walls end exactly where the twins and wall lines stand.
@@ -107,6 +109,20 @@ export interface Face {
    * has a vertex, so there is no edge for the line to be at.
    */
   edges: number[][][];
+  /**
+   * **A piece of a curved surface** carries the surface's own unit normal at
+   * each of its outline's vertices — a cylinder wall's radial direction at
+   * each quad corner, a kernel cylinder's area-weighted mean over the
+   * triangles of that one kernel face meeting there — so the shade can be
+   * worked out per vertex and blended across the piece (`VisibleFace.shades`,
+   * facelayer.ts), and a cylinder drawn in 10° strips reads as one round
+   * surface and not as the strips. Absent on a flat face, which has nothing
+   * to smooth: a cap, a wall swept from a line, a kernel plane. Never shared
+   * across two faces of the solid — a box's corner stays sharp and a
+   * cylinder's rim stays a crease. `normal` is still what culls the face and
+   * what the painter's fallback and picking read.
+   */
+  vertexNormals?: number[][][];
   /**
    * The face's name as the solid kernel names it (src/solids/naming.ts) —
    * `e1.base`, `e1.lid`, `e1.m3` for every piece of the wall member 3 swept —
@@ -420,6 +436,59 @@ function outwardSigns(outlines: number[][][], plane: { u: number[]; v: number[] 
   });
 }
 
+/**
+ * The surface normals at a **curved** profile member's samples, in its plane
+ * — what a wall swept from it carries at each quad corner (`Face.vertexNormals`),
+ * so the wall shades as the round surface it stands for and not as its
+ * pieces. A conic's is read off its frame exactly, the gradient of its
+ * implicit form, `(d·u / r²) u + (d·v / rv²) v` — the radial direction for a
+ * circle or an arc, the true normal for an ellipse. A B-spline's is the
+ * bisector of its two chord normals at the sample (one chord at an open end):
+ * within a fraction of a degree at quarter-pixel chords. Unoriented — each
+ * is turned to its quad's own outward side where the quad is made (`facing`),
+ * so nothing about the loop's winding is repeated here. Null for a line,
+ * whose wall is flat and stays flat-shaded, and for anything that cannot be
+ * laid out.
+ */
+function memberNormals(model: Model, m: ProfileMember, path: number[][], z: number[]): number[][] | null {
+  const e = model.entities.get(typeof m === "string" ? m : m.name);
+  if (!e || e.kind === "line" || path.length < 2) return null;
+  if (!curvePath(model, e)) {
+    const f = curveFrame(model, e);
+    if (!f) return null;
+    const [r2, rv2] = [f.r * f.r, (f.rv ?? f.r) * (f.rv ?? f.r)];
+    const out: number[][] = [];
+    for (const p of path) {
+      const d = sub3(p, f.center);
+      const [a, b] = [dot3(d, f.u) / r2, dot3(d, f.v) / rv2];
+      const n = unit3([0, 1, 2].map((i) => a * f.u[i] + b * f.v[i]));
+      if (!n) return null; // a sample on the centre: no normal to speak of
+      out.push(n);
+    }
+    return out;
+  }
+  const chords = Array.from({ length: path.length - 1 }, (_, k) => unit3(cross3(sub3(path[k + 1], path[k]), z)));
+  if (chords.some((c) => !c)) return null;
+  const closed = gap(path[0], path[path.length - 1]) < 1e-12;
+  const last = chords.length - 1;
+  return path.map((_, k) => {
+    const before = k > 0 ? chords[k - 1] : closed ? chords[last] : null;
+    const after = k < chords.length ? chords[k] : closed ? chords[0] : null;
+    const sum = before && after ? before.map((c, i) => c + after![i]) : (before ?? after)!;
+    return unit3(sum) ?? (after ?? before)!;
+  });
+}
+
+/** `n` on the side of `toward`: a member's unoriented normal turned to its quad's outward side. */
+const facing = (n: number[], toward: number[]): number[] => (dot3(n, toward) < 0 ? n.map((c) => -c) : n);
+
+/** A wall quad's four corner normals, from the member's at its two base samples: constant along a ruling, so the lid's are the base's. */
+function quadNormals(vn: readonly number[][] | null, k: number, outward: number[]): { vertexNormals: number[][][] } | Record<string, never> {
+  if (!vn) return {};
+  const [a, b] = [facing(vn[k], outward), facing(vn[k + 1], outward)];
+  return { vertexNormals: [[a, b, b, a]] };
+}
+
 /** The kernel's name for the wall loop `i`'s member `j` swept: members are counted loop by loop (naming.ts). */
 function memberFace(f: FeatureEntry, i: number, j: number): string {
   let k = j;
@@ -455,6 +524,7 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
     base.forEach((loop, i) => loop.forEach((b, j) => {
       const t = lid[i][j];
       const cornered = hasVertices(model, f.loops[i][j]);
+      const vn = memberNormals(model, f.loops[i][j], b, z);
       const last = b.length - 1;
       for (let k = 0; k + 1 < b.length; k++) {
         const quad = [b[k], b[k + 1], t[k + 1], t[k]];
@@ -464,7 +534,8 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
         if (cornered && k === 0) edges.push([b[0], t[0]]);
         if (cornered && k + 1 === last) edges.push([b[last], t[last]]);
         for (const side of [1, -1]) {
-          sheets.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => side * c), centroid: mean(quad), edges, name: memberFace(f, i, j) });
+          const normal = n.map((c) => side * c);
+          sheets.push({ feature: f.name, kind: "wall", outlines: [quad], normal, centroid: mean(quad), edges, name: memberFace(f, i, j), ...quadNormals(vn, k, normal) });
         }
       }
     }));
@@ -489,6 +560,8 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
     const b = flip ? path.slice().reverse() : path;
     const t = flip ? lid[i][j].slice().reverse() : lid[i][j];
     const cornered = hasVertices(model, f.loops[i][j]);
+    // A curved member's wall carries the surface's normal at each corner.
+    const vn = memberNormals(model, f.loops[i][j], b, z);
     const last = b.length - 1;
     for (let k = 0; k + 1 < b.length; k++) {
       const quad = [b[k], b[k + 1], t[k + 1], t[k]];
@@ -499,7 +572,8 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
       const edges = [[b[k], b[k + 1]], [t[k], t[k + 1]]];
       if (cornered && k === 0) edges.push([b[0], t[0]]);
       if (cornered && k + 1 === last) edges.push([b[last], t[last]]);
-      faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => signs[i] * c), centroid: mean(quad), edges, name: memberFace(f, i, j) });
+      const normal = n.map((c) => signs[i] * c);
+      faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal, centroid: mean(quad), edges, name: memberFace(f, i, j), ...quadNormals(vn, k, normal) });
     }
   }));
   return faces;
@@ -593,13 +667,21 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
     // The member's rings: each step's turn of it, the last the end face's own twin.
     const rings = turns.map((m, s) => (s === steps && t ? t : b.map((p) => place(m, p))));
     const cornered = hasVertices(model, f.loops[i][j]);
+    // The profile's normal at each of its samples, turned with each ring: a
+    // surface of revolution is curved round the axis whatever its profile,
+    // so a line's sweep (a cylinder, a cone) smooths round too — except a
+    // line square to the axis, whose sweep is a flat annulus and stays flat.
+    const vn = memberNormals(model, f.loops[i][j], b, plane.n);
     const last = b.length - 1;
     for (let q = 0; q + 1 < b.length; q++) {
       const n = unit3(cross3(sub3(b[q + 1], b[q]), plane.n));
       if (!n || (onAxis(b[q]) && onAxis(b[q + 1]))) continue; // no length, or on the axis: it sweeps nothing
       const out = n.map((c) => signs[i] * c);
+      const flat = !vn && Math.hypot(...cross3(out, k)) < 1e-9;
+      const [na, nb] = vn ? [facing(vn[q], out), facing(vn[q + 1], out)] : [out, out];
       for (let s = 0; s < steps; s++) {
         const quad = [rings[s][q], rings[s][q + 1], rings[s + 1][q + 1], rings[s + 1][q]];
+        const vertexNormals = flat ? {} : { vertexNormals: [[apply(turns[s], na), apply(turns[s], nb), apply(turns[s + 1], nb), apply(turns[s + 1], na)]] };
         // A vertex's sweep is an edge — the circle a box's corner turns
         // through is where two of the revolve's surfaces meet — and so are the
         // caps' outlines; a seam between two steps, or two pieces of a curve,
@@ -609,7 +691,7 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
         if (partial && s === steps - 1) edges.push([rings[steps][q], rings[steps][q + 1]]);
         if (cornered && q === 0 && !onAxis(b[0])) edges.push([rings[s][0], rings[s + 1][0]]);
         if (cornered && q + 1 === last && !onAxis(b[last])) edges.push([rings[s][last], rings[s + 1][last]]);
-        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: apply(middles[s], out), centroid: mean(quad), edges, name: memberFace(f, i, j) });
+        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: apply(middles[s], out), centroid: mean(quad), edges, name: memberFace(f, i, j), ...vertexNormals });
       }
     }
   }));
@@ -630,6 +712,22 @@ export interface SolidFaces {
 export interface VisibleFace extends Face {
   /** Lambert's cosine against the line of sight: 0 edge-on, 1 square to the viewer. */
   shade: number;
+  /**
+   * The same cosine at each vertex of each outline, from `vertexNormals`,
+   * clamped to 0 where a vertex's normal leans past the line of sight — on a
+   * piece of a curved surface only, for the face layer to blend across the
+   * piece. Absent where the face is flat, and so where it is one `shade`.
+   */
+  shades?: number[][];
+}
+
+/** `face` lit by the headlight along `toward`, or null when it faces away — per vertex too where it is a piece of a curved surface. */
+function lit(face: Face, toward: number[]): VisibleFace | null {
+  const shade = dot3(face.normal, toward);
+  if (shade <= 1e-9) return null;
+  const out: VisibleFace = { ...face, shade: Math.min(1, shade) };
+  if (face.vertexNormals) out.shades = face.vertexNormals.map((o) => o.map((n) => Math.max(0, Math.min(1, dot3(n, toward)))));
+  return out;
 }
 
 /**
@@ -647,8 +745,8 @@ export function visibleFaces(model: Model, view: View, skip: ReadonlySet<string>
   // A body the solid kernel built (bodies.ts) stands in for its features: its
   // faces are the kernel's triangles, culled and lit exactly as these are.
   for (const face of solid?.faces ?? []) {
-    const shade = dot3(face.normal, toward);
-    if (shade > 1e-9) out.push({ ...face, shade: Math.min(1, shade) });
+    const v = lit(face, toward);
+    if (v) out.push(v);
   }
   for (const f of model.features.values()) {
     // A hidden feature has no faces on screen — and so hides nothing behind
@@ -661,8 +759,8 @@ export function visibleFaces(model: Model, view: View, skip: ReadonlySet<string>
       continue; // the render loop's rule: one solid's trouble costs its own faces
     }
     for (const face of faces) {
-      const shade = dot3(face.normal, toward);
-      if (shade > 1e-9) out.push({ ...face, shade: Math.min(1, shade) });
+      const v = lit(face, toward);
+      if (v) out.push(v);
     }
   }
   return out;
@@ -675,7 +773,9 @@ export function visibleFaces(model: Model, view: View, skip: ReadonlySet<string>
  * is: solids that pass through each other, a sweep that wraps round in front
  * of its own cap, a cap seen at a grazing angle past its own hole's far wall.
  * The depth layer is right in all three; this exists so a browser without
- * WebGL still sees solids.
+ * WebGL still sees solids. **Flat-shaded**, a curved face included: a 2D
+ * canvas has no blended fill, and a gradient per piece is not worth the
+ * fallback's while (TODO.md's register, 2026-11-23).
  */
 export function facesToDraw(model: Model, view: View, skip: ReadonlySet<string> = new Set(),
                             solid: SolidFaces | null = null): DrawnFace[] {

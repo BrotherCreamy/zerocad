@@ -117,12 +117,17 @@ function measureInPage(args: { seed: number; views: number; tolerance: number })
       return rd.getImageData(0, 0, W, H).data;
     };
     // The band either renderer may anti-alias differently: every visible
-    // face's outline, a pixel and a half either side.
+    // face's outline, a pixel and a half either side. And the whole of every
+    // piece of a curved surface (`shades`): the depth layer blends its shade
+    // across the piece and the painter's fills it flat, by design (CHANGELOG,
+    // 2026-11-23), so the two differ there without either being wrong about
+    // which face is in front — the question this measures.
     const band = (view: unknown) => {
       mk.clearRect(0, 0, W, H);
       mk.lineWidth = 3;
       mk.strokeStyle = "#fff";
-      for (const f of visibleFaces(model, view) as { outlines: number[][][] }[]) {
+      mk.fillStyle = "#fff";
+      for (const f of visibleFaces(model, view) as { outlines: number[][][]; shades?: unknown }[]) {
         mk.beginPath();
         for (const o of f.outlines) {
           const sp = o.map((w) => worldToScreen(view, w));
@@ -131,6 +136,7 @@ function measureInPage(args: { seed: number; views: number; tolerance: number })
           mk.closePath();
         }
         mk.stroke();
+        if (f.shades) mk.fill();
       }
       return mk.getImageData(0, 0, W, H).data;
     };
