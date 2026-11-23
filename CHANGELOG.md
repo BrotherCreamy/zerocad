@@ -9,6 +9,13 @@ decisions.
 
 ## 2026-11-23 — curved surfaces shade smoothly: a piece of a round face carries the surface's normal at its corners, and the GPU blends the shade across it
 
+*Merged into the working branch (`a9d8bc6`), a clean merge. The gate on
+the merge: typecheck 0; unit 2159/2159; the shading test and the
+picture-reading browser files — shading, solids, solidsphone,
+solidfillets, depth, cutpaths, quiet, throughall — 54/54 (release kernel,
+load 2–5). The worker's full browser suite on the same tree was 853/860
+with the five failures the two cut tests fixed in `cc03263`.*
+
 The owner: *"rendering of curved surfaces is piecemeal not smooth. Eg
 cylindrical surfaces. Should render smoothly."* A curved face is drawn as
 flat pieces — an extruded circle's wall as one quad per drawn segment, a
