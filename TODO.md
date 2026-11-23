@@ -33,6 +33,50 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A curved surface shades smoothly; a flat face and every edge are as they
+  were** (2026-11-23, branch `claude/smooth-shading`, from the owner:
+  *"rendering of curved surfaces is piecemeal not smooth. Eg cylindrical
+  surfaces. Should render smoothly."*). A piece of a curved surface carries
+  the surface's own normal at each corner and the GPU blends the shade across
+  it (`Face.vertexNormals`, `VisibleFace.shades`); measured along a row of
+  pixels across a wall, the largest step between neighbours fell from 6–10
+  levels (a facet boundary at 10°) to 2–3. Each vetoable:
+  - **Smoothing, not finer tessellation.** Halving `ANGLE` doubles the faces
+    (the filleted turn is 661 already) and the owner draws every frame on a
+    phone; per-vertex colours add no vertex at all, and the frame measured
+    the same (CHANGELOG).
+  - **Within one kernel face only, never across two.** A box's corner stays
+    a corner and a cylinder's rim a crease, because the cap's triangles and
+    the wall's are different kernel faces and no mean is taken between them.
+    (The cost: a kernel fillet tangent to its wall is two faces, so its
+    normals are each face's own — they agree where the surfaces are tangent,
+    so no crease shows; if one ever did, that is where to look.)
+  - **The seam is keyed by position** (`SAME_VERTEX`, 1e-5 of the body's
+    extent), not by vertex index: a closed cylinder's tessellation has its
+    seam vertices twice, and an index-keyed mean left a shading seam.
+  - **A plane gets no vertex normals** — by the kernel's record, or when a
+    face's triangles all face one way — and nor does a wall swept from a
+    line, or a revolve's flat annulus (a line square to the axis). Nothing
+    to smooth, no cost, and no risk of a flat face picking up a gradient.
+  - **The app's own walls take the analytic normal**: a conic's from its
+    frame (exact for an arc, a circle and an ellipse), a spline's the
+    bisector of its two chords at the sample, a revolve's the profile's
+    turned with each ring.
+  - **The painter's fallback stays flat-shaded.** A 2D canvas has no
+    blended fill; a per-piece gradient is possible and not worth it for a
+    browser without WebGL. The depth measurement masks smooth faces out of
+    its renderer comparison for the same reason.
+  - **The thresholds**: a smooth wall's largest step is at most 4 levels
+    (`SMOOTH_STEP`, measured 2.0–3.0 on five views), flat measured 6.1–10.0;
+    samples keep 4 px from every solid edge and from the silhouette
+    (`MARGIN`), since a cosine's slope is unbounded at the limb however
+    smooth the surface. `test/e2e/shading.e2e.ts` fails on the build before
+    and passes on this one.
+  - **The browser oracle says the blended fill.** `nearestFaces` returns a
+    smooth face's colour at the very pixel (the corners' colours weighted in
+    screen space, which an orthographic view makes exactly the GPU's), so
+    every picture check is still to the level.
+
 - **A cut goes into the material whichever tool asked for it** (2026-11-23,
   bug 80): the Extrude tool's mode row set to Cut signs the depth as the Cut
   tool does, and says when the cut reaches nothing. **A named region holds a
@@ -3025,6 +3069,24 @@ are flagged as such.
 
 ## Next up
 
+- [ ] **A kernel fillet's smooth normals stop at its face's boundary**
+  (2026-11-23, smooth shading): a fillet tangent to the wall it rounds is a
+  separate kernel face, so each side's vertex normals are its own. They
+  agree where the surfaces are tangent, so nothing shows today; a face
+  pair whose shared edge is tangent could be smoothed across by reading the
+  kernel's edge records, if a crease ever does show.
+- [ ] **The painter's fallback could blend a curved piece too** — a per-quad
+  linear gradient along the chord is one `createLinearGradient` a piece —
+  if anyone without WebGL asks (left flat on purpose, the register above).
+- [ ] **`npm run measure:depth`'s convex assertion fails by two pixels on the
+  build before smooth shading already** (2026-11-23, found re-running it):
+  the lone cylinder at seed 1001's view 17 has two pixels the depth layer
+  covers at α 192 and the painter's at 255, 1.7 px outside an edge-on cap's
+  outline (shade 0.012) — the band is 1.5 px. The silhouette's anti-aliasing
+  drifted since the measurement was last run (the edge lines and their
+  polygon offset came after); smooth shading leaves the count where it was
+  (2 and 2–3 on the two curved scenes, before and after). Widen the band to
+  2 px, or exclude a cap under a hundredth of shade, and say which.
 - [ ] **A circle whose first touch lands on a solid's edge is not drawn**
   (2026-11-23, found reproducing the owner's cut paths): with the circle
   tool armed and the plane on the lid, a drag starting on the plate's rim

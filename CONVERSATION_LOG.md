@@ -10,6 +10,49 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-23 — "piecemeal not smooth": the strips were the shading, not the tessellation
+
+The owner's words were about cylinders, and the first instinct is to draw
+more of them: halve `ANGLE` in bodies.ts, double `arcSegments`. Rejected
+before anything was typed. The filleted full turn is already 661 faces at
+10°; halving the step doubles that, the kernel's meshes with it, and the
+owner draws every frame on a phone. The strips were never the geometry's
+fault — a 10° chord is a third of a pixel off a true circle at the sizes
+drawn — they were the one shade each piece was filled with. Gouraud's
+answer from 1971 costs no vertex: give each corner the round surface's own
+normal, shade per corner, and let the GPU blend.
+
+Measured first. A row of pixels across a wall, clear of every edge: the
+largest step between neighbours was 9.0 levels on a lone cylinder, 9.9 and
+10.0 on the kernel's boss (desktop and iPhone), 6.1 and 8.9 on a revolve.
+Not the "well over ten" the brief expected — a three-quarter view
+compresses the cosine, and the biggest steps are at the limbs, which the
+measurement keeps away from because a cosine's slope there is unbounded
+however smooth the surface. After: 2.0–3.0. The first version of the
+measurement read 0.0 everywhere on the flat build and nearly shipped as a
+pass: it kept its samples clear of the oracle's `edge`, which counts the
+seams between a wall's pieces as outlines, and so threw away exactly the
+two pixels either side of every facet boundary. The measurement now keeps
+clear of the solid's real `edges` and of the silhouette, and nothing else.
+
+Two decisions worth the owner's eye. The kernel's normals are averaged
+within one kernel face and never across two — that is what keeps a box's
+corner a corner and a cylinder's rim a crease — and the mean is keyed by
+position, not vertex index, because a closed cylinder's tessellation has
+its seam vertices twice and the index-keyed first draft had a faint seam
+down the back of every boss. And the painter's fallback is left flat: a 2D
+canvas has no blended triangle, a per-piece linear gradient would be a fair
+approximation, and nobody without WebGL has asked.
+
+The browser oracle had to learn the gradient too. Every picture check in
+the suite compares a pixel to the one fill its nearest face "should" have;
+on a smooth face there is no such thing, so `nearestFaces` now weights the
+corners' colours in screen space — exactly what the GPU does under an
+orthographic projection — and the checks stay at one level of slack. The
+depth measurement, which compares the two renderers inside faces, masks
+smooth faces out of the comparison instead: there the difference is by
+design, and what it measures is which face is in front.
+
 ## 2026-11-23 — "Extrude cut still doesn't work": reproduced by finger before anything was read
 
 Four words from the owner and no picture. The deployed site was checked
