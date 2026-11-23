@@ -47,7 +47,11 @@ its first touch off the edge.
 Tests: `test/cuttool.test.ts` (the Extrude tool's Cut types the Cut tool's
 call, and says the reach), `test/regionsops.test.ts` (a late loop inside a
 region's face), and `test/e2e/cutpaths.e2e.ts` — the owner's paths by finger
-on an iPhone and by mouse, pictures 541–544.
+on an iPhone and by mouse, pictures 541–544. Gate (`652aed0`): typecheck 0;
+unit 2154/2154; the thirteen browser files around regions, extrude and cut
+— cutpaths, throughall, solidtools, solidtoolsphone, extrude, tooloptions,
+regions, explicitregions, modefeedback, regionsops, extrudeplane,
+sketchmodephone — 76/76 (load 2–6, release kernel).
 
 ## 2026-11-12 — the solver's two measured costs: a kept size is pulled by a probe and a finish, and the drag frame's cost was never the kernel's
 
