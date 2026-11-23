@@ -98,7 +98,9 @@ test("on an iPhone: a circle on the top, Cut tapped in the dialog, ✓ — a hol
   await tapAt([W - 6, H - 6, T]);
   await type("circle");
   await dragOn([-12, 0, T], [-7, 0, T]);
-  await type(`arm("extrude", { depth: -${T} })`);
+  // The depth as a person types it; Cut, tapped next, sends it into the plate
+  // (CHANGELOG 2026-11-23, bug 80 — a minus sign would flip it out).
+  await type(`arm("extrude", { depth: ${T} })`);
   await tapAt([-12, 0, T]);
   // The mode row is a finger's target: Cut, tapped.
   const box = await app.page.$eval('#options .ochoose[data-choice="cut"]', (b) => { const r = b.getBoundingClientRect(); return [r.width, r.height]; });

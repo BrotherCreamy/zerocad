@@ -119,7 +119,10 @@ test("a circle sketched on the top, extruded Cut through: a hole — in the numb
   assert.match((await app.repl("model.workPlane")).value as string, /^p\d+\.p\d+\.p\d+$/, "sketching on the lid");
   await app.type("circle");
   await leftDrag(await app.screenOf(HOLE), await app.screenOf([HOLE[0] + R, HOLE[1], HOLE[2]]));
-  await app.type(`arm("extrude", { depth: -${T}, mode: "cut" })`);
+  // A cut's depth goes into the material whichever way the sketch faces
+  // (CHANGELOG 2026-11-23, bug 80): 10 here is down through the plate, and a
+  // minus sign would flip it out, as the Cut tool's always did.
+  await app.type(`arm("extrude", { depth: ${T}, mode: "cut" })`);
   // The dialog's Cut button is down.
   const pressed = await app.page.$eval('#options .ochoose[data-choice="cut"]', (b) => b.getAttribute("aria-pressed"));
   assert.equal(pressed, "true");
