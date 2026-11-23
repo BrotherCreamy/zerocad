@@ -49,7 +49,12 @@ the reason in the log's small print.
   built that. A tool armed again while it is the one armed now starts from
   what it is armed with, remembered or not (`Engine.arm`). The owner's
   sequence — rectangle, extrude, circle on a face, Extrude, Cut, a depth
-  typed, OK — is a browser test now, by finger and by mouse.
+  typed, OK — is a browser test now, by finger and by mouse, and so is Cut
+  pressed before the profile is tapped (the owner's guess at what he was
+  doing wrong; neither order could cut before). Gate (`5de0f03`): typecheck
+  0; unit 2154/2154; cutpaths 8/8 and the browser files around tool options
+  — tooloptions, panels, extrude, solidtools, solidtoolsphone, undokeys —
+  89/89.
 
 Found and left (TODO.md, *Next up*): a circle whose first touch lands on a
 solid's edge is not drawn at all — the press takes the edge to drag, as a
