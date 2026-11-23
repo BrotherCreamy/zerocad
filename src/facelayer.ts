@@ -252,13 +252,17 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       const anchor = [0, 1, 2].map((i) => a * right[i] + b * up[i] + mid * toward[i]);
 
       // One buffer a frame: the convex faces' fans first, as one draw, then
-      // each other face's fans as a run of its own. `rgbs`, where the face is
-      // a piece of a curved surface, is each vertex's own colour; else every
-      // vertex takes the face's one `rgb`.
-      const fan = (out: number[], o: number[][], rgb: number[], rgbs?: number[][]) => {
+      // each other face's fans as a run of its own. `rgb` is the face's one
+      // colour, in bytes; where the face is a piece of a curved surface,
+      // `shades` gives each corner its own, through the same `tone` — worked
+      // out once per corner, not per emitted vertex (a fan says a corner
+      // twice), and bytes to floats here with nothing else allocated on the
+      // way: a few hundred curved pieces a frame on a phone.
+      const fan = (out: number[], o: number[][], rgb: number[], tone: (shade: number) => number[], shades?: number[]) => {
+        const cols = shades ? shades.map(tone) : null;
         const put = (k: number) => {
-          const p = o[k], c = rgbs ? rgbs[k] : rgb;
-          out.push(p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2], c[0], c[1], c[2]);
+          const p = o[k], c = cols ? cols[k] : rgb;
+          out.push(p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2], c[0] / 255, c[1] / 255, c[2] / 255);
         };
         for (let k = 1; k + 1 < o.length; k++) { put(0); put(k); put(k + 1); }
       };
@@ -267,13 +271,12 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       // A construction body's faces are drawn as reference (faces.ts).
       const reference = referenceFeatures(model);
       for (const f of faces) {
-        const tone = (shade: number) => (reference.has(f.feature) ? referenceRGB(shade) : faceRGB(shade)).map((c) => c / 255);
+        const tone = reference.has(f.feature) ? referenceRGB : faceRGB;
         const rgb = tone(f.shade);
-        const rgbs = f.shades?.map((o) => o.map(tone));
-        if (f.outlines.length === 1 && convex(f.outlines[0], f.normal)) fan(batch, f.outlines[0], rgb, rgbs?.[0]);
+        if (f.outlines.length === 1 && convex(f.outlines[0], f.normal)) fan(batch, f.outlines[0], rgb, tone, f.shades?.[0]);
         else {
           const data: number[] = [];
-          f.outlines.forEach((o, i) => fan(data, o, rgb, rgbs?.[i]));
+          f.outlines.forEach((o, i) => fan(data, o, rgb, tone, f.shades?.[i]));
           caps.push({ data });
         }
       }

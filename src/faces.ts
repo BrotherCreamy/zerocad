@@ -442,7 +442,8 @@ function outwardSigns(outlines: number[][][], plane: { u: number[]; v: number[] 
  * so the wall shades as the round surface it stands for and not as its
  * pieces. A conic's is read off its frame exactly, the gradient of its
  * implicit form, `(d·u / r²) u + (d·v / rv²) v` — the radial direction for a
- * circle or an arc, the true normal for an ellipse. A B-spline's is the
+ * circle or an arc, and still the true normal where the frame's two
+ * semi-axes differ (`rv`). A B-spline's is the
  * bisector of its two chord normals at the sample (one chord at an open end):
  * within a fraction of a degree at quarter-pixel chords. Unoriented — each
  * is turned to its quad's own outward side where the quad is made (`facing`),
@@ -672,16 +673,25 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
     // so a line's sweep (a cylinder, a cone) smooths round too — except a
     // line square to the axis, whose sweep is a flat annulus and stays flat.
     const vn = memberNormals(model, f.loops[i][j], b, plane.n);
+    // Each segment's outward normal in the profile's plane, and the normal
+    // at each sample oriented to its segment's side (a curved member's is
+    // the same side at both ends of a segment, so the orientation holds).
+    const outs = b.slice(0, -1).map((p, q) => { const n = unit3(cross3(sub3(b[q + 1], p), plane.n)); return n ? n.map((c) => signs[i] * c) : null; });
+    const sampleNormal = (q: number): number[] | null => {
+      const out = outs[Math.min(q, outs.length - 1)];
+      return out ? (vn ? facing(vn[q], out) : out) : null;
+    };
+    // The sample normals turned with each ring, once per ring and sample
+    // rather than four times per quad: the quads share them.
+    const ringNormals = turns.map((m) => b.map((_, q) => { const n = sampleNormal(q); return n ? apply(m, n) : null; }));
     const last = b.length - 1;
     for (let q = 0; q + 1 < b.length; q++) {
-      const n = unit3(cross3(sub3(b[q + 1], b[q]), plane.n));
-      if (!n || (onAxis(b[q]) && onAxis(b[q + 1]))) continue; // no length, or on the axis: it sweeps nothing
-      const out = n.map((c) => signs[i] * c);
+      const out = outs[q];
+      if (!out || (onAxis(b[q]) && onAxis(b[q + 1]))) continue; // no length, or on the axis: it sweeps nothing
       const flat = !vn && Math.hypot(...cross3(out, k)) < 1e-9;
-      const [na, nb] = vn ? [facing(vn[q], out), facing(vn[q + 1], out)] : [out, out];
       for (let s = 0; s < steps; s++) {
         const quad = [rings[s][q], rings[s][q + 1], rings[s + 1][q + 1], rings[s + 1][q]];
-        const vertexNormals = flat ? {} : { vertexNormals: [[apply(turns[s], na), apply(turns[s], nb), apply(turns[s + 1], nb), apply(turns[s + 1], na)]] };
+        const vertexNormals = flat ? {} : { vertexNormals: [[ringNormals[s][q]!, ringNormals[s][q + 1]!, ringNormals[s + 1][q + 1]!, ringNormals[s + 1][q]!]] };
         // A vertex's sweep is an edge — the circle a box's corner turns
         // through is where two of the revolve's surfaces meet — and so are the
         // caps' outlines; a seam between two steps, or two pieces of a curve,
@@ -835,14 +845,27 @@ export const SOLID_EDGE_PX = 1.2;
  * pixel for them.
  */
 export function faceRGB(shade: number): number[] {
-  const t = Math.max(0, Math.min(1, shade));
-  return FACE_DARK.map((d, i) => Math.round(d + (FACE_LIGHT[i] - d) * t));
+  return between(FACE_DARK, FACE_LIGHT, shade);
 }
 
 /** `faceRGB` for a face of a construction body. A function of its own, not a flag on `faceRGB`, which is mapped over shades. */
 export function referenceRGB(shade: number): number[] {
+  return between(REFERENCE_DARK, REFERENCE_LIGHT, shade);
+}
+
+/**
+ * `dark` to `light` by `t`, clamped, to whole bytes. Written out rather than
+ * mapped: the face layer asks it once per corner of every curved piece, a
+ * few thousand times a frame, and a map with a closure was a measurable
+ * share of the draw.
+ */
+function between(dark: readonly number[], light: readonly number[], shade: number): number[] {
   const t = Math.max(0, Math.min(1, shade));
-  return REFERENCE_DARK.map((d, i) => Math.round(d + (REFERENCE_LIGHT[i] - d) * t));
+  return [
+    Math.round(dark[0] + (light[0] - dark[0]) * t),
+    Math.round(dark[1] + (light[1] - dark[1]) * t),
+    Math.round(dark[2] + (light[2] - dark[2]) * t),
+  ];
 }
 
 /**
