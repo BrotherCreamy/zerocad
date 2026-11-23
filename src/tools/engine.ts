@@ -851,7 +851,10 @@ export class ToolEngine {
     // browser-only bug 82). Re-armed, the tool starts from what it is armed
     // with now; a fresh arming starts from memory and the defaults as before.
     const held = same ? Object.fromEntries(Object.entries(this.armedWith!.options).filter(([k]) => Object.hasOwn(specs, k))) : {};
-    const options = resolveOptions(toolName, specs, { ...held, ...(given && typeof given === "object" ? given : {}) }, this.optionMemory.recall(toolName));
+    // `given` itself where nothing is held: a tool with no declared options is
+    // armed with the very object it was given, which an undo's re-arm relies on.
+    const asked = Object.keys(held).length && given && typeof given === "object" ? { ...held, ...given } : given;
+    const options = resolveOptions(toolName, specs, asked, this.optionMemory.recall(toolName));
     this.optionMemory.remember(toolName, explicitOptions(specs, typed));
     if (same) {
       this.armedWith = { name: toolName, options, ...(keep === undefined ? {} : { target: keep }) };
