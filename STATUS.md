@@ -10,6 +10,23 @@ etc).
 
 ## What's working right now
 
+- **Curved surfaces shade smoothly** (2026-11-23, `src/faces.ts`
+  `Face.vertexNormals` and `VisibleFace.shades`, `src/facelayer.ts`,
+  `src/bodies.ts` `bodyFaces`). A piece of a curved surface — an extruded
+  arc's, circle's or ellipse's wall, a spline's, a revolve's rings, a kernel
+  body's cylinder, cone, sphere, torus or B-spline face — carries the
+  surface's unit normal at each corner; `visibleFaces` lights those by the
+  same headlight and the depth layer puts each corner's own colour on its
+  vertex, so the GPU blends the shade across the piece. Flat faces, the
+  crease at a rim, culling, picking, the construction ink and the painter's
+  fallback (flat, on purpose) are unchanged. A kernel face's normals are the
+  area-weighted mean of its own triangles' at each position (the seam's
+  duplicates agree), never across two faces; planes get none. Measured:
+  the largest luminance step along a row across a wall 6–10 levels → 2–3;
+  the frame the same (CHANGELOG). Tests: `test/e2e/shading.e2e.ts`,
+  `test/faces.test.ts` and `test/bodies.test.ts` (the normals against the
+  shape); the e2e oracle (`nearestFaces`) says a smooth face's blended fill.
+
 - **There is no sketch** (docs/plans/no-sketch.md, built 2026-11-12). The
   owner: *"There is no such thing as a sketch. There are geometry groups …
   I want geometry to be able to belong to multiple groups. A group is only

@@ -1420,6 +1420,21 @@ computed from its loop's winding and nesting, faces turned away are culled, and
 the rest shade by the cosine to the line of sight — a headlight, because a
 light fixed anywhere would need a world frame to fix it in.
 
+**A piece of a curved surface shades smoothly across itself.** The owner
+(2026-11-23): *"rendering of curved surfaces is piecemeal not smooth"*. The
+pieces stay — a quad per segment, a kernel triangle per facet — but each
+corner of a curved piece carries the round surface's own unit normal
+(`Face.vertexNormals`: a conic's from its frame, a revolve profile's turned
+with its ring, a kernel face's the area-weighted mean of that face's
+triangles meeting at the position), `visibleFaces` lights the corners by the
+same headlight (`shades`), and the depth layer puts each corner's colour on
+its vertex for the GPU to blend. Never across two faces of the solid, so a
+box's corner and a cylinder's rim stay sharp; never on a flat face, which
+has nothing to smooth. The face's one `normal` and `shade` still cull, pick
+and paint the fallback, which stays flat. Finer tessellation was the
+rejected alternative: it doubles the faces where this adds no vertex, and
+the owner draws every frame on a phone.
+
 **Which face is in front is a depth buffer's answer.** `faces.ts` says what
 the faces are; `facelayer.ts` draws them, by WebGL with a depth test, on a
 canvas of their own (`#faces`) under the 2D drawing (`#cv`), through the

@@ -880,3 +880,105 @@ test("the painter's fallback carries each face's edges on screen, for it to stro
   assert.equal(drawn.reduce((s, d) => s + d.edges.length, 0), world.reduce((s, f) => s + f.edges.length, 0));
   for (const d of drawn) for (const e of d.edges) for (const p of e) assert.ok(p.every(Number.isFinite));
 });
+// --- smooth shading: a piece of a curved surface carries the surface's normal at its corners ---
+//
+// The owner (2026-11-23): "rendering of curved surfaces is piecemeal not
+// smooth". A wall is still drawn in pieces; what changed is that each piece of
+// a curved one says the round surface's normal at each corner
+// (`Face.vertexNormals`), for the face layer to blend across it. These check
+// the normals themselves against the shape — radial on a cylinder, into a
+// hole, the position's own direction on a sphere — and that a flat face says
+// nothing, so a box's corner and a cylinder's rim stay sharp.
+
+test("a cylinder's wall carries the radial normal at every quad corner — unit, no axial part, on the quad's own side — and its caps carry none", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const c = m.addPoint([0, 0, 0]).name;
+  onPlane(m, c, "f");
+  const f = m.featureOf(extrude(m, m.addCircle(c, 15, "f").name, 25), "extrude");
+  const faces = featureFaces(m, f, 4);
+  const walls = faces.filter((w) => w.kind === "wall");
+  assert.ok(walls.length > 10);
+  for (const w of faces) {
+    if (w.kind !== "wall") { assert.equal(w.vertexNormals, undefined, `a cap is flat: ${w.kind}`); continue; }
+    assert.ok(w.vertexNormals && w.vertexNormals.length === 1 && w.vertexNormals[0].length === 4, "one normal per corner of the quad");
+    w.vertexNormals![0].forEach((n, i) => {
+      const p = w.outlines[0][i];
+      assert.ok(Math.abs(Math.hypot(...n) - 1) < 1e-12, "unit");
+      assert.ok(Math.abs(n[2]) < 1e-12, "no axial part: nothing of the cap in it");
+      assert.ok(near(n, unit([p[0], p[1], 0]), 1e-9), `radial at the corner: ${n} at ${p}`);
+      assert.ok(dot(n, w.normal) > Math.cos((6 * Math.PI) / 180), "on the quad's own side, within half a step of it");
+    });
+  }
+  // The seam: where the strip closes, the two pieces' corners there carry the same normal.
+  const [first, last] = [walls[0], walls[walls.length - 1]];
+  assert.ok(near(first.outlines[0][0], last.outlines[0][1], 1e-9), "the strip closes on itself");
+  assert.ok(near(first.vertexNormals![0][0], last.vertexNormals![0][1], 1e-12), "and the normal there is one normal");
+});
+
+test("a hole's wall carries normals into the hole; a box's walls carry none", async () => {
+  await loadKernel();
+  const { m, lines, hole } = ringed();
+  const e = extrude(m, lines[0], 20);
+  holeOp(m, e, hole); // the hole said, as a region's step (regions-as-operations.md)
+  const f = m.featureOf(e, "extrude");
+  const c = m.coords(m.circle(hole).center);
+  const faces = featureFaces(m, f, 4);
+  const holeWalls = faces.filter((w) => w.kind === "wall" && Math.abs(Math.hypot(...sub(w.centroid, c).slice(0, 2)) - 15) < 0.5);
+  assert.equal(holeWalls.length, arcSegments(2 * Math.PI, 15 * 4), "the hole's strip");
+  for (const w of holeWalls) {
+    w.vertexNormals![0].forEach((n, i) => {
+      assert.ok(dot(n, sub(c, w.outlines[0][i])) > 0, "toward the hole's centre: into the hole");
+      assert.ok(dot(n, w.normal) > 0.99);
+    });
+  }
+  const straight = faces.filter((w) => w.kind === "wall" && !holeWalls.includes(w));
+  assert.equal(straight.length, 4, "the rectangle's four walls");
+  for (const w of straight) assert.equal(w.vertexNormals, undefined, "a flat wall says nothing");
+  const { m: bm, f: bf } = box();
+  for (const w of featureFaces(bm, bf, 4)) assert.equal(w.vertexNormals, undefined);
+});
+
+test("a sphere's every corner normal is that corner's own direction from the centre; a washer's flat rings carry none, its round walls the radial", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const [lo, hi, c] = [m.addPoint([0, -10, 0]).name, m.addPoint([0, 10, 0]).name, m.addPoint([0, 0, 0]).name];
+  m.addArc(c, lo, hi, 10, "f");
+  const f = m.featureOf(revolve(m, m.addLine(hi, lo).name, "f.y"), "revolve");
+  for (const w of featureFaces(m, f, 4)) {
+    assert.ok(w.vertexNormals, "a piece of a sphere");
+    w.vertexNormals![0].forEach((n, i) => assert.ok(near(n, unit(w.outlines[0][i]), 1e-9), `${n} at ${w.outlines[0][i]}`));
+  }
+  const { m: wm, f: wf } = turnedBlock();
+  for (const w of featureFaces(wm, wf, 4)) {
+    const kind = washerWall(w);
+    if (kind === "top" || kind === "bottom") { assert.equal(w.vertexNormals, undefined, "a flat ring is flat"); continue; }
+    w.vertexNormals![0].forEach((n, i) => {
+      const p = w.outlines[0][i];
+      const r = [p[0] / radial(p), 0, p[2] / radial(p)];
+      assert.ok(near(n, kind === "outer" ? r : r.map((x) => -x), 1e-9), `${kind}: ${n} at ${p}`);
+    });
+  }
+});
+
+test("visibleFaces lights a curved piece per corner — the same headlight, clamped — and the painter's fallback is handed one shade a face", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const c = m.addPoint([0, 0, 0]).name;
+  onPlane(m, c, "f");
+  m.featureOf(extrude(m, m.addCircle(c, 15, "f").name, 25), "extrude");
+  const view = orbitBy(ABOVE, 0.6, 1.1);
+  const { toward } = viewAxes(view);
+  const lit = visibleFaces(m, view);
+  const walls = lit.filter((w) => w.kind === "wall");
+  assert.ok(walls.length > 5 && lit.some((w) => w.kind !== "wall"), "a wall and a cap in view");
+  for (const w of lit) {
+    if (!w.vertexNormals) { assert.equal(w.shades, undefined, "a flat face has its one shade"); continue; }
+    assert.deepEqual(w.shades, [w.vertexNormals[0].map((n) => Math.max(0, Math.min(1, dot(n, toward))))]);
+    assert.ok(w.shades![0].some((s) => Math.abs(s - w.shade) > 1e-3), "the corners' shades differ from the piece's own: that is the gradient");
+  }
+  for (const d of facesToDraw(m, view)) assert.ok(!("shades" in d) && typeof d.shade === "number", "the painter's is flat");
+});

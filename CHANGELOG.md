@@ -7,6 +7,104 @@ decisions.
 
 ---
 
+## 2026-11-23 — curved surfaces shade smoothly: a piece of a round face carries the surface's normal at its corners, and the GPU blends the shade across it
+
+The owner: *"rendering of curved surfaces is piecemeal not smooth. Eg
+cylindrical surfaces. Should render smoothly."* A curved face is drawn as
+flat pieces — an extruded circle's wall as one quad per drawn segment, a
+kernel body's cylinder as triangles ten degrees apart — and each piece was
+filled with one shade, its own plane's cosine to the line of sight. A
+cylinder read as a stack of grey strips. The strips were never the geometry
+(a 10° chord is a third of a pixel off the true circle at the sizes drawn);
+they were the shading.
+
+- **A piece of a curved surface carries the surface's own unit normal at
+  each corner** (`Face.vertexNormals`, faces.ts), `visibleFaces` lights the
+  corners by the same headlight (`VisibleFace.shades`, clamped at 0 past the
+  line of sight), and the depth layer puts each corner's own colour on its
+  vertex for the GPU to blend across the piece (facelayer.ts). No vertex is
+  added: a quad is still two triangles, and the frame measured the same.
+  The face's one `normal` and `shade` are what they were for culling,
+  picking, the construction ink and the painter's fallback.
+- **Where the normals come from.** An extruded arc's, circle's or ellipse's
+  wall: the conic's normal at each sample, read off its frame exactly
+  (the gradient of its implicit form — radial for a circle); a spline's wall:
+  the bisector of its two chord normals at the sample. A revolve's surface:
+  the profile's normal at each sample, turned with each ring, so a line's
+  sweep (a cylinder, a cone) smooths round too — a line square to the axis,
+  whose sweep is a flat annulus, stays flat. A kernel body: per kernel face,
+  the area-weighted mean of that face's triangles' normals meeting at each
+  position, keyed by position (`SAME_VERTEX`) and not by vertex index,
+  because a closed cylinder's tessellation has its seam vertices twice and
+  an index-keyed mean left a shading seam down every boss.
+- **What is left exactly as it was.** A flat face — a cap, a wall swept from
+  a line, a kernel plane, a face whose triangles all face one way — gets no
+  vertex normals: nothing to smooth, no cost. No normal is ever averaged
+  across two faces of the solid, so a box's corner stays a corner and a
+  cylinder's rim stays a crease between wall and cap. The edge lines, the
+  hidden view's dimming and the oracle's "which face is in front" are
+  untouched. The painter's fallback (no WebGL) stays flat-shaded, and says
+  so: a 2D canvas has no blended fill.
+- **Rejected: tessellating finer.** Halving `ANGLE` doubles the faces (the
+  filleted full turn is 661 already) and the owner draws every frame on a
+  phone; smoothing costs nothing in vertices.
+
+**Measured** (`test/e2e/shading.e2e.ts`): along a row of pixels across the
+middle of a curved wall, clear of every edge of the solid and of the
+silhouette by 4 px, the largest luminance step between neighbouring pixels,
+in levels of 255. Flat, that step is a facet boundary; smooth, a cosine's
+slope.
+
+| scene | flat (before) | smooth (after) |
+|---|---|---|
+| a lone cylinder r 15, desktop | 9.0 | 3.0 |
+| a filleted full turn (an outer wall and a torus), desktop | 6.1 | 2.0 |
+| the same on an iPhone 13 | 8.9 | 2.0 |
+| the kernel's boss on a plate, desktop | 9.9 | 2.3 |
+| the same on an iPhone 13 | 10.0 | 3.0 |
+
+The test holds a smooth wall to 4 levels; it fails on the build before this
+and passes on it. (The flat numbers are under the twenty-odd a cylinder
+square to the eye would step at its limb: a three-quarter view compresses
+the cosine, and the measurement keeps off the limbs, where a cosine's slope
+is unbounded however smooth the surface.)
+
+**Frame cost**, the app's own frames on the same box, five runs of 90 frames
+each, medians (the scenes' frames vary ±5 ms run to run with the box's load;
+`render()` is the main thread's share):
+
+| scene | before: frame, `render()` | after: frame, `render()` |
+|---|---|---|
+| boss on a plate (the kernel's body, 22 faces) | 19.5 ms, 1.96 ms | 17.3 ms, 2.03 ms |
+| filleted full turn (661 faces) | 24.3 ms, 7.44 ms | 22.1 ms, 8.13 ms |
+
+The frame is unchanged — both scenes' intervals moved less than the box's run-to-run spread, and the vertex count is exactly what it was — so the GPU's work is the same. The main thread pays a little on the heaviest curved scene: measured in orbiting frames with the faces derived and drawn on a layer of their own in the same frame (means of 90, garbage collection included), the filleted turn's faces derived 0.59 → 0.88 ms and the layer's own draw 0.91 → 1.17 ms for 300 visible curved pieces, the boss 0.02 → 0.07 and 0.91 → 0.69; at a fixed view, min of three, deriving and drawing cost 1.69 → 1.79 ms, so most of the orbit's difference is allocation and its collection, not arithmetic. The base's own `render()` runs ranged 6.3–8.1 ms on the turn, the branch's 7.0–8.5. Three trims brought it to this (`faceRGB` as a literal, a corner's colour once per corner, a revolve's normals turned once per ring); what is left is filed under *Next up*. Finer tessellation, the alternative, doubles the faces for every halving of the angle.
+
+| | |
+|---|---|
+| ![Before: a lone cylinder from a three-quarter view, its wall a fan of vertical grey strips, each a visibly different shade](docs/images/545-before-a-cylinders-wall-in-flat-strips.png) | ![After: the same cylinder, its wall one continuous gradient from light at the front to dark at the limbs; the cap and the rim line as before](docs/images/549-after-a-cylinders-wall-shaded-smoothly.png) |
+| ![Before: a ring with a filleted outer corner, its outer wall and the fillet's torus in stacked bands of grey](docs/images/546-before-a-filleted-turn-in-flat-strips.png) | ![After: the same ring, the wall and the torus blending smoothly into each other, the flat top ring one shade and its rim lines as before](docs/images/550-after-a-filleted-turn-shaded-smoothly.png) |
+| ![Before, iPhone 13: the kernel's boss standing on a plate, close, its wall in strips](docs/images/547-before-iphone-the-kernels-boss-in-flat-strips.png) | ![After, iPhone 13: the boss's wall smooth, the plate's lid flat and the boss's foot circle still a crisp crease](docs/images/551-after-iphone-the-kernels-boss-shaded-smoothly.png) |
+| ![Before, iPhone 13: the filleted turn in strips](docs/images/548-before-iphone-the-filleted-turn-in-flat-strips.png) | ![After, iPhone 13: the filleted turn smooth](docs/images/552-after-iphone-the-filleted-turn-shaded-smoothly.png) |
+
+**The suite's oracle learned the gradient.** Every picture check compares a
+pixel with the fill its nearest face should have; a smooth face has no one
+fill, so `nearestFaces` (harness.ts) now weights the corners' colours in
+screen space — which, under an orthographic projection, is exactly the
+GPU's interpolation — and the checks keep their one level of slack. The
+depth measurement (`npm run measure:depth`) masks smooth faces out of its
+renderer comparison: inside them the two renderers now differ by design,
+and what it measures is which face is in front. Re-running it found the lone cylinder's convex assertion already failing by two pixels on the build before this — a cap seen at a hundredth of shade, anti-aliased 1.7 px past its outline, the band being 1.5 — and this leaves the count where it was (2 and 2–3 on the two curved scenes, before and after); filed in TODO.md.
+
+Tests: `test/faces.test.ts` (four new: a cylinder wall's corner normals are
+the radial, unit, with no axial part; a hole's point into the hole and a
+box's walls carry none; a sphere's are each corner's own direction and a
+washer's flat rings carry none; `visibleFaces` lights per corner and the
+painter's is handed one shade), `test/bodies.test.ts` (one new: the owner's
+part through the kernel — planes none, both cylinders all, nothing along
+their axes, one normal per position), and `test/e2e/shading.e2e.ts` (seven:
+the five rows above, the box, and the frame cost logged). Gate on the merged tree (`df7e331`, upstream `4091f10` merged first): typecheck 0; unit 2154 → 2159, 2159/2159; kernel 11/11; browser 853 → 860, of which 853 pass, 2 skip and 5 fail — the five in `solids.e2e.ts` and `solidsphone.e2e.ts`, which fail the same way on upstream's tip alone: `arm("extrude", { depth: -10, mode: "cut" })` types `extrude("c1", 10, …)`, the re-arm keeping the first arm's depth (the bug-82 re-arm fix's path), and the kernel says *e2 cuts nothing from e1*; not this package's, reported to the manager. The shading file's seven pass, alone and in the run.
+
 ## 2026-11-23 — "extrude cut still doesn't work": the Extrude tool's Cut cut away from the body, a region took the tap inside a circle drawn on it, and a typed depth lost the Cut
 
 The owner, after eleven days with the build: *"Extrude cut still doesn't

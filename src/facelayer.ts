@@ -8,6 +8,15 @@
 // either is chosen: `createFaceLayer` returns null where WebGL is missing, and
 // the host paints instead.
 //
+// **A curved surface shades smoothly** in the depth layer: a piece of one
+// (faces.ts's `vertexNormals`, lit per vertex into `VisibleFace.shades`) puts
+// each corner's own colour on its vertex, and the GPU blends across the
+// piece, so a cylinder drawn in 10° strips reads as one round surface. The
+// vertex count is what it was; only the colours differ along a piece. A flat
+// face puts its one colour on every vertex, as every face did before. The
+// painter's below is flat-shaded throughout — a 2D canvas has no blended
+// fill — and says so.
+//
 // **The depth layer** draws into its own canvas under the 2D one, through the
 // view's own orthographic projection (`clipMatrix`), with a depth test — so
 // which face is in front is answered per pixel, exactly, and needs no order at
@@ -52,7 +61,8 @@ import { cross3, dot3, sub3 } from "./vec3.ts";
 /**
  * The painter's: every visible face, far to near, filled into a 2D context
  * already transformed to CSS pixels. What draws solids where there is no
- * WebGL.
+ * WebGL. Flat-shaded, a curved face's pieces included (faces.ts's
+ * `facesToDraw` hands over one `shade` a face, on purpose).
  */
 export function paintFaces(g: CanvasRenderingContext2D, model: Model, view: View,
                            skip: ReadonlySet<string> = new Set(), solid: SolidFaces | null = null): void {
@@ -242,21 +252,31 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       const anchor = [0, 1, 2].map((i) => a * right[i] + b * up[i] + mid * toward[i]);
 
       // One buffer a frame: the convex faces' fans first, as one draw, then
-      // each other face's fans as a run of its own.
-      const fan = (out: number[], o: number[][], rgb: number[]) => {
-        const put = (p: number[]) => out.push(p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2], rgb[0], rgb[1], rgb[2]);
-        for (let k = 1; k + 1 < o.length; k++) { put(o[0]); put(o[k]); put(o[k + 1]); }
+      // each other face's fans as a run of its own. `rgb` is the face's one
+      // colour, in bytes; where the face is a piece of a curved surface,
+      // `shades` gives each corner its own, through the same `tone` — worked
+      // out once per corner, not per emitted vertex (a fan says a corner
+      // twice), and bytes to floats here with nothing else allocated on the
+      // way: a few hundred curved pieces a frame on a phone.
+      const fan = (out: number[], o: number[][], rgb: number[], tone: (shade: number) => number[], shades?: number[]) => {
+        const cols = shades ? shades.map(tone) : null;
+        const put = (k: number) => {
+          const p = o[k], c = cols ? cols[k] : rgb;
+          out.push(p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2], c[0] / 255, c[1] / 255, c[2] / 255);
+        };
+        for (let k = 1; k + 1 < o.length; k++) { put(0); put(k); put(k + 1); }
       };
       const batch: number[] = [];
       const caps: { data: number[] }[] = [];
       // A construction body's faces are drawn as reference (faces.ts).
       const reference = referenceFeatures(model);
       for (const f of faces) {
-        const rgb = (reference.has(f.feature) ? referenceRGB(f.shade) : faceRGB(f.shade)).map((c) => c / 255);
-        if (f.outlines.length === 1 && convex(f.outlines[0], f.normal)) fan(batch, f.outlines[0], rgb);
+        const tone = reference.has(f.feature) ? referenceRGB : faceRGB;
+        const rgb = tone(f.shade);
+        if (f.outlines.length === 1 && convex(f.outlines[0], f.normal)) fan(batch, f.outlines[0], rgb, tone, f.shades?.[0]);
         else {
           const data: number[] = [];
-          for (const o of f.outlines) fan(data, o, rgb);
+          f.outlines.forEach((o, i) => fan(data, o, rgb, tone, f.shades?.[i]));
           caps.push({ data });
         }
       }

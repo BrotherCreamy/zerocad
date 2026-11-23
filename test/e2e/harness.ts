@@ -244,7 +244,7 @@ export interface AppContext {
 export type Picture = "faces" | "drawing" | "screen";
 
 export interface NearestFace {
-  /** The face nearest the viewer at the pixel, or null where the ray meets no solid. */
+  /** The face nearest the viewer at the pixel, or null where the ray meets no solid — `rgb` its fill at that pixel: one colour over a flat face, blended over a piece of a curved one. */
   face: { id: number; feature: string; kind: string; rgb: number[] } | null;
   /** Distance in pixels to the nearest outline of any visible face. */
   edge: number;
@@ -555,7 +555,7 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       const { faceRGB, visibleFaces } = await import(facesPath);
       const { nearestFace, occlusion, outlineDistance } = await import(occlusionPath);
       const { model, engine } = (window as never as PageGlobals).__neocad;
-      type F = { feature: string; kind: string; shade: number; face?: number; normal: number[]; outlines: number[][][] };
+      type F = { feature: string; kind: string; shade: number; shades?: number[][]; face?: number; normal: number[]; outlines: number[][][] };
       // The kernel's bodies in place of their features' own faces, as main.ts
       // hands them to the face layer (docs/plans/solids-kernel.md) — the
       // last good answer, which is what is on the screen.
@@ -599,6 +599,33 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
         const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1)));
         return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy);
       };
+      // A piece of a curved surface is shaded per vertex and blended across
+      // (faces.ts `shades`, facelayer.ts): its fill at a pixel is its corners'
+      // colours weighted as the GPU weights them — linearly in screen space,
+      // which an orthographic view makes exact — over the fan triangle the
+      // pixel is in. The oracle says that colour, so the picture is still
+      // checked to the level; a flat face's fill is its one `shade`'s.
+      const fillAt = (i: number, x: number, y: number): number[] => {
+        const f = faces[i];
+        const sh = f.shades?.[0];
+        if (!sh) return faceRGB(f.shade);
+        const s = (occ as Occ).faces[i].screen[0];
+        const cols = sh.map((v) => faceRGB(v) as number[]);
+        let best: { w: number[]; k: number; inside: number } | null = null;
+        for (let k = 1; k + 1 < s.length; k++) {
+          const [a, b, c] = [s[0], s[k], s[k + 1]];
+          const det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+          if (Math.abs(det) < 1e-9) continue;
+          const w1 = ((x - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (y - a[1])) / det;
+          const w2 = ((b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1])) / det;
+          const w = [1 - w1 - w2, w1, w2];
+          const inside = Math.min(...w);
+          if (!best || inside > best.inside) best = { w, k, inside };
+        }
+        if (!best) return faceRGB(f.shade);
+        const [w0, w1, w2] = best.w;
+        return [0, 1, 2].map((c) => Math.round(w0 * cols[0][c] + w1 * cols[best!.k][c] + w2 * cols[best!.k + 1][c]));
+      };
       return at.map(([x, y]) => {
         const best = nearestFace(occ, x, y) as { index: number } | null;
         const f = best ? faces[best.index] : null;
@@ -616,7 +643,7 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
           }
         });
         const id = typeof g === "string" ? ids.get(g)! : best?.index ?? -1;
-        return { face: f ? { id, feature: f.feature, kind: f.kind, rgb: faceRGB(f.shade) } : null, edge };
+        return { face: f ? { id, feature: f.feature, kind: f.kind, rgb: fillAt(best!.index, x, y) } : null, edge };
       });
     }, at),
     renderer: () => page.evaluate(() => (window as never as PageGlobals).__neocad.faces),

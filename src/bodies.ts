@@ -211,10 +211,29 @@ function triangleDistance(p: number[], a: number[], b: number[], c: number[]): n
 }
 
 /**
+ * Within one kernel face, how near two tessellation vertices must be to be
+ * the same vertex, as a fraction of the body's extent: a closed cylinder's
+ * tessellation has its seam vertices twice, once for each side of the seam,
+ * and a vertex normal keyed by index alone would leave a shading seam there.
+ * Well inside single precision, which the positions come in.
+ */
+const SAME_VERTEX = 1e-5;
+
+/**
  * A body's triangles as faces, outward, each edge segment handed to the
  * triangle on either side it runs along — so the face layer draws an edge
  * exactly where one of its faces is drawn, as it does an extrude's. A seam
  * (a whole cylinder's) is no edge of the shape and is not drawn.
+ *
+ * **A curved kernel face shades smoothly** (faces.ts's `vertexNormals`): each
+ * of its triangles carries, at each corner, the area-weighted mean of the
+ * normals of that face's triangles meeting there — keyed by position
+ * (`SAME_VERTEX`), so the seam's duplicated vertices agree. Never across two
+ * kernel faces: a box's corner stays a corner and a cylinder's rim a crease,
+ * since the triangles of the cap and the wall meeting at the rim are in
+ * different faces. A face the kernel says is a plane gets none, and nor
+ * does one whose triangles all face one way (a flat face of another kind):
+ * there is nothing to smooth and no cost.
  */
 export function bodyFaces(result: BodyResult): KernelFace[] {
   const s = result.solid;
@@ -229,24 +248,64 @@ export function bodyFaces(result: BodyResult): KernelFace[] {
     vol += dot3(a, cross3(b, c));
   }
   const flip = vol < 0;
+  // The body's extent, for `SAME_VERTEX`.
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    lo = lo.map((v, k) => Math.min(v, positions[i + k]));
+    hi = hi.map((v, k) => Math.max(v, positions[i + k]));
+  }
+  const tol = SAME_VERTEX * Math.max(1e-9, ...hi.map((h, k) => h - lo[k]));
+  const vertexKey = (p: number[]) => p.map((c) => Math.round(c / tol)).join(",");
+  // First the triangles, then the vertex normals of every curved face —
+  // which need all of a face's triangles before any is handed over.
+  const tris: { a: number[]; b: number[]; c: number[]; normal: number[]; area: number[]; face: number }[] = [];
   const faces: KernelFace[] = [];
   const byFace = new Map<number, number[]>();
   for (let t = 0; t < n; t++) {
     let [a, b, c] = [at(triangles[t * 3]), at(triangles[t * 3 + 1]), at(triangles[t * 3 + 2])];
     if (flip) [b, c] = [c, b];
-    const normal = unit3(cross3(sub3(b, a), sub3(c, a)));
+    const area = cross3(sub3(b, a), sub3(c, a)); // twice the area, along the normal
+    const normal = unit3(area);
     if (!normal) continue; // a sliver with no area draws nothing and hides nothing
     const face = faceOf[t];
+    tris.push({ a, b, c, normal, area, face });
+    if (!byFace.has(face)) byFace.set(face, []);
+    byFace.get(face)!.push(tris.length - 1);
+  }
+  // Per curved face: the sum of its triangles' area-weighted normals at each position.
+  const smooth = new Map<number, Map<string, number[]>>();
+  for (const [face, ts] of byFace) {
+    if (s.faces[face]?.kind === "plane") continue;
+    const first = tris[ts[0]].normal;
+    if (ts.every((t) => dot3(tris[t].normal, first) > 1 - 1e-9)) continue; // flat whatever the kernel calls it
+    const sums = new Map<string, number[]>();
+    for (const t of ts) {
+      const { a, b, c, area } = tris[t];
+      for (const p of [a, b, c]) {
+        const key = vertexKey(p);
+        const sum = sums.get(key);
+        if (sum) for (let k = 0; k < 3; k++) sum[k] += area[k];
+        else sums.set(key, area.slice());
+      }
+    }
+    smooth.set(face, sums);
+  }
+  for (const { a, b, c, normal, face } of tris) {
     const record = s.faces[face];
     const tag = record?.tag ?? -1;
     const feature = tag >= 0 ? featureLabel(tagParts(tag).feature, PREFIX) : result.name;
+    const sums = smooth.get(face);
+    const vertexNormals = sums ? { vertexNormals: [[a, b, c].map((p) => unit3(sums.get(vertexKey(p))!) ?? normal)] } : {};
     faces.push({
       feature, kind: kindOf(tag), outlines: [[a, b, c]], normal, ...(record?.name ? { name: record.name } : {}),
-      centroid: [0, 1, 2].map((i) => (a[i] + b[i] + c[i]) / 3), edges: [], face,
+      centroid: [0, 1, 2].map((i) => (a[i] + b[i] + c[i]) / 3), edges: [], face, ...vertexNormals,
     });
-    if (!byFace.has(face)) byFace.set(face, []);
-    byFace.get(face)!.push(faces.length - 1);
   }
+  byFace.clear();
+  faces.forEach((f, i) => {
+    if (!byFace.has(f.face)) byFace.set(f.face, []);
+    byFace.get(f.face)!.push(i);
+  });
   // A sheet (a surface, docs/plans/surfaces.md) has two sides and no inside:
   // each triangle is drawn and picked from both, so the face layer — which
   // shows a face from its outward side — shows a surface from either.
@@ -256,7 +315,8 @@ export function bodyFaces(result: BodyResult): KernelFace[] {
     for (let t = 0; t < one; t++) {
       const f = faces[t];
       const [a, b, c] = f.outlines[0];
-      faces.push({ ...f, outlines: [[a, c, b]], normal: f.normal.map((x) => -x), edges: [] });
+      const flipped = f.vertexNormals ? { vertexNormals: [[0, 2, 1].map((k) => f.vertexNormals![0][k].map((x) => -x))] } : {};
+      faces.push({ ...f, outlines: [[a, c, b]], normal: f.normal.map((x) => -x), edges: [], ...flipped });
       twin.set(t, faces.length - 1);
     }
   }

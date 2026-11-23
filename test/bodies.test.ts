@@ -210,3 +210,39 @@ test("a boss standing on the top: the coplanar union, made through the app", { s
   const v: BodyView = { name: r.name, features: [], result: r, faces: bodyFaces(r) };
   assert.ok(v.faces.length > 0);
 });
+test("a kernel body's curved faces carry vertex normals — per kernel face, keyed by position so the seam agrees — and its planes carry none", { skip }, async () => {
+  await loadSolver();
+  factory ??= await smlibFactory();
+  const m = new Model(3);
+  const { p, hole, boss } = ownersPart(m);
+  const bodies = await settledBodies(m);
+  const [v] = bodies.views();
+  const s = v.result.solid!;
+  const axes = new Map([[`${hole}.m0`, p.t.uz], [`${boss}.m0`, p.t.uy]]);
+  let curved = 0;
+  const byPosition = new Map<string, number[]>();
+  for (const f of v.faces) {
+    const record = s.faces[f.face];
+    if (record.kind === "plane") { assert.equal(f.vertexNormals, undefined, `a plane is flat: ${record.name}`); continue; }
+    assert.equal(record.kind, "cylinder", record.name);
+    assert.ok(f.vertexNormals && f.vertexNormals[0].length === 3, `a cylinder's triangle carries three: ${record.name}`);
+    curved++;
+    const axis = axes.get(record.name);
+    assert.ok(axis, `a cylinder of the part: ${record.name}`);
+    f.vertexNormals![0].forEach((n, i) => {
+      assert.ok(Math.abs(Math.hypot(...n) - 1) < 1e-9, "unit");
+      // Nothing of the caps at the rims in it: a mean across the rim would lean along the axis.
+      assert.ok(Math.abs(dot3(n, axis!)) < 1e-6, `${record.name}: no part along its axis, ${n}`);
+      // Within half a facet of the triangle's own normal (ANGLE 10°).
+      assert.ok(dot3(n, f.normal) > Math.cos((6 * Math.PI) / 180), `${record.name}: ${n} against ${f.normal}`);
+      // One normal per position within a face: the tessellation's duplicated seam vertices agree.
+      const key = `${f.face}|${f.outlines[0][i].map((c) => c.toFixed(5)).join(",")}`;
+      const seen = byPosition.get(key);
+      if (seen) assert.ok(Math.hypot(...n.map((c, k) => c - seen[k])) < 1e-9, `${record.name}: one normal at ${key}`);
+      byPosition.set(key, n);
+    });
+  }
+  assert.ok(curved > 20, `the hole's and the boss's walls: ${curved} triangles`);
+  // Positions are shared by many triangles of a face and the normals agreed everywhere.
+  assert.ok(byPosition.size < curved * 3, "corners shared");
+});
