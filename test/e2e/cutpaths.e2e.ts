@@ -7,6 +7,8 @@
 // - A plate extruded downward, a circle on its top (its own sketch plane),
 //   the Cut tool, a tap inside the circle — bug 81: the tap took the plate's
 //   region and the cut removed everything, which the kernel refused.
+// - Cut chosen in the mode row, then the depth typed — bug 82: the field's
+//   re-arm dropped the mode, and the owner's hole came out a boss.
 //
 // Each ends with a hole right through, read off the model: the circle's twin
 // on the far face, the feature a cut into the plate, nothing refused in the
@@ -128,6 +130,63 @@ for (const device of ["iPhone", "mouse"] as const) {
       await say(a, "orbit(0, -1.0); orbit(-0.8, 0)");
       await shot(a, `${n}-${device.toLowerCase()}-the-extrude-buttons-cut-mode-cuts-into-the-plate`);
       await assertHole(a, "extrude's Cut", T, 0);
+      assert.deepEqual(a.pageErrors, []);
+    } finally {
+      await a.close();
+    }
+  });
+
+  test(`${device}: Cut chosen in the mode row before the profile is picked works the same as after`, async () => {
+    // The owner's guess at what he was doing wrong: "you have to press cut
+    // before clicking in the profile". Neither order worked on the build he
+    // had (bug 80); both must, so both are here — this one before, bug 80's
+    // test after.
+    const a = await open();
+    try {
+      await ready(a);
+      const h = await handOf(a, device);
+      await plate(a, h);
+      await h.button('#toolbar button[data-tool="circle"]');
+      await h.drag([0, 0, T], [4, 0, T]);
+      await h.button('#toolbar button[data-tool="extrude"]');
+      await a.page.click('#options button:has-text("Cut")');
+      await a.page.waitForTimeout(400);
+      await h.click([0, 0, T]);
+      await a.page.click("#options .oact button.ok");
+      await a.page.waitForTimeout(900);
+      await say(a, "orbit(0, -1.0); orbit(-0.8, 0)");
+      await assertHole(a, "Cut before the pick", T, 0);
+      assert.deepEqual(a.pageErrors, []);
+    } finally {
+      await a.close();
+    }
+  });
+
+  test(`${device}: Cut chosen in the mode row, then the depth typed: the cut keeps its mode (bug 82)`, async () => {
+    // The owner's screenshot (2026-11-23): Cut pressed, 40 typed into the
+    // depth, and the organiser said "extrude · add" — the field's
+    // arm("extrude", {depth: 40}) re-armed the tool from memory, where the
+    // mode is not kept, and Enter built it as "auto": a boss.
+    const a = await open();
+    try {
+      await ready(a);
+      const h = await handOf(a, device);
+      await plate(a, h);
+      await h.button('#toolbar button[data-tool="circle"]');
+      await h.drag([0, 0, T], [4, 0, T]);
+      await h.button('#toolbar button[data-tool="extrude"]');
+      await h.click([0, 0, T]);
+      await a.page.click('#options button:has-text("Cut")');
+      await a.page.waitForTimeout(400);
+      const field = (await a.page.$('#options input[data-option="depth"]')) ?? (await a.page.$('#options input'));
+      assert.ok(field, "the depth field");
+      await field!.fill("40");
+      await field!.press("Enter");
+      await a.page.waitForTimeout(900);
+      const log = await a.log();
+      assert.match(log, /extrude\("c1", -40, \{"mode":"cut"\}\)/, `the depth typed keeps the Cut and goes into the plate: ${log.slice(-300)}`);
+      await say(a, "orbit(0, -1.0); orbit(-0.8, 0)");
+      await assertHole(a, "Cut then the depth typed", T, T - 40);
       assert.deepEqual(a.pageErrors, []);
     } finally {
       await a.close();

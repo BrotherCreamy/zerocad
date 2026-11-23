@@ -4182,8 +4182,9 @@ export interface OptionsHost {
 /**
  * The line a field types: `arm("extrude", {depth: 25})` — the tool quoted as
  * JSON, as a button quotes it, and only the option edited. The others need not
- * be said: each was either never typed, and is filled from its default, or was,
- * and is remembered, which is exactly what the tool is armed with now.
+ * be said: the engine re-arms the tool from what it is armed with now (every
+ * option, remembered or not — `Engine.arm`), so a Cut chosen in the mode row
+ * survives the depth being typed.
  */
 export function optionCommand(tool: string, option: string, value: number | boolean | string): string {
   const key = /^[A-Za-z_$][\w$]*$/.test(option) ? option : JSON.stringify(option);

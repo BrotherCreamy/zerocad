@@ -164,13 +164,33 @@ test("with nothing armed a click inside a region selects it, shift adds, empty c
   assert.equal(e.active, tool, "the same tool, retuned");
   assert.equal(tool.picks.size, 2);
   assert.equal(tool.ctx.options.depth, 25);
+  // Re-armed, the tool starts from every option it has — the mode row's Cut,
+  // which is not remembered across armings, survives the depth being typed
+  // (browser-only bug 82: the owner's hole came out a boss). A fresh arming
+  // starts from memory and the defaults, so the next extrude is not a cut
+  // because the last one was.
+  e.arm("extrude", { mode: "cut" });
+  assert.equal(e.active, tool, "still the same tool");
+  e.arm("extrude", { depth: 40 });
+  assert.deepEqual([tool.ctx.options.mode, tool.ctx.options.depth], ["cut", 40], "the depth typed keeps the Cut");
+  e.arm("extrude", { depth: 25 });
+  assert.equal(tool.ctx.options.mode, "cut", "and again");
+  e.arm("select");
+  e.arm("extrude");
+  assert.deepEqual([e.active!.ctx.options.mode, e.active!.ctx.options.depth], ["auto", 25], "armed afresh: the mode is the default, the depth remembered");
+  e.arm("select");
+  click([-35, 0, 0]);
+  click([35, 0, 0], true);
+  e.arm("extrude", { depth: 25 });
+  const again = e.active as ExtrudeTool;
+  assert.equal(again.picks.size, 2);
   e.trial("depth", 0);
-  assert.deepEqual(tool.ctx.trial, {}, "a trial the declaration refuses is not taken");
+  assert.deepEqual(again.ctx.trial, {}, "a trial the declaration refuses is not taken");
   e.trial("depth", 30);
-  assert.deepEqual(tool.ctx.trial, { depth: 30 });
+  assert.deepEqual(again.ctx.trial, { depth: 30 });
   assert.equal(e.escape(), "cleared");
-  assert.equal(e.active, tool, "still armed");
-  assert.equal(tool.picks.size, 0);
+  assert.equal(e.active, again, "still armed");
+  assert.equal(again.picks.size, 0);
   assert.equal(e.escape(), "cancelled", "a second Escape releases it");
   assert.equal(e.active, null);
 });
