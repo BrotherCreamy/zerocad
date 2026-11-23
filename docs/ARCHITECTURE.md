@@ -2668,7 +2668,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Eighty-one bugs so far were invisible to the unit tests and obvious within seconds
+Eighty-two bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -3126,6 +3126,18 @@ of running the app:
    it judges the innermost loop of the drawing now, and a region holds a
    tap only when that loop is one of its cells, as every tool's pick is the
    innermost loop under the finger.
+82. Cut chosen in the Extrude tool's mode row was lost when the depth was
+   typed. The owner's screenshot: a circle on a block's side, Extrude, Cut,
+   40 typed into the depth, and the organiser read `extrude · add` — a boss
+   40 long where a hole was asked for. The depth field types
+   `arm("extrude", {depth: 40})`, and `arm` resolved every option not named
+   from memory and the defaults; the mode is not remembered across armings
+   (`remember: false`, by design — the next extrude is not a cut because
+   the last one was), so it fell back to "auto", and Enter built it. The
+   unit tests of the options panel and of the field's line passed. A tool
+   armed again while it is the one armed now starts from what it is armed
+   with (`Engine.arm`), remembered or not; a fresh arming starts from memory
+   as before.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

@@ -39,8 +39,12 @@ otherwise.
   tap only when the innermost loop under it is one of its cells** (bug 81):
   a circle drawn inside a region's face later is what a tap inside it means,
   as it is for every other tool; until a region step names that circle, the
-  region does not take the tap. Both from the owner's *"Extrude cut still
-  doesn't work"*, reproduced by finger.
+  region does not take the tap. **A tool armed again while it is the one
+  armed starts from the options it has** (bug 82), remembered or not: the
+  mode row's Cut survives the depth being typed or dragged; a fresh arming
+  still starts from memory and the defaults. All three from the owner's
+  *"Extrude cut still doesn't work"*, reproduced by finger, the third from
+  the owner's screenshot.
 
 - **CLAUDE.md's kernel fallback is `build:kernel:noopt`, not `build:kernel:dev`**
   (the manager, 2026-11-12, after the solver-cost package found every timing

@@ -7,7 +7,7 @@ decisions.
 
 ---
 
-## 2026-11-23 — "extrude cut still doesn't work": the Extrude tool's Cut cut away from the body, and a region took the tap inside a circle drawn on it
+## 2026-11-23 — "extrude cut still doesn't work": the Extrude tool's Cut cut away from the body, a region took the tap inside a circle drawn on it, and a typed depth lost the Cut
 
 The owner, after eleven days with the build: *"Extrude cut still doesn't
 work."* Reproduced by finger on an emulated iPhone, every way a person
@@ -38,6 +38,18 @@ the reason in the log's small print.
   already follows. A consequence, written into the register: a tap inside a
   circle drawn inside a region means the circle, until a step of the region
   names it.
+
+- **Browser-only bug 82 — Cut chosen, then the depth typed, and the mode
+  lost.** The owner's screenshot, sent after the first two were fixed: a
+  circle on a block's side, Extrude, Cut, 40 typed into the depth, and the
+  organiser read `extrude · add` — a boss where a hole was asked for. The
+  depth field types `arm("extrude", {depth: 40})`; `arm` filled every option
+  it did not name from memory and the defaults, and the mode is not
+  remembered across armings by design, so Cut went back to "auto" and Enter
+  built that. A tool armed again while it is the one armed now starts from
+  what it is armed with, remembered or not (`Engine.arm`). The owner's
+  sequence — rectangle, extrude, circle on a face, Extrude, Cut, a depth
+  typed, OK — is a browser test now, by finger and by mouse.
 
 Found and left (TODO.md, *Next up*): a circle whose first touch lands on a
 solid's edge is not drawn at all — the press takes the edge to drag, as a

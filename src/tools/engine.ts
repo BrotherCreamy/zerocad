@@ -835,8 +835,6 @@ export class ToolEngine {
       throw new Error(`no tool "${toolName}"`);
     }
     const specs = declaredOptions(Ctor, toolName);
-    const options = resolveOptions(toolName, specs, given, this.optionMemory.recall(toolName));
-    this.optionMemory.remember(toolName, explicitOptions(specs, typed));
     // The tool already armed, armed again — the options panel's field
     // committed, or `arm` typed with a new depth — keeps what it has picked if
     // it can (`retune`): the depth changes under a selection already made. Not
@@ -845,6 +843,16 @@ export class ToolEngine {
     const keep = target ?? this.armedWith?.target;
     const same = this.active && this.armedWith?.name === toolName && this.active.retune
       && keep === this.armedWith?.target;
+    // **And keeps every option it has**, not only the remembered ones: a field
+    // types `arm("extrude", {depth: 40})` and says nothing of the mode row,
+    // and the mode is not remembered across armings (`remember: false`) — so
+    // a Cut chosen, then the depth typed, came back as "auto", and ✓ built a
+    // boss where a hole was asked for (the owner's screenshot, 2026-11-23,
+    // browser-only bug 82). Re-armed, the tool starts from what it is armed
+    // with now; a fresh arming starts from memory and the defaults as before.
+    const held = same ? Object.fromEntries(Object.entries(this.armedWith!.options).filter(([k]) => Object.hasOwn(specs, k))) : {};
+    const options = resolveOptions(toolName, specs, { ...held, ...(given && typeof given === "object" ? given : {}) }, this.optionMemory.recall(toolName));
+    this.optionMemory.remember(toolName, explicitOptions(specs, typed));
     if (same) {
       this.armedWith = { name: toolName, options, ...(keep === undefined ? {} : { target: keep }) };
       this.active!.ctx.options = options;

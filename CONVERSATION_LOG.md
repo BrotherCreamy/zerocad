@@ -22,6 +22,13 @@ with Cut in its mode row did not (bug 80), and neither did a circle on a
 downward plate's own sketch plane (bug 81). Both left the same picture: a
 feature row, an unchanged body, a reason in small print.
 
+The owner's screenshot, after the first two fixes, showed `extrude · add`
+with a depth of 40: the third fault, found by doing exactly what the
+screenshot said — Cut, then the depth typed. The field re-armed the tool
+and the mode, unremembered by design, fell away. Fixed in `Engine.arm`
+rather than in the field's line, so the depth handle's drag and a typed
+`arm("extrude", {depth: 40})` keep the mode too.
+
 Rejected: making the Cut tool's reach check a refusal (✓ disabled) — the spec
 (solid-tools-intuitive) chose muted guidance so a cut can be made and then
 flipped; kept. Rejected: special-casing "a circle inside a named region" in
