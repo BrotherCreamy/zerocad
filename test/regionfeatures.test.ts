@@ -101,9 +101,10 @@ test("the stepped block: each half of one sketch extruded to its own depth — t
   assert.deepEqual(m.relationOf(e1.owns[5]).args, [x2, l3]);
   assert.ok(near(m.coords(x1), t.at(15, 0)) && near(m.coords(x2), t.at(15, 30)), "seeded at the crossings");
   // Four twins, four twin lines, four walls, two crossings and their four
-  // holds, one depth and its chord's perpendicular (profiles-held.md) — and no lid frame.
+  // holds, one depth, its chord's perpendicular (profiles-held.md) and its
+  // profile held flat (flat-profile.md) — and no lid frame.
   assert.equal(m.entities.size - before.entities, 2 + 4 + 4 + 4);
-  assert.equal(m.relations.size - before.relations, 4 + 1 + 1);
+  assert.equal(m.relations.size - before.relations, 4 + 1 + 1 + 1);
   assert.deepEqual(e1.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "line", "line", "line"]);
   assert.equal(e1.walls.length, 4);
   // The journal names the points, never the keys.
@@ -173,7 +174,7 @@ test("del: a step deleted takes itself and its extrusion — the crossings stay,
     const e2 = m.featureOf(extrude(m, lines[1], 20), "extrude");
     const [x1, x2] = materialised(m, "e1");
     const removed = del(m, "e2");
-    assert.deepEqual(removed, ["e2", e2.depth, "e2_perp"], "the record, its extrusion and its perpendicular");
+    assert.deepEqual(removed, ["e2", e2.depth, "e2_perp", "e2_flat"], "the record, its extrusion, its perpendicular and its flat");
     assert.ok(m.features.has("e1") && m.entities.has(x1) && m.entities.has(x2));
     for (const n of e2.owns) if (n !== e2.depth) assert.ok(m.has(n), `${n}, which e2 made, stays`);
   }
@@ -183,7 +184,7 @@ test("del: a step deleted takes itself and its extrusion — the crossings stay,
     const e2 = m.featureOf(extrude(m, lines[1], 20), "extrude");
     const [x1, x2] = materialised(m, "e1");
     const removed = del(m, "e1");
-    assert.deepEqual(removed, ["e1", e1.depth, "e1_perp"]);
+    assert.deepEqual(removed, ["e1", e1.depth, "e1_perp", "e1_flat"]);
     assert.ok(m.features.has("e2"), "e2 stands on e1's crossings, which are points held on both edges still");
     for (const n of [...lines, across, ...ends, x1, x2, ...e2.walls]) assert.ok(m.entities.has(n), `${n} stays`);
     assert.equal(m.solve().solved, true);
@@ -367,7 +368,7 @@ test("a region cut by Ts is extruded between the held points it already had — 
   const f = m.featureOf(extrude(m, lines[3], 10), "extrude");
   assert.deepEqual(f.loops, [[{ name: lines[0], from: points[0], to: a }, stem, { name: lines[2], from: b, to: points[3] }, lines[3]]]);
   assert.deepEqual(materialised(m, f.name), []);
-  assert.equal(m.relations.size, relations + 2, "the depth and the chord's perpendicular (profiles-held.md), nothing else");
+  assert.equal(m.relations.size, relations + 3, "the depth, the chord's perpendicular (profiles-held.md) and the profile's flat (flat-profile.md), nothing else");
   assert.ok(f.names.includes(a) && f.names.includes(b));
   // Deleting a T took the record until linked profiles; now the edges that
   // ran to it go — from both profiles — and the record stays, open.

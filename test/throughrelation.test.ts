@@ -715,7 +715,8 @@ test("a file from before the relation: every name kept, each through cut held on
   // Every relation it had, under the name it had — and one more for each through cut.
   const mine = [...m.relations.values()].filter((r) => !r.twin);
   const { hole, pocket, base, uz, origin } = want.named;
-  assert.deepEqual(mine.filter((r) => !r.name.endsWith("_through")).map((r) => [r.name, r.op, r.args]), want.relations);
+  // The flat-profile relation an extrude makes since format 24 is new by design (docs/plans/flat-profile.md): made at the replay step under its derived name, it shifts no name.
+  assert.deepEqual(mine.filter((r) => !r.name.endsWith("_through") && r.op !== "profileFlat").map((r) => [r.name, r.op, r.args]), want.relations);
   for (const cut of [hole, pocket]) {
     const r = m.relationOf(`${cut}_through`);
     assert.equal(r.op, "onPlane");

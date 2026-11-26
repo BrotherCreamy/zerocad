@@ -63,7 +63,9 @@ test("a rectangle: four twins, four twin edges, four walls, one depth, one featu
   assert.equal(m.entities.size - before, 4 + 4 + 4);
   // The depth, and beside it the chord held square to the profile — its own
   // relation, named for the feature so it claims no r (profiles-held.md).
-  assert.equal(m.relations.size - relsBefore, 2, "two relations: the depth, and the chord square to the profile");
+  // And, since 2026-11-26, the profile held flat among its own points (docs/plans/flat-profile.md).
+  assert.equal(m.relations.size - relsBefore, 3, "three relations: the depth, the chord square to the profile, and the profile flat");
+  assert.deepEqual(m.relationOf("e1_flat").args.slice(0, 1), ["e1"]);
   assert.deepEqual(m.relationOf("e1_perp").args, [m.line(f.walls[0]).refs[0], m.line(f.walls[0]).refs[1], "e1"]);
   assert.equal(f.depth, "d1", "a dimension, d-named");
   assert.equal(m.relationOf("d1").op, "extrusion");
@@ -398,8 +400,8 @@ test('del("e1") takes the record and the relation that is the extrude — the li
   const journalAt = m.journal.length;
   const removed = del(m, e);
 
-  // The record, the extrusion that is the link, and the perpendicular that names the record.
-  assert.deepEqual(removed, [e, f.depth, "e1_perp"]);
+  // The record, the extrusion that is the link, and the perpendicular and the flat that name the record.
+  assert.deepEqual(removed, [e, f.depth, "e1_perp", "e1_flat"]);
   assert.deepEqual(new Set(m.entities.keys()), new Set([...entities, ...made]), "the sketch, and everything the extrude made");
   for (const n of made) assert.ok(m.entities.has(n), `${n} is plain geometry now`);
   assert.deepEqual([...m.relations.keys()].filter((n) => !twins.includes(n)), relations, "the sketch's relations, name for name");
@@ -414,7 +416,7 @@ test('del("e1") takes the record and the relation that is the extrude — the li
   for (const [n, c] of coords) assert.ok(near(m.coords(n), c), `${n} did not move`);
   for (const [n, c] of lidAt) assert.ok(near(m.coords(n), c), `${n} of the lid did not move`);
   // Journalled as its expansion, one primitive per name, the record first — and no entity.
-  assert.deepEqual(m.journal.slice(journalAt).map((j) => j.op), ["deleteFeature", "deleteRelation", "deleteRelation"]);
+  assert.deepEqual(m.journal.slice(journalAt).map((j) => j.op), ["deleteFeature", "deleteRelation", "deleteRelation", "deleteRelation"]);
 });
 
 test("deleting a piece of a feature — a profile edge, a lid edge, a wall, the depth — leaves the record: open, or unbuilt, and saying so", async () => {
@@ -467,8 +469,8 @@ test("deleting a piece of a feature — a profile edge, a lid edge, a wall, the 
     assert.match(now.unbuilt ?? "", /depth d1 is deleted/);
     assert.ok(!now.names.includes(f.depth));
     assert.equal(m.solve().solved, true);
-    // And the record goes when it is asked to, with nothing left to take but its perpendicular.
-    assert.deepEqual(del(m, f.name), [f.name, "e1_perp"]);
+    // And the record goes when it is asked to, with nothing left to take but its perpendicular and its flat.
+    assert.deepEqual(del(m, f.name), [f.name, "e1_perp", "e1_flat"]);
   }
   // A lid corner: its base corner goes with it, and the edges and the wall
   // that need either. The extrusion holds the pairs left, the perpendicular is
@@ -515,7 +517,7 @@ test("a sketch on the lid stays when the extrude is deleted, and so does a secon
 
   const removed = del(m, f.name);
   // The lid is plain geometry now, so nothing that stood on it has lost its footing.
-  assert.deepEqual(removed, [f.name, f.depth, "e1_perp"]);
+  assert.deepEqual(removed, [f.name, f.depth, "e1_perp", "e1_flat"]);
   assert.ok(m.entities.has(cap), "the cap's plane stands on the lid's corners, which are still there");
   assert.ok(m.entities.has(ring1), "and the circle on it");
   assert.ok(m.features.has(g.name), "the second extrude's profile was the first's lid: a loop of lines still");

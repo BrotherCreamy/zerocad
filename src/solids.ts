@@ -41,6 +41,7 @@
 
 import { endRelation, entityKind, isClosedEntity, memberName, type ExtrudeFeature, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
 import { lidReach } from "./relations/extrusion.ts";
+import { OFFENDING } from "./kernel/problem.ts";
 import { memberPoints } from "./solids/profile.ts";
 import { portionAngles } from "./arcgeom.ts";
 import { curveFrame, curvePath, featurePlane, planeAxes as refPlaneAxes } from "./curveplane.ts";
@@ -941,6 +942,17 @@ export function extrudeSpan(model: Model, f: ExtrudeFeature): { start: number; d
  * has its chord off the profile's normal. Refused here, by name, so its body
  * says why and is drawn from its twins (faces.ts), rather than built as the
  * right prism it is not. Written down in TODO.md.
+ *
+ * **The bar is the drawing's own** (`OFFENDING`, docs/plans/flat-profile.md,
+ * bug 83): a profile is square to its chord when every point is within the
+ * distance under which the solve calls a row met and the status reads
+ * SOLVED. Until 2026-11-26 it was a millionth of the drawing's size, which no
+ * solve promises: a drag's frames settle to the eye's precision, not the
+ * kernel's, and the owner's plate — flat to 4e-6, square to 0.0002°, SOLVED
+ * — was refused mid-drag and after it, its hole gone and its cut drawn as a
+ * boss. The profile is laid out in the plane square to the chord whatever
+ * the bar (`kernelProfile` reads it in that plane's own axes), so what the
+ * bar decides is only whether a drawing within its own tolerance is built.
  */
 function refuseOblique(model: Model, f: ExtrudeFeature): void {
   const plane = featurePlane(model, f);
@@ -952,9 +964,8 @@ function refuseOblique(model: Model, f: ExtrudeFeature): void {
     return e ? model.refsOf(e).filter((p) => model.entities.get(p)?.kind === "point") : [];
   }))].map((p) => model.coords(p));
   if (pts.length < 2) return;
-  const size = Math.max(1, ...pts.map((p) => Math.hypot(...p)));
   const off = Math.max(...pts.map((p) => Math.abs(dot3(sub3(p, pts[0]), n))));
-  if (off > 1e-6 * size) throw new Error("its chord is not square to its profile — an oblique extrude is drawn, and the kernel only sweeps square");
+  if (off > OFFENDING) throw new Error("its chord is not square to its profile — an oblique extrude is drawn, and the kernel only sweeps square");
 }
 
 /**

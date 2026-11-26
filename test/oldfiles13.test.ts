@@ -111,7 +111,7 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     // profiles-held.md) so it claims no r: every name the file had is still its.
     // And the relations within its profile each have a twin on its lid, named
     // for their partner (`r3_e1`, linked-profiles.md), claiming none either.
-    const had = [...m.relations.values()].filter((r) => !r.name.endsWith("_perp") && !r.twin).map((r) => r.name);
+    const had = [...m.relations.values()].filter((r) => !r.name.endsWith("_perp") && !r.name.endsWith("_flat") && !r.twin).map((r) => r.name);
     assert.deepEqual(had.slice(0, want.relations.length), want.relations, "no name shifted");
 
     // Every curve the file drew on a frame follows that frame now by a par.
@@ -131,7 +131,7 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     sameGeometry(m, solvedGeometry(name, want), 1e-6, "regenerated");
 
     const once = save(m);
-    assert.equal(JSON.parse(once).version, 23);
+    assert.equal(JSON.parse(once).version, 24);
     const back = open(once);
     assert.equal(save(back), once, "re-saves stably as the current format");
     sameGeometry(back, solvedGeometry(name, want), 1e-6, "reopened");
@@ -164,7 +164,7 @@ test("a fresh document's file is the current format (17), its curves frameless, 
   m.addCircle(m.addPoint([1, 2, 0]).name, 4);
   const text = save(m);
   const saved = JSON.parse(text);
-  assert.equal(saved.version, 23);
+  assert.equal(saved.version, 24);
   assert.deepEqual(saved.journal[1], { op: "addCircle", args: ["p1", 4, null, "c1"] });
   assert.deepEqual(saved.values.normals, { c1: [0, 0, 1] });
   assert.equal(save(open(text)), text);

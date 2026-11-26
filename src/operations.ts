@@ -23,6 +23,7 @@ import { capPoints, faceRef, faceSource, planeNow } from "./relations/solidref.t
 import { followWith, linksOf, partnersOf, syncTwins } from "./twins.ts";
 import { angle, arcEndpoints, diameter, majorAxis, minorAxis, onCircle, onEllipse, perpendicular, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { chordPair, extrusion, extrusionChord, lidReach } from "./relations/extrusion.ts";
+import { profileFlat, profilePoints } from "./relations/profilesquare.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, seatTurned, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, featurePlane, framePlaneAxes, planeAxes } from "./curveplane.ts";
@@ -1685,6 +1686,7 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
     names: [...new Set([...builtOn(plan), ...planeNames(model, frame), ...owns])], owns,
   }).name;
   squareChord(model, name, held);
+  flattenProfile(model, name);
   return name;
 }
 
@@ -1762,6 +1764,28 @@ function seatTwins(model: Model, depth: string, chord: number[]): void {
 /** The name an extrude's (or edge extrude's) perpendicular goes by: its record's, so it claims no `r`. */
 export function perpName(record: string): string {
   return `${record}_perp`;
+}
+
+/** The name an extrude's flat-profile relation goes by (`e1_flat`): its record's, claiming no `r`, as the perpendicular's. */
+export function flatName(record: string): string {
+  return `${record}_flat`;
+}
+
+/**
+ * The extrude's profile held flat — `flat(e1)`, named `e1_flat`
+ * (docs/plans/flat-profile.md): the feature's own relation, beside its
+ * perpendicular, visible and deletable. Made for a profile of four points or
+ * more; a triangle or a lone circle has nothing to hold and gets none (see
+ * `profileFlat`). **Named for the record, claiming no counter**, so a file
+ * from before replays every later `r` under the name it had and gains the
+ * relation all the same. A revolve needs none: its `revolution` holds the
+ * profile in the plane through the axis. An edge extrude needs none either:
+ * its curves are open, and the surface between them is drawn, not swept by
+ * the kernel as a solid.
+ */
+function flattenProfile(model: Model, record: string): void {
+  if (model.has(flatName(record)) || profilePoints(model, record).length < 4) return;
+  model.namedRelation(flatName(record), () => profileFlat(model, record));
 }
 
 /**
@@ -2819,6 +2843,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const dimName = f.kind === "extrude" ? f.depth : f.angle;
   const dim = model.relationOf(dimName);
   const hadPerp = model.relations.has(perpName(f.name));
+  const hadFlat = model.relations.has(flatName(f.name));
   const value = dim.args[1] as number;
   const kindOf = (n: string) => model.entities.get(n)?.kind;
   const owns: string[] = [];
@@ -3100,6 +3125,10 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   // it, it is made again on the new chord — it was the feature's, not deleted
   // by anyone. One the user had deleted stays deleted.
   if (f.kind === "extrude" && hadPerp && !model.relations.has(perpName(f.name))) squareChord(model, f.name, dimName);
+  // The flat relation names the profile's points; if what went took one of
+  // them, it is made again over the profile as it now is. One the user had
+  // deleted stays deleted.
+  if (f.kind === "extrude" && hadFlat && !model.relations.has(flatName(f.name))) flattenProfile(model, f.name);
   // A corner set aside bounds nothing on either profile: its twin is
   // reference as it is, and so is the chord that was the wall between them.
   for (let i = 0; i + 1 < carried.length; i += 2) {

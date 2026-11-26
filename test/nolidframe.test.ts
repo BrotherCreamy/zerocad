@@ -211,7 +211,7 @@ test('del("e1") takes the record, its extrusion and its perpendicular — twins,
   const made = f.owns.filter((n) => m.entities.has(n));
   const twins = [...m.relations.values()].filter((r) => r.twin).map((r) => r.name);
   const removed = del(m, "e1");
-  assert.deepEqual(removed, ["e1", f.depth, "e1_perp"]);
+  assert.deepEqual(removed, ["e1", f.depth, "e1_perp", "e1_flat"]);
   assert.equal(f.frame, "origin");
   assert.deepEqual([...m.entities.keys()], [...entities, ...made], "the sketch, then what the call made — all of it");
   assert.deepEqual([...m.relations.keys()].filter((n) => !twins.includes(n)), relations);

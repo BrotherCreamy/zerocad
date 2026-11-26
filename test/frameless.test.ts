@@ -298,7 +298,7 @@ test("an old file that already called something \"origin\" opens with it renamed
   assert.equal(m.frame("f1").origin, "origin2");
   assert.equal(m.solve().solved, true);
   const text = save(m);
-  assert.equal(JSON.parse(text).version, 23);
+  assert.equal(JSON.parse(text).version, 24);
   assert.equal(save(open(text)), text);
 });
 

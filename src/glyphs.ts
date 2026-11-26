@@ -195,6 +195,8 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   onPlane: "▱",
   // The point in the plane of three others (profiles-held.md): the same flat thing.
   coplanar: "▱",
+  // An extrude's profile flat among its points (flat-profile.md): the same again, at its first point.
+  profileFlat: "▱",
   // The sketch relations (docs/plans/sketch-relations.md). A `par` against a
   // frame's x or y axis — what `horizontal` and `vertical` expand to — wears
   // `—` or `|` instead of `//` (see `symbolOf`); these two are here so the

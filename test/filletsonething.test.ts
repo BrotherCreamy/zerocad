@@ -419,7 +419,8 @@ test("a file from before 22 opens to the model it was — every fillet and chamf
   }
   assert.deepEqual([...m.blends.keys()], want.blends);
   const mine = [...m.relations.values()].filter((r) => !r.twin);
-  assert.deepEqual(mine.map((r) => [r.name, r.op, r.args]), want.relations, "no name shifted, and nothing it said changed");
+  // The flat-profile relation an extrude makes since format 24 is new by design (docs/plans/flat-profile.md): made at the replay step under its derived name, it shifts no name.
+  assert.deepEqual(mine.filter((r) => r.op !== "profileFlat").map((r) => [r.name, r.op, r.args]), want.relations, "no name shifted, and nothing it said changed");
   ok(m, "as it opens");
   for (const [p, at] of Object.entries(want.points)) assert.ok(len(sub(m.coords(p), at)) < 1e-6, `${p} where that build left it`);
   for (const [c, r] of Object.entries(want.radii)) assert.ok(Math.abs(m.radius(c) - r) < 1e-6, c);

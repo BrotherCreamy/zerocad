@@ -11,7 +11,7 @@
 // with, so the same relation code (see src/relations) works whether the
 // model is 2D or 3D.
 
-import { Problem, type BlockHandle, type GaugeRow, type ResidualBlock, type SolveReport, type VarRefs } from "./kernel/problem.ts";
+import { MAX_ITER, Problem, type BlockHandle, type GaugeRow, type ResidualBlock, type SolveReport, type VarRefs } from "./kernel/problem.ts";
 import { Dual } from "./kernel/dual.ts";
 
 export interface PointEntity {
@@ -3217,9 +3217,18 @@ export class Model {
     const ctx: SolveContext = { before: this.problem.snapshot(), L: this.extent(), exempt: new Set() };
     this.freeze(ctx);
     let out: ModelSolveReport = { ...this.problem.solve(), collapsed: [] };
-    if (!out.solved) {
+    // **A solve that stopped at the cap is solved on**, while it still moves
+    // (`SOLVE_ON` rounds at most): sixty iterations is a bound, not a verdict,
+    // and a failure, or a slow solve that would have finished, must not be
+    // left where the bound fell. A drag's release goes through here
+    // (bug 83, docs/plans/flat-profile.md): its frames settle to the eye's
+    // precision, and the release is the one solve that is meant to finish
+    // — a drawing left a ten-thousandth off reads SOLVED and is refused by
+    // the solids layer's bar all the same.
+    for (let round = 0; round < SOLVE_ON && (!out.solved || out.iterations >= MAX_ITER * (round + 1)); round++) {
       const more = this.problem.solve();
       out = { ...more, iterations: out.iterations + more.iterations, collapsed: [] };
+      if (more.iterations < MAX_ITER) break;
     }
     let fell = this.collapsedNow(ctx);
     if (fell.length) {
@@ -3858,7 +3867,7 @@ export class Model {
     const unmet = new Set(this.problem.unmet(UNSETTLED));
     // A relation a person made, reading nothing folded, and holding — the only
     // kind that is named, redundant or agreeing.
-    const nameable = (r: RelationEntry) => this.removable(r.name)
+    const nameable = (r: RelationEntry) => this.removable(r.name) && !QUIET_OPS.has(r.op)
       && !r.blocks.some((b) => unmet.has(b))
       && !(folded.size && r.blocks.some((b) => this.problem.varsOf(b).some((v) => folded.has(v))));
     for (const r of this.relations.values()) {
@@ -4284,6 +4293,27 @@ const NUDGE_ITER = 30;
  * retry it gets is given room.
  */
 const RETRY_ITER = 120;
+/**
+ * How many more plain solves `solve` runs after one that stopped at the cap
+ * and was still moving: three, which with the first is two hundred and
+ * forty iterations — what a stuck solve was measured creeping for (the
+ * owner's lens cut before bug 84), and more than any settling one takes
+ * (the deepest measured, eighteen). A solve still at the cap after these is
+ * stuck, and reported where it got to.
+ */
+const SOLVE_ON = 3;
+
+/**
+ * Relations never named redundant or agreeing, though a person may delete
+ * them: an extrude's `e1_flat` (docs/plans/flat-profile.md) says of its
+ * profile only what the kernel needs — flat — and where the user's own
+ * relations say it already (a rectangle's four right angles and its
+ * coplanar, a sketch plane's onplanes) that is the feature agreeing with
+ * the drawing, not something to be told to delete. A conflict still names
+ * it: a profile that cannot be flat against what holds its corners is a
+ * thing to know, and deleting it is how an oblique extrude is asked for.
+ */
+const QUIET_OPS = new Set(["profileFlat"]);
 
 /** How hard `steered` pulls each size toward what it was: a relative change of 1 weighs as a residual of 1. */
 const STEER = 1;

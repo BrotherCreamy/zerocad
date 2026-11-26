@@ -301,7 +301,19 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 23;
+export const VERSION = 24;
+// 24 (docs/plans/flat-profile.md): **an extrude holds its profile flat**, by a
+// relation of its own, `e1_flat` — `flat("e1")`, one row per profile point
+// from the fourth on — made beside `e1_perp` by the extrude's expansion and
+// so, like it, written in no entry of its own: a file of 23 or before opens
+// with every extrude of four points or more gaining it at the replay step,
+// under its derived name, claiming no counter (test/flatprofile.test.ts opens
+// `flat-v23`, written by the build before, and holds its points and volumes
+// to what it solved to — a flat profile has nothing to move). What bumps the
+// version is the other way: a 24 file may carry `deleteRelation("e1_flat")`,
+// the user asking for an oblique extrude, and a 23 build, which never made
+// the relation, would stop at that entry naming nothing. A typed `flat("e1",
+// …)` entry is new too, and would be refused by name.
 // 23 (docs/plans/through-all-relation.md): **through all is a relation, and an
 // end is journalled with what it resolved to.** (22 is the fillets package's,
 // built beside this one; a file of either is read here.) An extrude that ends

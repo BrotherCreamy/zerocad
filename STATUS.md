@@ -10,6 +10,21 @@ etc).
 
 ## What's working right now
 
+- **A lens cut settles, a drawing within its tolerance is built, a refused
+  body says so, an extrude holds its profile flat, and a drag stays on a
+  held plane** (2026-11-26, docs/plans/flat-profile.md, bugs 83 and 84).
+  `src/relations/profilesquare.ts` (`squareToProfile`'s curve rows paid in
+  the chord's length; `profileFlat`, `e1_flat`), `src/relations/refs.ts`
+  (`DirectionRef.scale`: a curve's normal row paid in its radius),
+  `src/relations/extrusion.ts` (the `.n` row likewise), `src/solids.ts`
+  (`refuseOblique` at `OFFENDING`), `src/model.ts` (`solve` runs on past the
+  cap; `QUIET_OPS`), `src/bodies.ts` (`programOf`'s `shells`, `drawn`,
+  `refusals`), `src/organiser.ts` (`warn`, *not built*), `src/tools/
+  dragplane.ts` and `engine.ts` (`heldPlane` first). Format 24. The owner's
+  file (`test/fixtures/owner-lens-cut-v23.neocad.json`) settles in one solve
+  and builds with its notch. Tests: `test/flatprofile.test.ts`,
+  `test/dragplane.test.ts`, `test/e2e/flatprofile.e2e.ts`; pictures 553–560.
+
 - **Curved surfaces shade smoothly** (2026-11-23, `src/faces.ts`
   `Face.vertexNormals` and `VisibleFace.shades`, `src/facelayer.ts`,
   `src/bodies.ts` `bodyFaces`). A piece of a curved surface — an extruded

@@ -224,7 +224,7 @@ test("deleting the extrude leaves two full sketches: both profiles, the chords, 
   const { twins: [T], walls, depth } = f();
   const lid = P.map(lidOf);
   const base = [...r, w, h];
-  assert.deepEqual(del(m, e), [e, depth, "e1_perp"]);
+  assert.deepEqual(del(m, e), [e, depth, "e1_perp", "e1_flat"]);
   for (const n of [...P, ...L, ...lid, ...T, ...walls]) assert.ok(m.entities.has(n), `${n} stays`);
   // The lid says of itself everything the base says of itself.
   const carry = new Map<string, string>([...P.map((p, i): [string, string] => [p, lid[i]]), ...L.map((l, i): [string, string] => [l, T[i]])]);
@@ -436,7 +436,8 @@ test("a file from before linked profiles opens to the model it was — every nam
   assert.deepEqual([...m.entities.keys()].sort(), Object.keys(want.kinds).sort());
   for (const [n, k] of Object.entries(want.kinds)) assert.equal(m.entities.get(n)!.kind, k, n);
   assert.deepEqual([...m.features.keys()], want.features);
-  const mine = [...m.relations.values()].filter((r) => !r.twin);
+  // The flat-profile relations are new by design (docs/plans/flat-profile.md, format 24): made at the replay step under derived names, so no name shifted for them.
+  const mine = [...m.relations.values()].filter((r) => !r.twin && r.op !== "profileFlat");
   assert.deepEqual(mine.map((r) => [r.name, r.op, r.args]), want.relations, "no name shifted, and nothing it said changed");
   ok(m, "as it opens");
   for (const [p, at] of Object.entries(want.points)) assert.ok(len(sub(m.coords(p), at)) < 1e-6, `${p} where that build left it`);
@@ -498,8 +499,8 @@ test("every feature deleted leaves its geometry whole: extrude, cut, edge extrud
     ok(m);
     const made = [...m.featureOf(e2, "extrude").owns, ...m.featureOf(e1, "extrude").owns].filter((n) => m.entities.has(n));
     assert.equal(m.featureOf(e2, "extrude").mode, "cut");
-    assert.deepEqual(del(m, e2), [e2, "d2", "e2_perp"]);
-    assert.deepEqual(del(m, e1), [e1, "d1", "e1_perp"]);
+    assert.deepEqual(del(m, e2), [e2, "d2", "e2_perp", "e2_flat"]);
+    assert.deepEqual(del(m, e1), [e1, "d1", "e1_perp", "e1_flat"]);
     whole(m, [...plate.P, ...plate.L, ...pocket.P, ...pocket.L, ...made], "extrude and cut");
     ok(m);
   }
@@ -573,7 +574,7 @@ test("a relation a feature made is deleted like any other: the depth leaves the 
   // Replayed the same, and the record goes when asked.
   const back = open(save(m, false));
   assert.match((back.featureOf(e) as ExtrudeFeature).unbuilt ?? "", /depth/);
-  assert.deepEqual(del(m, e), [e]);
+  assert.deepEqual(del(m, e), [e, "e1_flat"]);
 });
 
 test("a free body pulled by a point held to its face still moves: nothing pins a profile to make the other follow", async () => {

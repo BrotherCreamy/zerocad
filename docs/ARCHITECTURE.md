@@ -2683,7 +2683,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Eighty-two bugs so far were invisible to the unit tests and obvious within seconds
+Eighty-four bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -3153,6 +3153,31 @@ of running the app:
    armed again while it is the one armed now starts from what it is armed
    with (`Engine.arm`), remembered or not; a fresh arming starts from memory
    as before.
+83. A hole vanished and its cut was drawn as a boss when the circle's centre
+   was dragged by finger (the owner, 2026-11-26: *"the cut changed to add"*).
+   Three assemblies, none of them visible to the unit suite: the solids
+   layer refused a box flat to 4e-6 and square to 0.0002°, SOLVED, at a bar
+   of a millionth of the drawing's size (`refuseOblique`), which a drag's
+   frames never promise — the bar is the drawing's own now (`OFFENDING`);
+   `programOf` made a cut with no base before it the chain's first node,
+   *new*, so the kernel swept the hole's shape as a solid — a cut with no
+   base is left out and said, and its faces are not drawn; and a point held
+   `onplane` a face was dragged on the screen-parallel plane, so the free
+   box tilted toward the finger while the circle moved 0.003 for forty
+   pixels — a drag of a point held on a plane moves in that plane
+   (`dragplane.ts`). The release settles too (`Model.solve` runs on past
+   the cap), a refused feature's row says *not built* in the warning ink,
+   and an extrude holds a line-drawn profile flat (`e1_flat`).
+   docs/plans/flat-profile.md.
+84. The owner's lens cut never settled, and the kernel then refused the
+   plate. His file: a circle crossing the plate's edge, the Cut taking the
+   D-shaped lens, 110 deep. Every solve ran to the sixty-iteration cap and
+   stopped 6e-3 off, and only the log's small print said anything. The cut's
+   chord-square rows for the circle (`ĉ × n̂ = 0`) were bare angles against a
+   110-long chord — a valley the damped step could only creep along; paid in
+   the chord's length, as the line rows are paid in their edge's, the same
+   file settles in one solve. A unit test of the owner's file opens it
+   (`test/fixtures/owner-lens-cut-v23.neocad.json`) and holds it to that.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

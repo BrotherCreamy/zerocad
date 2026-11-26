@@ -10,6 +10,37 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-26 — "the cut changed to add": the thing that looked like the cause was not
+
+The brief arrived with a mechanism: a box drawn line by line has no
+flatness of its own, the finger's target sat off the face, the free box
+tilted, the kernel refused it. True of the first reproduction (typed `pt`/
+`ln`, no relations), and the flat-profile relation was built for it — but
+the owner's box came from the Rectangle tool, which carries its own
+`coplanar`, and his base was flat to 4e-6 after the drag. What his file
+actually said, replayed headlessly, was that it **never settled**: sixty
+iterations every solve, 6e-3 left. The first instinct was the kernel's CG
+(capped iterations, mixed scales); measured step by step it was accurate
+to 1e-8. The second was a genuinely inconsistent system; removing each
+relation in turn said no — without `e2_perp` alone it settled in four
+iterations. The third, right: the linearised model at the starting damping
+predicted almost no descent, every undamped step was rejected, and λ
+crept. A soft direction: `ĉ × n̂` rows that are bare angles against a chord
+110 long. The review-solver rule had been applied to lines and not to
+curves; the register had even queued "the curve's radius is the natural
+one". Three rows take a length now.
+
+Rejected on the way: scaling only `squareToProfile` (the file settled, but
+60 + 60 + 12 iterations — `par(c1, plane)` was the next valley; with the
+radius on it, 18); a relative bar for the kernel (a second notion of
+tolerance beside `OFFENDING`); a tinted shell for an unbuilt cut (the shell
+is what read as a boss); making `e1_flat` feature-owned and undeletable
+(the owner's rule: how could you have a relation inside an extrude); and
+naming it redundant like any relation (every Rectangle-tool box would have
+worn an orange `e1_flat`). A free box dragged off its face still turns —
+that is "pull on anything", not a bug — and its frames compromise at the
+cap; the release settles them, and the finger now lands on the face anyway.
+
 ## 2026-11-23 — "piecemeal not smooth": the strips were the shading, not the tessellation
 
 The owner's words were about cylinders, and the first instinct is to draw

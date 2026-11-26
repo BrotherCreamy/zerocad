@@ -7,6 +7,93 @@ decisions.
 
 ---
 
+## 2026-11-26 — "the cut changed to add": a lens cut that never settled, a kernel bar tighter than the drawing's, a cut built as a boss, and a drag that tilted the box instead of sliding the circle
+
+*Gate on the branch's tip (`claude/flat-profile`, on `claude/resume-tasks-o7q02e`
+at `e7cd6db`, which had not moved): typecheck 0; unit 2176/2176; kernel
+11/11; the full browser suite 864 tests, 850 passed, 2 picture skips, 12
+failed — every one a browser file pinning the format version at 23
+(camera, lidframe, nolidframe, planar, regen, shapes ×4, spline ×2,
+workbenches), fixed to 24 and rerun 55/56; the one left, shapes' slot
+("the same relations, by op and argument" across save and open), found
+`e1_flat` choosing its largest triangle differently at the replay's seeds
+and in the solved drawing — the plane is the first three points in profile
+order that make one now — and shapes and flatprofile rerun 11/11; unit
+2176/2176 again on that tree. The suite took 27.7 minutes with nothing else
+on the box.*
+
+The owner, with his file: a plate from the Rectangle tool, a circle on its
+top crossing one edge, the Cut tool — a D-shaped notch — then the circle's
+centre nudged by finger. The log said *e1 cannot be laid out: its chord is
+not square to its profile — an oblique extrude is drawn, and the kernel only
+sweeps square*; the plate was drawn as a plain prism, and the cut's walls
+and cap hung under it as a solid. Reproduced headlessly from his file
+(`test/fixtures/owner-lens-cut-v23.neocad.json`, his numbers kept) and in
+the browser by finger and by mouse. docs/plans/flat-profile.md has every
+measurement; the short form:
+
+- **Browser-only bug 84 — his drawing never settled.** Every solve ran to
+  the sixty-iteration cap and stopped 6e-3 off; the base was left 3e-3 off
+  square along the chord. Removing `e2_perp` alone let the same file settle
+  in four iterations to 1e-10. Its rows for the circle member were bare
+  angles against a 110-long chord: a turn of the chord by θ cost the row θ
+  and moved the chord's end 110·θ, a valley the damped step could only
+  creep along (the kernel's CG was accurate to 1e-8; the linearised model
+  itself predicted no descent at the starting damping). **A curve's
+  direction rows are paid in a length now**, as the line rows have been
+  since review-solver: `squareToProfile`'s curve rows in the chord's length,
+  `par`/`perp`/`ang` with a curve's normal in its radius, the extrusion's
+  normal row in its radius. His file: never → 18 iterations to 6e-10, both
+  features built, the notch's volume the kernel's = ZeroCAD's own to 2e-7.
+- **Browser-only bug 83 — what the eye then saw, three assemblies.** The
+  solids layer's squareness bar was a millionth of the drawing's size,
+  which no drag's frame promises: his box, flat to 4e-6 and square to
+  0.0002°, SOLVED, was refused mid-drag. **The bar is the drawing's own**
+  (`OFFENDING`, 0.05, the distance under which the status calls a row met).
+  A cut with no base before it became its chain's first node, *new*, and
+  the kernel swept the hole's shape as a solid: **a cut with no base is
+  left out and said** (`e2 cannot be laid out: e1 is not built, so there is
+  nothing for it to cut`), and **an unbuilt cut is drawn as outline only**
+  — its geometry, no faces. And the drag: a point held `onplane` a face was
+  read on the screen-parallel plane, the relation refused the target, and
+  the free box tilted toward the finger while the circle moved 0.003 for
+  forty pixels. **A drag of a point held on a plane moves in that plane**
+  (`src/tools/dragplane.ts`: `onplane`, `coplanar`, a feature's `flat`;
+  all the grabbed points must agree, else the engine falls back). By
+  finger now: the circle slides along the face, the box's corners move
+  under 1e-3, the hole stays. **A drag's release settles**: `Model.solve`
+  runs on past the cap while it still moves (three more rounds), so a
+  release is never left where the bound fell.
+- **A refused feature's row says so** — *not built*, the word alone in the
+  kind's place, in the warning ink, the kernel's reason on hover and in the
+  row's menu header (which keeps the kind)
+  (`organiserSections(…, refusals)`, `Bodies.refusals()`), for a body
+  refused as oblique, a boolean that could not be applied, a cut that cuts
+  nothing, a feature left out of its body. Until now only the log's small
+  print said.
+- **An extrude holds its profile flat**: `flat("e1")`, made as `e1_flat`
+  beside `e1_perp` for a profile of four points or more — one row per point
+  from the fourth on, in the plane of the first three that make one, in the
+  profile's order (a choice a replay repeats) — listed, marked
+  `▱`, deletable; not for a triangle or a lone circle, nor a revolve or an
+  edge extrude; not twinned (the lid is flat by the extrusion); never named
+  redundant (the feature agreeing with a rectangle's own right angles is
+  not a thing to delete). A profile drawn line by line had no flatness of
+  its own and was 1e-4 off after a drag. Format **24**: a file of 23 or
+  before gains it at the replay step (`test/fixtures/flat-v23`, written by
+  the build before, opens to the same points and volumes).
+
+Pictures: 553 the owner's hole before the drag (mouse); 554 his file on the
+build before — the plate a plain prism, the cut a boss beneath it; 555 and
+556 after the drag, mouse and iPhone — the circle slid along the face, the
+hole stays; 557 and 558 a refused body's rows, *not built* in the warning
+ink, the cut drawn as outline only; 559 and 560 the lens cut nudged, still
+built, mouse and iPhone. Decisions in TODO.md's register; what was tried and
+rejected in CONVERSATION_LOG.md.
+
+Tests: `test/flatprofile.test.ts`, `test/dragplane.test.ts`,
+`test/e2e/flatprofile.e2e.ts`.
+
 ## 2026-11-23 — curved surfaces shade smoothly: a piece of a round face carries the surface's normal at its corners, and the GPU blends the shade across it
 
 *Merged into the working branch (`a9d8bc6`), a clean merge. The gate on

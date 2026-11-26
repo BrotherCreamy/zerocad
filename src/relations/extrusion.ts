@@ -220,9 +220,15 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
         // its own.
         const [bn, tn] = [curveNormalOf(model, b), curveNormalOf(model, t)];
         if (bn && tn) {
+          // Paid in the curve's radius as the solve began — a turn of the
+          // normal by θ moves the rim r·θ — so the row is a length beside
+          // the point rows, not a bare angle they can lean on (refs.ts's
+          // `DirectionRef.scale`; docs/plans/flat-profile.md).
+          const r = bs[0];
           model.addResidual(joinVars(bn, tn), (l) => {
             const [u, w] = [unitDuals(l.slice(0, 3)), unitDuals(l.slice(3))];
-            return [0, 1, 2].map((k) => w[k].sub(u[k]));
+            const k = r === undefined ? 1 : Math.max(1, Math.abs(model.valueBefore(r)));
+            return [0, 1, 2].map((i) => w[i].sub(u[i]).mul(k));
           }, `extrusion(${b},${t}).n`);
         }
       } else {

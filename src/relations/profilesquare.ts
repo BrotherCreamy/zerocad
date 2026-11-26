@@ -39,7 +39,7 @@ export function profileMembers(model: Model, record: string): ProfileMember[] | 
 /** One row's worth of a profile edge: the variables it reads, and the residual it gives against the chord's unit direction. */
 interface EdgeRow {
   vars: number[];
-  rows: (c: Dual[], own: Dual[]) => Dual[];
+  rows: (c: Dual[], own: Dual[], chordLength: number) => Dual[];
 }
 
 function edgeRows(model: Model, m: ProfileMember): EdgeRow[] {
@@ -70,9 +70,9 @@ function edgeRows(model: Model, m: ProfileMember): EdgeRow[] {
   const n = normal;
   return [{
     vars: n(),
-    rows: (c, own) => {
+    rows: (c, own, k) => {
       const u = unitDuals(own.slice(0, 3));
-      return [c[1].mul(u[2]).sub(c[2].mul(u[1])), c[2].mul(u[0]).sub(c[0].mul(u[2])), c[0].mul(u[1]).sub(c[1].mul(u[0]))];
+      return [c[1].mul(u[2]).sub(c[2].mul(u[1])), c[2].mul(u[0]).sub(c[0].mul(u[2])), c[0].mul(u[1]).sub(c[1].mul(u[0]))].map((r) => r.mul(k));
     },
   }];
 }
@@ -92,7 +92,17 @@ export function squareToProfile(model: Model, chord: DirectionRef, record: strin
     return vars;
   }, (l) => {
     const c = unitDuals(chord.direction(l.slice(0, chord.width)));
-    return layout.flatMap(({ at, edge }) => edge.rows(c, l.slice(at, at + edge.vars.length)));
+    // The curve rows (`ĉ × n̂`) are paid in the **chord's length as the solve
+    // began**, as the line rows are paid in their edge's: a turn of the chord
+    // by θ moves its far end ℓ·θ. Left a bare angle (as they were until
+    // 2026-11-26) they were the soft direction of the owner's lens cut: the
+    // chord 110 long, so the damped step could only creep along the valley
+    // where turning it a little meant moving its end a lot, and the drawing
+    // never settled — 60 iterations every solve, the base left 3e-3 off
+    // square, the kernel refusing the plate (docs/plans/flat-profile.md,
+    // bug 84). Scaled, the same file settles in fourteen.
+    const k = chord.ends ? rowLength(lengthBefore(model, chord.vars())) : 1;
+    return layout.flatMap(({ at, edge }) => edge.rows(c, l.slice(at, at + edge.vars.length), k));
   }, label);
 }
 
@@ -139,6 +149,96 @@ export function angleToProfile(model: Model, chord: DirectionRef, record: string
       return [dot(vecSub(l.slice(9, 12), a), n)];
     }, `${label}.flat(${p})`);
   }
+}
+
+/**
+ * The points a record's profile stands on, each once, in the order its members
+ * name them — what `flat` holds and `refuseOblique` measures.
+ */
+export function profilePoints(model: Model, record: string): string[] {
+  const members = profileMembers(model, record) ?? [];
+  return [...new Set(members.flatMap((m) => {
+    const e = model.entities.get(memberName(m));
+    return e ? model.refsOf(e).filter((q) => model.entities.get(q)?.kind === "point") : [];
+  }))];
+}
+
+/**
+ * **A profile is flat: `flat("e1")`, the extrude's own `e1_flat`**
+ * (docs/plans/flat-profile.md). The kernel sweeps a flat profile and nothing
+ * else, so the feature says so, as a relation of its own beside `e1_perp`:
+ * the record's profile points, every one in the plane of three of them —
+ * **the first three in the profile's order that make a plane** when the
+ * relation is made — one row per point from the fourth on, each a length
+ * (`(p − a)·n̂`), nothing squared. Not the largest triangle: a symmetric
+ * profile (a slot) has two of those nearly equal, and the replay's seeds
+ * and the solved drawing chose differently, so a saved file held a
+ * different triangle from the drawing it was saved from (found by
+ * shapes.e2e.ts's slot, comparing a file's relations with its drawing's).
+ * The order is names alone; only "makes a plane" reads positions, and a
+ * triple that is collinear in the drawing is collinear in its seeds. Made by `extrude` for a profile of four
+ * points or more; a triangle and a single circle have nothing to hold and
+ * get none. A relation like any other: listed, marked, and deletable —
+ * deleted, the user has said "I want it oblique", and the body is drawn and
+ * not built, as a leaning chord's is. Not twinned: the lid is the base moved
+ * by one chord (`extrusion`), so it is flat by that, and a second relation
+ * would say it twice.
+ *
+ * Why a relation of the feature's and not left to `e1_perp`: the
+ * perpendicular holds every edge square to the chord, which implies a closed
+ * polygon flat *at convergence*; a free profile drawn line by line has no
+ * flatness of its own, and between solves — a drag's frames — it was 1e-4
+ * off, past the kernel's bar. Said directly, flatness is a row the solve
+ * meets, not a consequence it approaches.
+ *
+ * Journalled as `e1_perp` is: not at all — the extrude's entry makes it
+ * again on replay under the derived name, so a file from before gains it on
+ * opening (persist.ts, 24). Its arguments name every point it holds, so a
+ * point deleted takes it (the ordinary cascade) and a regeneration makes it
+ * again over the profile as it then is. `points` given are taken as they
+ * are — what a replay of a typed `flat("e1", …)` hands back.
+ */
+export function profileFlat(model: Model, record: string, ...points: string[]): string {
+  if (model.dim !== 3) throw new Error("flat needs a 3D model — in 2D every profile lies in the one plane there is");
+  if (!profileMembers(model, record)) throw new Error(`"${record}" is no extrude's or edge extrude's record`);
+  const named = points.length ? [...new Set(points)] : profilePoints(model, record);
+  for (const q of named) model.point(q); // fail now, not at the first solve
+  if (named.length < 4) throw new Error(`${record}'s profile stands on ${named.length} point${named.length === 1 ? "" : "s"} — it is flat already, and there is nothing to hold`);
+  // The plane: the first three in the profile's order that make a triangle
+  // — or the first three given, when the points were handed over (a replay
+  // of a typed call). No triangle among them at all — a replay's seeds,
+  // every free line drawn at one place — takes the first three: the saved
+  // values put the profile back where it was solved before any row is
+  // read, and a live profile with no plane has nothing a solve could hold
+  // flat yet.
+  let order = named;
+  if (!points.length) {
+    const X = named.map((q) => model.coords(q));
+    const size = Math.max(1, ...X.map((x) => Math.hypot(...x)));
+    const area = (i: number, j: number, k: number) => {
+      const u = X[j].map((c, q) => c - X[i][q]), v = X[k].map((c, q) => c - X[i][q]);
+      return Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]);
+    };
+    let best: [number, number, number] = [0, 1, 2];
+    outer: for (let i = 0; i < X.length; i++) for (let j = i + 1; j < X.length; j++) for (let k = j + 1; k < X.length; k++) {
+      if (area(i, j, k) > 1e-9 * size * size) { best = [i, j, k]; break outer; }
+    }
+    const plane = best.map((i) => named[i]);
+    order = [...plane, ...named.filter((q) => !plane.includes(q))];
+  }
+  const label = `flat(${record})`;
+  return model.relation("profileFlat", [record, ...order], () => {
+    const [a, b, c] = order;
+    const pv = [a, b, c].flatMap((q) => model.point(q).varIndices);
+    for (const q of order.slice(3)) {
+      model.addResidual([...pv, ...model.point(q).varIndices], (l) => {
+        const [A, B, C, P] = [l.slice(0, 3), l.slice(3, 6), l.slice(6, 9), l.slice(9, 12)];
+        const u = vecSub(B, A), v = vecSub(C, A);
+        const n = unitDuals([u[1].mul(v[2]).sub(u[2].mul(v[1])), u[2].mul(v[0]).sub(u[0].mul(v[2])), u[0].mul(v[1]).sub(u[1].mul(v[0]))]);
+        return [dot(vecSub(P, A), n)];
+      }, `${label}.${q}`);
+    }
+  });
 }
 
 /**

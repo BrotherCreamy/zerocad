@@ -33,6 +33,43 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A curve's direction rows are paid in a length; the kernel's bar is the
+  drawing's; an unbuilt cut is outline only; an extrude holds its profile
+  flat; a drag stays on a held plane** (2026-11-26, branch
+  `claude/flat-profile`, bugs 83 and 84; docs/plans/flat-profile.md). The
+  owner: *"the cut changed to add."* Each vetoable:
+  - **The curve rows' length is the chord's, the normal rows' the radius's**
+    (`squareToProfile`, `DirectionRef.scale`, the extrusion's `.n` row) —
+    the natural lengths, and what the register's lever entries below had
+    asked for. His file: never settled → 18 iterations to 6e-10.
+  - **The solids layer's squareness bar is `OFFENDING` (0.05), absolute**, as
+    the status's own verdict is: a drawing the status calls SOLVED is built.
+    A drawing of size 1 is built 5% off square; a relative bar would be a
+    second notion of tolerance.
+  - **`Model.solve` runs on past the cap** while it still moves, three more
+    rounds (240 iterations in all, what a stuck solve was measured creeping
+    for; nothing settling took more than eighteen).
+  - **A cut with no base is no body**: left out and said, listed in
+    `programOf`'s `shells`, its faces not drawn — **outline only**, the
+    geometry it is. Not a tinted shell: the shell is what read as a boss,
+    whatever its ink.
+  - **A refused feature's row says *not built***, the word alone in the
+    kind's place (a longer detail was cut to "not …" by the pane), in the
+    warning ink, the reason on hover and in the menu header, which keeps the
+    kind; a record *unbuilt* or *open* by its own doing keeps its word.
+  - **`e1_flat` is made for four points or more, over the first three
+    points in profile order that make a plane, not twinned, quiet to the
+    redundancy verdict, deletable, and format 24.** Not the largest
+    triangle: a symmetric slot chose a different one at the replay's seeds
+    than in the solved drawing, and a saved file's relation differed from
+    its drawing's (shapes.e2e.ts caught it). A triangle, a lone circle, a
+    revolve and an edge extrude get none.
+  - **The drag plane is the held plane first** (`onplane`, `coplanar`, a
+    feature's `flat`), then the chosen sketch plane, then the facing plane;
+    a disagreement among the grabbed points, or a plane seen edge-on, falls
+    back. A free box still turns under a pull along its face — "pull on
+    anything" — and shares a hair of each kinematic frame (2e-4 by finger).
+
 - **A curved surface shades smoothly; a flat face and every edge are as they
   were** (2026-11-23, branch `claude/smooth-shading`, from the owner:
   *"rendering of curved surfaces is piecemeal not smooth. Eg cylindrical
@@ -3073,6 +3110,39 @@ are flagged as such.
 
 ## Next up
 
+- [ ] **A lens cut's circle nudged by finger barely moves, and the release's
+  solve stalls a few 1e-7 off** (2026-11-26, flat-profile, found by
+  `test/e2e/flatprofile.e2e.ts`'s iPhone lens): the Rectangle-tool box, a
+  circle on its lid across its edge, Cut through all, the centre nudged
+  −24 px, +8 px. By mouse the circle slides 8 and settles to 1e-10; by
+  finger (coalesced moves) it moves 0.02, the radius drifts 18 → 18.0066,
+  and a further plain solve runs sixty iterations from 3.457e-7 to 3.457e-7
+  on `perp(p10,p12,e2)` and `onplane(p1,e2.lid)` — built, SOLVED, nothing to
+  see, but not settled. The same lens on the owner's blind cut settles in
+  7–12 after any in-plane pull headlessly, so it is the through-all's
+  `e2_through` (the far vertex on the cut's lid) with the crossings' `on`
+  and `oncircle` rows that make the valley. Measure the levers as bug 84's
+  were (`probe2`'s method: an undamped step and what it moves).
+- [ ] **A drag's frames against a rigid body run to the cap with a compromise
+  residual** (2026-11-26, flat-profile): the owner's box pulled off its face
+  — now only where no held plane applies — stops each frame at sixty
+  iterations with 4e-3 left; a kinematic frame against a rigid body is a
+  least-squares compromise by construction, and the release settles it.
+  A frame could stop at `stall` as the kept-size finish does.
+- [ ] **The remaining unit-angle rows were not re-measured for levers**
+  (2026-11-26): `onCircle`'s plane rows, a `par` of two curves' normals, a
+  revolve's. The lever entries below stay open; the owner's lens had its
+  valley in `squareToProfile`'s curve rows alone.
+- [ ] **A free polygon's dragged corner comes most of the way back**
+  (2026-11-26, found writing the lean test): the release keeps its edges'
+  lengths (`keptSizes`) and a corner lifted 8 ends 0.04° off — so an oblique
+  extrude is made by `ang`, or by seeding, never by dragging a corner. Say
+  so in `help()` if anyone asks for it by hand.
+- [ ] **`e1_flat` reads its profile when made, not at every evaluation**: a
+  regeneration (a fillet's corner kept as construction) makes it again
+  over the profile as it then is; a deleted one stays deleted. If a
+  profile ever changes its points without a regeneration, the relation
+  names points that are no longer its.
 - [ ] **A kernel fillet's smooth normals stop at its face's boundary**
   (2026-11-23, smooth shading): a fillet tangent to the wall it rounds is a
   separate kernel face, so each side's vertex normals are its own. They
