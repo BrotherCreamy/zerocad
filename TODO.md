@@ -3173,7 +3173,13 @@ are flagged as such.
      own sign; a cut's sweep reversed in `extrudeSpan` reddens all six cut
      cases and no other. Filed below: the lens is not typeable, `shell`
      has no command, and the oracle's next steps.
-  2. **Consistent redundancy is a Jacobian question, not a count**
+  2. [x] *Already ours, confirmed 2026-11-26 by reading `Model.diagnose`
+     (src/model.ts) against theirs: a relation whose every row adds no rank
+     is redundant, and is called agreeing only when its rows also hold
+     (`unmet(UNSETTLED)` empty), otherwise it is a conflict — the same two
+     tests, in the same order. Nothing to take; the pointer is a second
+     opinion that the register's decision was right.*
+     **Consistent redundancy is a Jacobian question, not a count**
      (`crates/sketch/src/redundancy.rs`): a constraint none of whose rows
      add rank is redundant; redundant *and* zero residual (`CONSISTENT`
      1e-6) is agreeing, so it is kept and satisfied, never refused. That is
