@@ -333,6 +333,18 @@ export class Evaluator {
     return s === null ? null : this.k.topology(s);
   }
 
+  /**
+   * The centre of volume of a body as last evaluated, or null if it has none.
+   * Asked apart from `run` because it is a second integration over the whole
+   * body (`SolidKernel.centroid`), which the app never needs and the oracle of
+   * parts does (docs/plans/oracle.md).
+   */
+  centroid(body: string): V3 | null {
+    const c = this.chains.get(body);
+    const s = c ? lastSolid(c) : null;
+    return s === null ? null : this.k.centroid(s);
+  }
+
   /** Every solid held, spent — before the module is let go, or to start over. */
   clear(): void {
     for (const c of this.chains.values()) this.spend(c, 0);

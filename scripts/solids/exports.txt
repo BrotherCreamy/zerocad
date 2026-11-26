@@ -27,6 +27,7 @@ _sm_face_blend
 _sm_is_sheet
 _sm_tag_edge
 _sm_volume
+_sm_mass
 _sm_bbox
 _sm_is_manifold
 _sm_check
