@@ -1,0 +1,30 @@
+{
+  "volume": 14137.166941154068,
+  "area": 3298.6722862692827,
+  "bbox": [
+    [
+      -15,
+      -15,
+      0
+    ],
+    [
+      15,
+      15,
+      20
+    ]
+  ],
+  "centroid": [
+    0,
+    0,
+    10
+  ],
+  "faces": 3,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-11,
+    "area": 0.000001,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "A circle of radius r = 15 on the ground about the origin, extruded h = 20: V = πr²h = 14137.166941154068; A = 2πr² + 2πrh = 1413.7166941154069 + 1884.9555921538758; 3 faces (two discs, one wall); centroid (0, 0, h/2). Area bar 1e-6 for the wall's integration (measured 5e-8)."
+}

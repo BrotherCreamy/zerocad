@@ -1,6 +1,10 @@
 # Plan: an oracle of parts with hand-derived answers
 
-**Status: spec** (2026-11-26). The first of the SolidCraft pointers filed at
+**Status: built** (2026-11-26, branch `claude/oracle`). Bug **87** in
+docs/ARCHITECTURE.md's list. *As built* at the end has the measurements,
+what differed from the spec, and what was filed.
+
+The first of the SolidCraft pointers filed at
 the top of TODO's *Next up*: tangency-labs/solidcraft replays ninety recipes
 by command and checks each body's volume, area, centroid and bounding box
 against a closed form worked out by hand, with the derivation beside the
@@ -135,3 +139,70 @@ was found; STATUS names the suite; CONVERSATION_LOG says why recipes are
 command lines and not journals (a person can read and retype them; a
 journal is the program's own record and could carry the program's own
 mistake).
+
+## As built (2026-11-26)
+
+**What exists.** `test/oracle/` has fourteen folders, each `recipe.txt` and
+`expected.json`; `test/oracle/derive.ts` (the formulas, one function per
+case, `npm run oracle:derive` writes the files); `test/oracle/replay.ts`
+(the headless runner and the measurement); `test/oracle.test.ts` (the
+committed files equal the derivations; every recipe is command lines; each
+case replayed, measured, saved, opened, measured again). The kernel gained
+`centroid`: `sm_mass` in scripts/solids/glue.cpp over
+`SmApiBrepComputeMassProperties`, `SolidKernel.centroid`,
+`Evaluator.centroid(body)` — a second integration the app never asks for.
+`build:solids` relinked from its warm cache in under a minute. The
+CHANGELOG entry carries the error table and the two mutants.
+
+**Where reality differed from the spec.**
+
+- *Case 11, `shell`, is not built*: the kernel has `shell`, the app has no
+  command, operation or feature that reaches it. A recipe the owner cannot
+  type is not a recipe, so the case is filed in TODO with its derivation
+  rather than written against the kernel directly.
+- *Case 4 is three cases.* The lens and the D-notch are made by
+  `cut([36, 0, 10], 10, "through")`, the Cut tool's press at a world point
+  — the one line form in a recipe that is not a command, because no typed
+  `extrude(member, …)` can name a loop every member of which is also in its
+  neighbours (the call refuses, listing three loops), and the journal's own
+  spelling, `region("l6", "origin", ["l6", "c1"])` then `extrude("rg2", …)`,
+  is **bug 87**: the region resolves to the lid minus the lens and the
+  extrude builds the lens prism alone. That spelling is the third case,
+  `box-edge-lens-by-region`, red until the fix lands. The stand-in does what
+  the tool does (`loopAround`, `cutWay`, `extrudeSteps`), which is why the
+  `cutWay` mutant reddens exactly those cases.
+- *The one-edge fillet area formula in the spec was wrong*: the two end
+  walls each lose a spandrel, so A = 2(ab + bc + ca) − 2rL + (πr/2)L
+  − 2r²(1 − π/4). The kernel disagreed by 3.86 and the derivation was the
+  thing at fault. So was my first lens centroid, written toward the chord;
+  it lies into the plate. Both are in derive.ts with the correction noted.
+- *The hole is off the middle*, at (10, 5): a centroid of a centred hole
+  says nothing about where the hole is, and saying where the hole is was the
+  point of asserting one (bug 83's boss-for-a-hole has the right volume).
+- *`settledBodies` is not the path.* The bodies layer hands a body of one
+  feature to the kernel only when asked for all of them, so the oracle
+  measures through `Evaluator.run(programOf(model, true).program)`, as
+  `test/bodies.test.ts`'s `evaluateAll` does — the same kernel, every body.
+- *The bars.* Volume 1e-12 for an analytic solid (measured ≤ 4e-16),
+  1e-11 or 1e-10 where a curved face is in it (≤ 2.3e-12), 1e-8 for the
+  tube (4.5e-10), 1e-9 for the vase (9.1e-11). Area 1e-12 analytic, 1e-7
+  for the fillets (≤ 1.1e-9), 1e-6 for the cylinder, the blind hole, the
+  lens, the notch and the boss (the requested integration accuracy; measured
+  ≤ 5.6e-8), and three above the floor with the reason in the case: the
+  off-centre through hole 5e-6 (3.5e-7), the tube 2e-6 (2.0e-7), the vase
+  2e-5 (2.0e-6). Box and centroid 1e-9 of the diagonal (measured ≤ 4.4e-16
+  and ≤ 8.7e-13; the tube's centroid 1.0e-10, so 1e-8 there).
+- *The body count for the splitting cut is 1*: the kernel's one B-rep holds
+  two shells and the app reports one body `e1` of twelve faces. Documented
+  as what the app reports, not derived.
+- *Wall time*: 8.9 s as `node --test` times the file, about 5 s wall with
+  the kernel warm; the vase's NURBS revolve is 2.4 s of every evaluation
+  (and it is evaluated twice, built and reopened), everything else tens of
+  milliseconds.
+
+**Filed** (TODO, *Next up*): bug 87 and the decision its fix needs (a
+region made by a press remembering a point inside its face, or an area
+tie-break); a typed spelling for a region by a point, so every recipe
+becomes plain commands; the `shell` command; surface distance against a
+reference mesh, FreeCAD as a second kernel, mutation testing proper, and
+more cases.

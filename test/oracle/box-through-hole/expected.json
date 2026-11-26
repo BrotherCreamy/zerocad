@@ -1,0 +1,30 @@
+{
+  "volume": 59476.106578830695,
+  "area": 15849.203552627689,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      40,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    -0.7606236657695898,
+    -0.3803118328847949,
+    5
+  ],
+  "faces": 7,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-11,
+    "area": 0.000005,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "The plate less a cylinder of radius r = 12 through its thickness c = 10, centred at (10,5) — off the middle so the centroid says where the hole is: V = abc − πr²c = 64000 − 4523.893421169302; A = 2(ab + bc + ca) − 2πr² (the two discs lost) + 2πrc (the wall gained) = 16000 − 904.7786842338604 + 753.9822368615503; 7 faces; centroid = (V_plate·(0, 0, c/2) − V_hole·(10,5, c/2)) / V. The area's bar is 5e-6, above the 1e-6 floor: the kernel integrates a curved face's area to a requested 1e-6 (SmApiFaceComputeArea in scripts/solids/glue.cpp) and this wall measured 3.5e-7 off (the same hole at the plate's middle measured 5e-8), so a margin of ten lands at 5e-6."
+}

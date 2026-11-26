@@ -3143,7 +3143,7 @@ are flagged as such.
   *solidcore*, a safe-Rust port of the same NVIDIA usd-brep SMLib our
   `build:solids` compiles. Read, not copied; what is worth taking, in
   order of value to us:
-  1. **An oracle of parts with closed-form answers** (`docs/oracle.md`):
+  1. [x] **An oracle of parts with closed-form answers** (`docs/oracle.md`):
      90 recipes replayed by command, volume, area, centroid and bounding
      box checked against formulas worked out by hand (Pappus, Steiner),
      a `tools/oracle-analytic/` script per case giving the derivation,
@@ -3153,6 +3153,25 @@ are flagged as such.
      `docs/plans/oracle.md`: a dozen recipes, the rule that an expected
      value needs a derivation, mutation testing of the solver against
      them (`docs/mutation-testing.md` there: the black-box suites judge).
+     **Built** (2026-11-26, branch `claude/oracle`, docs/plans/oracle.md):
+     `test/oracle/` holds fourteen cases (the spec's twelve less `shell`,
+     which the app has no command for, plus the lens twice and the lens
+     as the journal spells it), each a `recipe.txt` of command lines and
+     an `expected.json` that `test/oracle/derive.ts` writes from the
+     formula; `test/oracle.test.ts` replays, measures volume, area, box,
+     centroid and faces through the kernel, and again after `save`/`open`,
+     in ~6 s inside `npm test`. What it found: **bug 87** (the region a
+     lens cut stands on resolves to its complement; its case is red), the
+     spec's one-edge fillet area formula missing the two end walls'
+     spandrels, and my own lens centroid written toward the chord when the
+     kernel put it into the plate (both caught by the kernel, both
+     derivations). The kernel gained `centroid` (one mass-properties
+     export, `sm_mass`), asked only by the oracle. The mutants: `cutWay`'s
+     sign flipped reddens exactly the three cases made by the Cut tool's
+     press (lens, notch, slot) and no typed one — a typed cut carries its
+     own sign; a cut's sweep reversed in `extrudeSpan` reddens all six cut
+     cases and no other. Filed below: the lens is not typeable, `shell`
+     has no command, and the oracle's next steps.
   2. **Consistent redundancy is a Jacobian question, not a count**
      (`crates/sketch/src/redundancy.rs`): a constraint none of whose rows
      add rank is redundant; redundant *and* zero residual (`CONSISTENT`
@@ -3200,6 +3219,51 @@ are flagged as such.
   per-bug file, decisions from exact geometry never meshes. Clone is at
   `/home/user/tangency-labs/solidcraft` (read-only, 789 MB; delete when
   disk is short). Nothing adopted without a spec in `docs/plans/`.
+- [ ] **Bug 87: the region a lens cut stands on resolves to the lid minus
+  the lens** (2026-11-26, found by the oracle of parts,
+  `test/oracle/box-edge-lens-by-region`, red until fixed;
+  docs/ARCHITECTURE.md's list). `faceLoop` (operations.ts) picks the loop
+  keeping most of the face's member names and counts a member split in two
+  portions twice, so `region("l6", "origin", ["l6", "c1"])` — what the Cut
+  tool's press journals — is the 5550 loop, not the 849 lens.
+  `regionAtPoint` says `rg2` everywhere on the plate but inside the lens;
+  a second Cut press on the plate would take the region and cut everything
+  but the lens; typed as journalled, the extrude of `rg2` builds the lens
+  prism alone. The body of the owner's file is right only because the
+  feature carries its own loops. A fix needs more than a count: a region
+  made by a press should remember a point inside its face (the `at` the
+  tool had), or its area, and `faceLoop` prefer the loop holding it.
+  Decide first: a format bump (the region's face gains a point) or an
+  area tie-break (no bump; a lens and its outside sliver have different
+  areas, but two equal cells would still tie).
+- [ ] **A lens region cannot be named at the command line** (2026-11-26,
+  the oracle). `extrude("c1", …)` refuses — `"c1" is in 3 loops` — and
+  every member of the lens is also a member of its neighbours, so "name a
+  member only one of them has" has no answer; the journal's
+  `region(member, frame, face)` is bug 87's. The oracle's `replay.ts`
+  stands in with `cut([x, y, z], depth, "through")`, the Cut tool's press
+  by its world point. A command of that shape in `replenv` —
+  `extrude(at([36, 0, 10]), -10, …)`, or a `region` that takes a point —
+  would make every recipe plain commands and give a person at the command
+  line what the finger has. Decide the spelling first.
+- [ ] **`shell` has no command** (2026-11-26, the oracle's case 11 not
+  built). `SolidKernel.shell(s, open, thickness)` exists and nothing in
+  `operations.ts`, the modules or `programOf` reaches it: a shell is not a
+  feature the app can make, so the spec's `shell` case has no recipe. When
+  it is one (a blend-like feature in the body's chain, its open faces by
+  name, its thickness a dimension), the derivation is the box less its
+  cavity with the rim counted: for the plate shelled 2 inward with the lid
+  open, V = abc − (a − 2t)(b − 2t)(c − t), A = outside less the lid's face
+  plus the cavity's five faces plus the rim.
+- [ ] **The oracle's next steps** (filed, not built; docs/plans/oracle.md):
+  a surface-distance check of the kernel's tessellation against a
+  reference mesh of each part; FreeCAD (OCCT) as a second kernel on the
+  same recipes, so a disagreement names the kernel; mutation testing
+  proper — a runner that flips one sign or one comparison in
+  `src/solids.ts`, `src/operations.ts` and `src/tools/extrude.ts` at a
+  time and reports which the oracle misses (two mutants were run by hand:
+  CHANGELOG 2026-11-26); and more cases: a chamfer, a symmetric extrude, a
+  partial revolve, a cut from the side wall, a boss on a filleted plate.
 - [x] **A lens cut's circle nudged by finger barely moves, and the release's
   solve stalls a few 1e-7 off** (2026-11-26, flat-profile, found by
   `test/e2e/flatprofile.e2e.ts`'s iPhone lens). **Fixed** (2026-11-26,

@@ -1,0 +1,22 @@
+# The owner's lens as the journal spells the Cut tool's press — the region by its face's
+# members, then the extrude of the region — typed. Bug 87: `region("l6", "origin", ["l6", "c1"])`
+# resolves to the lid minus the lens (the loop keeping most of those names), so the cut takes
+# everything but the lens and what is built is the lens prism. Red until the fix lands.
+a = pt(-40, -40, 0)
+b = pt(40, -40, 0)
+c = pt(40, 40, 0)
+d = pt(-40, 40, 0)
+fix(a, [-40, -40, 0])
+fix(b, [40, -40, 0])
+fix(c, [40, 40, 0])
+fix(d, [-40, 40, 0])
+ln(a, b)
+ln(b, c)
+ln(c, d)
+ln(d, a)
+extrude("l1", 10)
+o = pt(30, 0, 10)
+fix(o, [30, 0, 10])
+circ(o, 18)
+region("l6", "origin", ["l6", "c1"])
+extrude("rg2", -10, { mode: "cut", end: "through" })

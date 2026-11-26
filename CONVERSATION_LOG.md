@@ -10,6 +10,55 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-26 — the oracle of parts: recipes are command lines, not journals
+
+The first SolidCraft pointer built (docs/plans/oracle.md). Three decisions
+worth the reasoning:
+
+**A recipe is command lines, not a saved file.** A journal is the program's
+own record — `region("l6", "origin", ["l6", "c1"])` is exactly what the Cut
+tool wrote for the owner's lens, and it is wrong (bug 87): replayed, that
+region is the lid minus the lens. Had the recipes been journals, the oracle
+would have carried the program's mistake into its own expectation of what
+to build and judged the kernel against it. A person who knows the app can
+read `circ(o, 18)` and `cut([36, 0, 10], 10, "through")` and retype them;
+nobody can read a journal's resolved loops. The one line the command line
+has not got — the Cut tool's press at a point — is the oracle's stand-in,
+and does what the tool does (the innermost loop around the point, `cutWay`
+for the sign, `extrudeSteps` for the call), which is also why flipping
+`cutWay`'s sign reddens exactly those cases and no typed one: a typed
+`extrude("c1", -10, { mode: "cut" })` carries its own sign, as the Cut tool
+types it. Bug 80 was the Extrude tool's mode row not signing the depth;
+on the typed path the same mistake is a person typing +10, which no oracle
+can catch, so the second mutant reversed a cut's sweep in `extrudeSpan`
+and all six cut cases went red.
+
+**The derivation is checked by the kernel as much as the other way round.**
+Two formulas were wrong before the kernel saw them: the spec's one-edge
+fillet area forgot that the two end walls each lose a spandrel (3.86 of
+15893), and my lens centroid was written toward the chord when it lies
+into the plate — the notch's would have sat outside the part. Both were
+caught because the bars are tight (a decade above the measured error, never
+looser than 1e-6 without saying why) and because a centroid was asserted at
+all: it is the one measure that says *where* a hole is, so the walkthrough's
+hole moved off the middle to (10, 5). Rejected: deriving the centroid from
+the kernel's own answer to "save time". That is the one thing the rule
+forbids.
+
+**A failing case is a bug, not a loosened bar.** `box-edge-lens-by-region`
+builds the lens prism alone (8494.5 for 55505.5) and stays red with bug 87's
+number; the fix is not one line (counting distinct names leaves a three-way
+tie; the region needs the pressed point or an area tie-break — a decision in
+TODO). `shell` has no command at all, so its case is filed, with its
+derivation, rather than written against the kernel directly — a recipe the
+owner cannot type is not a recipe.
+
+The kernel gained a centroid: `SmApiBrepComputeMassProperties` was a
+dozen lines of glue (`sm_mass`), and the solids build relinked from its
+warm cache in under a minute. It is a second integration over the body, so
+it is a separate `Evaluator.centroid(body)` the app never calls, not a field
+of every body result.
+
 ## 2026-11-26 — SolidCraft, read for pointers
 
 The owner pointed at "the solid craft repo (open source)": tangency-labs/

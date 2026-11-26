@@ -80,7 +80,7 @@ never registered on the dev server, which would otherwise serve yesterday's
 code from its cache.
 
 **Run the e2e suite for anything that touches the app**, not just when it
-feels risky. Eighty-six bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
+feels risky. Eighty-seven bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
 within seconds of opening the page — the list is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The unit tests cover the
 mathematics; they cannot see a stale readout or an event that never fires.
@@ -89,6 +89,19 @@ Tests here try to assert the *property*, not the transcript: check that the
 circle ends up tangent to the line, not that the radius is `29.999999`. When a
 test exists because of a specific bug, say so in the test — it stops the
 assertion being mistaken for boilerplate and deleted later.
+
+**The oracle of parts** (`test/oracle/`, `test/oracle.test.ts`,
+docs/plans/oracle.md) replays a recipe of command lines per part and holds
+the kernel's volume, area, bounding box, centroid and face count to a closed
+form derived by hand in `test/oracle/derive.ts`, with the derivation in words
+beside each number, built and again after a save/open round trip. Its rule:
+*An expected value needs a derivation. Never take one from the program's
+own output, never loosen a tolerance to fit what the kernel now gives, and
+never mark a failing case skipped: a case that fails names its bug in TODO
+and stays red until the fix lands. A new case beside an old one is always
+allowed.* To add a case: a folder with `recipe.txt`, a function in
+`derive.ts`, `npm run oracle:derive` to write its `expected.json`, and the
+bar chosen from the measured error with a margin of ten.
 
 ## Where things go
 

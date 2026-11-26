@@ -1,0 +1,30 @@
+{
+  "volume": 64226.19467105847,
+  "area": 16150.79644737231,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      48,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    0.15496115841123123,
+    0,
+    5
+  ],
+  "faces": 8,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-11,
+    "area": 0.000001,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "The plate with a cylinder of radius r = 3, 8 long, joined on its wall x = 40 at (40, 0, 5): V = abc + πr²·8 = 64000 + 226.1946710584651; A = 2(ab + bc + ca) − πr² (the wall's disc under the boss) + 2πr·8 (the boss's wall) + πr² (its end) = 16000 + 150.79644737231007; 8 faces; centroid = (V_plate·(0, 0, c/2) + V_boss·(44, 0, c/2)) / V. Area bar 1e-6 (measured 5e-8)."
+}

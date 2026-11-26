@@ -1,0 +1,5 @@
+# A circle of radius 15 about the origin on the ground, extruded 20.
+o = pt(0, 0, 0)
+fix(o, [0, 0, 0])
+circ(o, 15)
+extrude("c1", 20)

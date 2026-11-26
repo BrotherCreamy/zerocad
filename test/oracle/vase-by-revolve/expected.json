@@ -1,0 +1,30 @@
+{
+  "volume": 96249.4985891337,
+  "area": 11262.470151756263,
+  "bbox": [
+    [
+      -35,
+      0,
+      -35
+    ],
+    [
+      35,
+      30,
+      35
+    ]
+  ],
+  "centroid": [
+    0,
+    15,
+    0
+  ],
+  "faces": 3,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-9,
+    "area": 0.00002,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "A rectangle 0 ≤ x ≤ 20, 0 ≤ y ≤ 30 with a semicircle of radius 15 on its right side (centre (20, 15)), revolved 360° about the y axis. Pappus: V = 2π ∫x dA = 2π(600·10 + 353.4291735288517·26.366197723675814) = 96249.4985891337; A = two discs of radius 20 (2π·20²) + the arc's zone 2π ∫x ds = 2π·r(wπ + 2r) = 8749.196028884428; 3 faces; the profile is symmetric about y = 15, so the centroid is (0, 15, 0). The arc becomes a NURBS surface of revolution: volume measured 9e-11 off, bar 1e-9; the zone's area 2.5e-6 off — the kernel integrates a face's area to a requested 1e-6 (glue.cpp), which this general surface of revolution does not quite meet — so the area's bar is 2e-5, a decade above the measured 2e-6 and the one case looser than the 1e-6 floor."
+}

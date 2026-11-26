@@ -10,6 +10,29 @@ etc).
 
 ## What's working right now
 
+- **The oracle of parts** (2026-11-26, docs/plans/oracle.md): `test/oracle/`
+  holds fourteen parts, one folder each — a `recipe.txt` of the command
+  lines that make it (the walkthrough's plate, its hole through and blind,
+  the owner's lens and the D-notch, a cylinder, the boss on the plate, a
+  tube and a vase by revolve, one and four fillets, a slot that splits the
+  plate) and an `expected.json` of its volume, area, bounding box,
+  centroid and face count with the derivation in words — and
+  `test/oracle/derive.ts` computes every expected value from the closed
+  form (Pappus for the revolves, the circular segment for the lens, the
+  spandrel for a fillet). `test/oracle.test.ts` asserts the committed
+  files equal the derivations, replays each recipe headlessly, measures
+  the kernel's body against them and again after `save`/`open`, in about
+  six seconds inside `npm test` (skipped, like every kernel test, without
+  a solid kernel built). The rule it works by is in CONTRIBUTING's Tests.
+  The kernel gained `centroid` (`sm_mass` in scripts/solids/glue.cpp,
+  `SolidKernel.centroid`, `Evaluator.centroid`), asked only by the oracle.
+  One case is red: `box-edge-lens-by-region`, bug 87 (the region the Cut
+  tool makes for the lens resolves to the lid minus the lens). The lens
+  and the notch are made by `cut([x, y, z], depth, "through")`, the Cut
+  tool's press by its world point (`test/oracle/replay.ts`), since no
+  typed command can name a region that shares every member with its
+  neighbours.
+
 - **The walkthrough gate** (2026-11-26, docs/plans/walkthrough-gate.md,
   bugs 85 and 86): `npm run gate:walkthrough` runs
   `test/e2e/walkthrough.e2e.ts` alone, before anything else on every merge
