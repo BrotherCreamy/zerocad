@@ -7,6 +7,72 @@ decisions.
 
 ---
 
+## 2026-11-26 — the walkthrough gate: the first ten minutes by finger and by mouse, run before anything else — and the two bugs its first run found
+
+*Gate on the branch (`claude/walkthrough-gate`): typecheck 0; unit
+2177/2177; kernel 11/11; `npm run gate:walkthrough` 6/6 in under two
+minutes; flatprofile and cutpaths 12/12. The full browser suite's count is
+in the merge's note below this line.*
+
+The owner, after a hole in a block failed four different ways on the build
+he had: *"this is pretty basic stuff."* The promise was a gate that walks the
+app's first ten minutes, by finger on the iPhone emulation and by mouse,
+from a blank canvas, checked on the body afterwards, before anything else
+on every merge. docs/plans/walkthrough-gate.md has every step and every
+number; the short form:
+
+- **`test/e2e/walkthrough.e2e.ts`, `npm run gate:walkthrough`.** Per hand:
+  a blank canvas → Rectangle → Extrude ✓ → a circle by a press straight on
+  the lid (the app's face pick says `e1.lid` first; the centre held
+  `onplane` it) → the Cut tool from the Extrude button's flyout, ✓ → the
+  hole is through (the twin on the far face, `extrude · cut` into e1, no
+  refusal in the log, the kernel's body the closed-form volume) → the
+  centre nudged (the hole stays, `solve()` 0 iterations, the base flat) →
+  Undo to the blank canvas one step at a time, each step's snapshot and
+  counts → Redo to the hole → Save from the app menu (the picker, or the
+  phone's share sheet) → the page reloaded (the autosave brings it back) →
+  New → Open… (the picker, or the phone's file input) → the same solid by
+  the kernel's volume to 1e-6, every point to 1e-6 → the hole still nudges.
+  Beside it the Extrude button's own Cut mode before and after the pick,
+  and the owner's lens through all, nudged by both hands. Six tests; every
+  reading of the bodies layer waits for the kernel's asynchronous answer.
+- **Browser-only bug 85 — the lens cut nudged by finger stalled** the
+  release's solve at 3.5e-7 on `perp(p10,p12,e2)` and `onplane(p1,e2.lid)`
+  for sixty iterations, and the kernel refused a frame's boolean (*subtract
+  failed, status 1001*). Not a row's scale this time but **a datum that
+  wandered**: a cap's normal is read as a datum, and `extrudeNormal` read it
+  off the chord unless the chord was within 1e-9 of the frame's normal. The
+  lens's drag frames tilt the chord a millionth (a crossing point slides
+  along the plate's edge, the chord's far end chases it), the datum turned
+  with it, and `onplane(p1,e2.lid)`, forty long, moved 4e-5 — as much as
+  the step had meant to fix; the undamped step cut the residual 8.2e-6 →
+  7.7e-6 where its model promised zero. **The datum stands still now: the
+  frame's normal while the chord is square to it within the drawing's bar
+  (`OFFENDING`), the chord only once the body has turned.** The release
+  after twelve small frames: 60 iterations stalled at 4.5e-8 → 11 to
+  4.4e-10; in the browser 24–29 → 12–14 iterations, both hands, nothing
+  refused. Making the normal a column of the row — the chord's, or the
+  face's own plane's — mended the valley and reopened the lean the register
+  had measured and refused (a dimension against a through cut SOLVED with
+  the hole slid along the plate); both rejected, with the numbers.
+- **Browser-only bug 86 — a hole undone and cut again, or a file saved,
+  New and opened again, came back without its hole.** The kernel answers a
+  program it has built with *cached* and no solid, and forgets a body only
+  when a program without it reaches the Worker; the empty program never
+  does, and the page forgot the body's answer there. The box stood without
+  its hole, nothing refused, the organiser still saying `e1 − e2`. The page
+  forgets a body's answer only when the kernel forgets its chain now.
+- `flatprofile.e2e.ts`'s finger assertions are the mouse's again.
+
+Pictures: 561–564 iPhone, 565–568 mouse — the hole, the hole nudged, the
+file reopened the same, the lens nudged. Decisions in TODO.md's register;
+what was tried and rejected in CONVERSATION_LOG.md.
+
+Tests: `test/e2e/walkthrough.e2e.ts`, `test/bodies.test.ts` (bug 86),
+`test/e2e/flatprofile.e2e.ts`.
+
+---
+
 ## 2026-11-26 — "the cut changed to add": a lens cut that never settled, a kernel bar tighter than the drawing's, a cut built as a boss, and a drag that tilted the box instead of sliding the circle
 
 *Merged into the working branch (`8eed8a1`), a clean merge. The gate on

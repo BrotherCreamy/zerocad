@@ -10,6 +10,87 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-26 — the walkthrough gate: the stall was a datum that moved, and the gate's first run found a second bug
+
+The brief was the gate's missing halves — undo and redo through the whole
+sequence, save and reopen to the same solids — and the one fault still
+filed: the lens cut nudged by finger stalling at 3.5e-7, with the kernel
+refusing a frame's boolean in picture 560's log.
+
+**Reproducing before reading.** The flatprofile lens in the browser, both
+hands, with `solveFrame` and `solve` wrapped on the page: the circle slid 7
+(not the 0.02 filed — nine runs, the press on `p9` every time; I take the
+0.02 for the suite's load), every frame ran to the cap at 1e-4–3e-4, the
+release took 24 (finger) and 29 (mouse) iterations and settled, and the
+finger's log carried *subtract failed (status 1001)* once. The browser's
+model saved and opened headlessly, the stall came back with **small**
+frames: twelve of 0.5, then a release of sixty iterations stalled at 4.5e-8
+with five rows unmet. A lever search — every relation's blocks removed in
+turn, and every block of the many-block ones — freed the release by
+removing `e2_through` (2 iterations) or `d1` (4) and freed the frames by
+removing nothing. Then the method the previous package suggested: one
+undamped Gauss–Newton step at the stalled state, against what the
+linearised model promised. It promised zero; the residual went 8.2e-6 →
+7.7e-6. A row's gradient was a lie, and the largest row was
+`onplane(p1, e2.lid)`.
+
+**The cause.** `readPlane` reads a cap's normal as a datum — the register's
+decision, measured in through-all-relation.md — and `extrudeNormal` reads
+that datum off the chord unless the chord is within 1e-9 of the frame's
+normal. A datum that is recomputed from the variables at every evaluation
+but differentiated by none is only a datum if it stands still, and in the
+lens's frames it does not: a crossing point slides along the plate's edge,
+the chord's far end chases it, the chord tilts a millionth, the datum turns
+a millionth, and the row — forty long — moves 4e-5, the size of the step.
+A hole's frames move the circle whole and never tilt the chord, which is
+why only the lens showed it.
+
+**Three fixes, two rejected.** The first instinct was the honest one: make
+the normal a column — the chord's six variables as Duals. The frames went a
+hundred times better and the stall vanished (8 iterations), and four tests
+failed: the register's own measurements, come back. A `dist` of 15 on a
+through cut through a plate 10 thick was SOLVED, the hole slid along the
+plate and the cut leaning; a boss pulled up to a free block's lid took the
+block 1.05 of the 2.5 it took before, the rest paid in a lean. The second
+instinct was the geometric one: the face's own plane — a curve member's
+normal, else three cap points — as Duals, which the chord's tilt cannot
+turn. Same four failures: the lean went through the small circle's normal,
+paid in its radius 5 against a lever the drawing's width, exactly the
+"unit angle row times a free translation" the spec had named. So the third:
+keep the datum and make it one. The bar at which the datum stops following
+the frame's normal is the drawing's own, `OFFENDING`, the same bar
+`refuseOblique` judges squareness by — under it the chord *is* square as
+far as the status, the kernel and the eye are concerned, and the row is
+exact in its two points with nothing else moving it. The stalled release:
+11 iterations to 4.4e-10. The browser: 12–14 both hands, nothing refused.
+The frames still run to the cap at 1e-4 — what is left is the three-point
+plane `p5.p6.p8`, a datum to three rows, moving a hair with the free box;
+the architecture's own decision, filed with its numbers.
+
+**What the gate found on its first run.** The undo-and-recut and the
+New-and-Open steps both came back with no body: the kernel answers a
+program it has built with *cached* and no solid, and forgets a body only
+when a program without it reaches the Worker; the empty program never does,
+being answered on the page, and the page forgot the body's answer there.
+Bug 86 — a one-line fix, a unit test that fails without it, and precisely
+the kind of thing the owner meant by basic: save, New, open the file you
+just saved, no hole.
+
+**Rejected along the way.** Asserting the gate on the screen (the brief
+forbade it; every step reads the model, the log and the bodies layer, and
+the bodies layer is read only after the kernel's asynchronous answer has
+settled — the first draft read it 900 ms after ✓ and was wrong twice).
+Re-requesting an uncached answer from the Worker on a `cached` with no
+`prev` (a protocol change for what one flag fixes). A smooth blend at the
+datum's switch (not needed where measured; filed). Dragging the lens by
+`arm("cut")` typed, as cutpaths does — the gate presses the flyout, by
+hover and by a finger's slide, because that is what the owner presses.
+
+**One environment note that cost time, not the repo's**: this box's dev
+server stopped seeing edits (the file watcher; the suite's runner starts a
+fresh server per run and is unaffected), so a browser measurement after an
+edit was the old build's twice until the server was restarted by hand.
+
 ## 2026-11-26 — "the cut changed to add": the thing that looked like the cause was not
 
 The brief arrived with a mechanism: a box drawn line by line has no

@@ -48,8 +48,16 @@ npm run typecheck   # tsc --noEmit
 npm test            # unit — the mathematics. No browser; ~30 s with the solid kernel built.
 npm run test:kernel # the Rust crate's own tests
 npm run test:e2e    # end-to-end — a real browser driving the real app
+npm run gate:walkthrough  # the first ten minutes, by finger and by mouse — before anything else on every merge
 npm run test:all    # all of the above
 ```
+
+**The walkthrough runs before anything else on every merge:**
+`npm run gate:walkthrough` is `test/e2e/walkthrough.e2e.ts` alone — the
+app's first ten minutes by finger on an iPhone 13 and by mouse, from a blank
+canvas, every step asserted on the model, the log and the kernel's body
+(docs/plans/walkthrough-gate.md). It takes under two minutes, and it found
+bug 86 on its first run. Run it first, then the suite.
 
 `npm run test:e2e` starts and stops its own dev server, or reuses one you
 already have running. It watches the one it started: if the server dies
@@ -72,7 +80,7 @@ never registered on the dev server, which would otherwise serve yesterday's
 code from its cache.
 
 **Run the e2e suite for anything that touches the app**, not just when it
-feels risky. Eighty-four bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
+feels risky. Eighty-six bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
 within seconds of opening the page — the list is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The unit tests cover the
 mathematics; they cannot see a stale readout or an event that never fires.

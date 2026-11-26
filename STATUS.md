@@ -10,6 +10,26 @@ etc).
 
 ## What's working right now
 
+- **The walkthrough gate** (2026-11-26, docs/plans/walkthrough-gate.md,
+  bugs 85 and 86): `npm run gate:walkthrough` runs
+  `test/e2e/walkthrough.e2e.ts` alone, before anything else on every merge
+  — the first ten minutes by finger (iPhone 13) and by mouse from a blank
+  canvas: Rectangle, Extrude, a circle by a press on the lid, the Cut tool
+  from the flyout, the hole through (the twins, the features, the log, the
+  kernel's volume), nudged, undone to blank step by step, redone, saved
+  from the app menu, the page reloaded, New, Open, the same solid to 1e-6,
+  nudged again; the Extrude button's Cut mode both orders; the owner's
+  lens nudged by both hands. Six tests, under two minutes. What it fixed:
+  `src/relations/solidref.ts` (`extrudeNormal`: a cap's datum reads the
+  frame's normal while the chord is square to it within `OFFENDING` — the
+  lens's release 24–29 → 12–14 iterations, the headless stall 60 at 4.5e-8
+  → 11 at 4.4e-10, no frame's boolean refused), `src/bodies.ts` (`take`
+  keeps a body's answer across an empty program the page answered itself,
+  so a hole undone and cut again, or a file saved, New and opened again,
+  comes back from the kernel's cache). Tests: `test/e2e/walkthrough.e2e.ts`,
+  `test/bodies.test.ts`, `test/e2e/flatprofile.e2e.ts` (the finger's
+  assertions the mouse's again); pictures 561–568.
+
 - **A lens cut settles, a drawing within its tolerance is built, a refused
   body says so, an extrude holds its profile flat, and a drag stays on a
   held plane** (2026-11-26, docs/plans/flat-profile.md, bugs 83 and 84).

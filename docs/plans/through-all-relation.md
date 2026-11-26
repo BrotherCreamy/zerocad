@@ -429,7 +429,12 @@ As built:
   curve-normal rows by the chord's length moved the slide to the `par`.
   The lever is a unit angle row (review-solver's `k = 1` for normals) times a
   free in-plane translation; closing it is that decision's, not this one's.
-  The datum was kept; both are in the register and TODO.md.
+  The datum was kept; both are in the register and TODO.md. (2026-11-26,
+  bug 85: the datum itself moved — `extrudeNormal` re-read the chord past a
+  1e-9 bar, so a drag's micro-tilts turned it and the row's gradient lied.
+  It reads the frame's normal within `OFFENDING` now; the column was tried
+  twice more, with the curve rows paid in a length, and leaned the same.
+  docs/plans/walkthrough-gate.md.)
 - **The marks are quiet** until a conflict, as a point's marks are; and the
   far rim's mark is behind the plate from above.
 - **"The far point is searched over the bodies the swept profile meets"** —
