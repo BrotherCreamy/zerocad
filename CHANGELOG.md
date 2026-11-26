@@ -9,6 +9,13 @@ decisions.
 
 ## 2026-11-26 — "the cut changed to add": a lens cut that never settled, a kernel bar tighter than the drawing's, a cut built as a boss, and a drag that tilted the box instead of sliding the circle
 
+*Merged into the working branch (`8eed8a1`), a clean merge. The gate on
+the merge: typecheck 0; unit 2176/2176; the browser files around it —
+flatprofile, cutpaths, solids, solidsphone, throughall, shapes, regen,
+shading — 47/47 (release kernel, load 2–5). The owner's own file, replayed
+on the merged tree by the manager: 38 iterations to 4e-10, a second solve
+0 iterations, both bodies built.*
+
 *Gate on the branch's tip (`claude/flat-profile`, on `claude/resume-tasks-o7q02e`
 at `e7cd6db`, which had not moved): typecheck 0; unit 2176/2176; kernel
 11/11; the full browser suite 864 tests, 850 passed, 2 picture skips, 12
