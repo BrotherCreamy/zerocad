@@ -9,10 +9,12 @@ decisions.
 
 ## 2026-11-26 — the walkthrough gate: the first ten minutes by finger and by mouse, run before anything else — and the two bugs its first run found
 
-*Gate on the branch (`claude/walkthrough-gate`): typecheck 0; unit
-2177/2177; kernel 11/11; `npm run gate:walkthrough` 6/6 in under two
-minutes; flatprofile and cutpaths 12/12. The full browser suite's count is
-in the merge's note below this line.*
+*Gate on the branch (`claude/walkthrough-gate`, `origin/claude/resume-tasks-o7q02e`
+at `74502e2` merged in): typecheck 0; unit 2177/2177 (92 s); kernel 11/11;
+`npm run gate:walkthrough` 6/6 in 113 s; the full browser suite 870 tests,
+868 passed, 0 failed, the two picture skips, in 29 minutes with nothing else
+on the box and no dev-server death. Before the merge: flatprofile and
+cutpaths 12/12.*
 
 The owner, after a hole in a block failed four different ways on the build
 he had: *"this is pretty basic stuff."* The promise was a gate that walks the
