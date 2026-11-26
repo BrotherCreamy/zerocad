@@ -9,6 +9,11 @@ decisions.
 
 ## 2026-11-26 — the walkthrough gate: the first ten minutes by finger and by mouse, run before anything else — and the two bugs its first run found
 
+*Gate on the merged tree (`cdad9db`, merged `--no-ff` from PR #101 after
+review): typecheck 0; unit 2177/2177; kernel 11/11; the walkthrough,
+flatprofile, cutpaths and through-all browser files 24/24 on a private dev
+server. Mirrored clean.*
+
 *Gate on the branch (`claude/walkthrough-gate`, `origin/claude/resume-tasks-o7q02e`
 at `74502e2` merged in): typecheck 0; unit 2177/2177 (92 s); kernel 11/11;
 `npm run gate:walkthrough` 6/6 in 113 s; the full browser suite 870 tests,
