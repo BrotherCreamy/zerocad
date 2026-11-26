@@ -523,7 +523,7 @@ export class Bodies {
     // only when a body needs it" never meant. Whatever an earlier program left
     // is let go here rather than by an answer.
     if (p.program.bodies.length === 0 && !this.inflight) {
-      this.take(p, { bodies: [], heap: { inUse: 0, reserved: 0 } });
+      this.take(p, { bodies: [], heap: { inUse: 0, reserved: 0 } }, false);
       return;
     }
     if (!this.client) return;
@@ -569,7 +569,24 @@ export class Bodies {
     }
   }
 
-  private take(p: ProgramOf, r: ProgramResult): void {
+  /**
+   * Takes an answer. `fromKernel` is false for the one answer made here — the
+   * empty program's, which starts no Worker and reaches none.
+   *
+   * **The last answer is kept while the kernel keeps its chain** (bug 86,
+   * found by the walkthrough gate, docs/plans/walkthrough-gate.md). The
+   * evaluator answers a program it has already built with `cached` and no
+   * solid — *the caller has it from last time* — and lets a body's chain go
+   * only when a program without that body reaches it. The empty program
+   * never does: it is answered here. So a hole cut, undone and cut again
+   * the same, or a file saved, New, and opened again, sent the kernel the
+   * program it had, the kernel said *cached*, and the page, which had
+   * forgotten the answer with the body, had nothing to draw: the box stood
+   * without its hole, no refusal said, for as long as the drawing stayed the
+   * same. The page forgets a body's answer only when the kernel forgets its
+   * chain — on an answer of the kernel's own to a program without it.
+   */
+  private take(p: ProgramOf, r: ProgramResult, fromKernel = true): void {
     const names = new Set(p.program.bodies.map((b) => b.name));
     for (const b of r.bodies) {
       const prev = this.latest.get(b.name);
@@ -605,7 +622,7 @@ export class Bodies {
     }
     for (const n of [...this.good.keys()]) if (!names.has(n)) this.good.delete(n);
     if (this.tried && !names.has(this.tried.name)) this.tried = null;
-    for (const n of [...this.latest.keys()]) if (!names.has(n)) this.latest.delete(n);
+    if (fromKernel) for (const n of [...this.latest.keys()]) if (!names.has(n)) this.latest.delete(n);
   }
 
   /** The views to draw: each kernel body's last good one, where it is of the body's features as they are now. */

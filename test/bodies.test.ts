@@ -246,3 +246,29 @@ test("a kernel body's curved faces carry vertex normals — per kernel face, key
   // Positions are shared by many triangles of a face and the normals agreed everywhere.
   assert.ok(byPosition.size < curved * 3, "corners shared");
 });
+
+test("bug 86: a body cut, undone and cut again the same — or saved, New, and opened again — comes back from the kernel's cache", { skip }, async () => {
+  // The evaluator answers a program it has built with `cached` and no solid,
+  // and drops a body's chain only when a program without it reaches it. The
+  // empty program is answered on the page and reaches no Worker, so the page
+  // forgetting the body's answer there left it with nothing to draw when the
+  // same program came back: the box without its hole, nothing refused. Found
+  // by the walkthrough gate (docs/plans/walkthrough-gate.md).
+  await loadSolver();
+  factory = await smlibFactory();
+  const m = new Model(3);
+  ownersPart(m);
+  const bodies = await settledBodies(m);
+  const was = bodies.views()[0].result.solid!.volume;
+  // The drawing swapped for an empty one (undo to the blank canvas, or New).
+  const empty = new Model(3);
+  bodies.sync(empty);
+  assert.deepEqual(bodies.views(), [], "nothing to draw of a blank canvas");
+  // And the same drawing again (redo, or the file opened), the kernel's chain still standing.
+  bodies.sync(m);
+  for (let i = 0; i < 200 && !bodies.settled; i++) await new Promise((r) => setTimeout(r, 5));
+  const views = bodies.views();
+  assert.equal(views.length, 1, "the body is back (before: nothing, the kernel having said cached to a page that had forgotten)");
+  assert.equal(views[0].result.solid!.volume, was, "the same solid, from the kernel's cache");
+  assert.deepEqual(bodies.report().lines, []);
+});

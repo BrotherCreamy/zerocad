@@ -53,6 +53,7 @@
 
 import type { Dual } from "../kernel/dual.ts";
 import { Dual as D } from "../kernel/dual.ts";
+import { OFFENDING } from "../kernel/problem.ts";
 import { memberName, parseFaceName, wallName, type FaceName, type FeatureEntry, type Model, type ProfileMember } from "../model.ts";
 import { extrusionChord } from "./extrusion.ts";
 import { planeBasis, unitDuals, type DirectionRef } from "./refs.ts";
@@ -234,8 +235,36 @@ function capNormal(model: Model, f: FeatureEntry, which: "base" | "lid"): number
 
 /**
  * An extrude's way, as numbers: its chord over its reach (relations/extrusion.ts),
- * which way ever the solid has turned off its frame — the frame's own normal
- * while the chord is still along it, so nothing already dimensioned reads anew.
+ * which way ever the solid has turned off its frame — **the frame's own
+ * normal while the chord is square to it within the drawing's tolerance**,
+ * the chord only once the body has really turned.
+ *
+ * A cap's normal is a datum of every row on the cap: read at each
+ * evaluation, no column of the Jacobian (`readPlane`, #89; the register in
+ * through-all-relation.md keeps it so, measured — made a column, a relation
+ * on a cap could be met by leaning the chord or the circle, and a dimension
+ * that conflicts with a through cut was SOLVED with the hole slid along the
+ * plate). A datum has to stand still while the solve steps, or the rows
+ * that read it are lying about their own gradient. Until 2026-11-26 this
+ * read the chord unless it was within 1e-9 of the frame's normal, so a
+ * chord tilted a millionth — every drag frame of the owner's lens cut,
+ * whose crossing point slides along the plate's edge and whose chord's far
+ * end chases it — turned the normal of `onplane(p1, e2.lid)` a millionth,
+ * and that row, forty long, moved 4e-5: as much as the step had meant to
+ * fix. The frames ran to the cap at 1e-4, the release after a finger's
+ * small frames stalled sixty iterations at 1e-7 on `perp(p10,p12,e2)` and
+ * `onplane(p1,e2.lid)`, the undamped step cut the residual from 8.2e-6 to
+ * 7.7e-6 where the linearised model promised zero, and the kernel refused
+ * a frame's boolean (browser-only bug 85, docs/plans/walkthrough-gate.md).
+ *
+ * So the bar is the drawing's own, `OFFENDING`, as `refuseOblique`'s is: the
+ * lid point's offset from the line the frame's normal would put it on. Under
+ * it the chord is square as far as the status, the kernel and the eye are
+ * concerned, and the frame's normal is the datum — a number that does not
+ * move with the step, so the row is exact in both its points and nothing
+ * else moves it; `e2_perp`, whose rows are exact, keeps the chord square.
+ * Past it the body has turned (an `ang`, a free body dragged round), and the
+ * chord is what the cap faces along, as before.
  */
 function extrudeNormal(model: Model, depth: string, frameN: number[]): number[] {
   const chord = extrusionChord(model, depth);
@@ -245,7 +274,9 @@ function extrudeNormal(model: Model, depth: string, frameN: number[]): number[] 
   const len = Math.hypot(...chord);
   if (!(len > 1e-12) || d === 0) return frameN;
   const n = chord.map((c) => (Math.sign(d) * c) / len);
-  return Math.hypot(...n.map((c, i) => c - frameN[i])) < 1e-9 ? frameN : n;
+  const along = n[0] * frameN[0] + n[1] * frameN[1] + n[2] * frameN[2];
+  const aside = len * Math.sqrt(Math.max(0, 1 - along * along));
+  return along > 0 && aside <= OFFENDING ? frameN : n;
 }
 
 /** A variable layout and what it reads: the plane's point and unit normal, as Duals. */
