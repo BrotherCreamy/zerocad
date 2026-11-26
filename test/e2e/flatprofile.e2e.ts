@@ -229,9 +229,9 @@ for (const device of ["iPhone", "mouse"] as const) {
       assert.match(refused.skipped[1].why, /e1 is not built, so there is nothing for it to cut/);
       assert.ok(refused.replaces.includes("e2"), "the cut's faces are not drawn as a solid's (the boss)");
       // The Features rows (the Bodies section names e1 too, with its chain as its detail).
-      const e1 = refused.rows.find((r) => r.name === "e1" && r.detail.startsWith("extrude"))!, e2 = refused.rows.find((r) => r.name === "e2" && r.detail.startsWith("extrude"))!;
-      assert.deepEqual([e1.detail, e1.warn], ["extrude · not built", true], "the box's row says so, in the warning ink");
-      assert.deepEqual([e2.detail, e2.warn], ["extrude · cut · not built", true], "and the cut's");
+      const e1 = refused.rows.find((r) => r.name === "e1" && r.warn)!, e2 = refused.rows.find((r) => r.name === "e2" && r.warn)!;
+      assert.deepEqual([e1?.detail, e1?.warn], ["not built", true], "the box's row says so, in the warning ink");
+      assert.deepEqual([e2?.detail, e2?.warn], ["not built", true], "and the cut's");
       await shot(a, `${n.refused}-${device.toLowerCase()}-a-refused-body-says-not-built-in-its-row`);
       assert.deepEqual(a.pageErrors, []);
     } finally {

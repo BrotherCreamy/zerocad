@@ -197,14 +197,17 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // And *construction*, on the feature a construction body's flag is on (docs/plans/fillets-one-thing.md).
     const short = f.kind === "extrude" && f.unbuilt === undefined && !f.open ? shortOf(model, f) : null;
     // **And when the solids layer refused it** (`refusals`, the bodies layer's
-    // word for each feature it could not build): *not built*, in the warning
-    // ink, the reason on hover and in the menu's header. Not for a record
-    // already said unbuilt or open — those say why themselves.
+    // word for each feature it could not build): *not built*, the word alone
+    // in the kind's place — "extrude · cut · not built" was cut to "not …"
+    // by the pane's width (picture 557's first take) — in the warning ink,
+    // the reason on hover and in the menu's header, which still says the
+    // kind. Not for a record already said unbuilt or open — those say why
+    // themselves.
     const why = f.unbuilt === undefined && !(f.kind === "extrude" && f.open) ? refusals.get(f.name) : undefined;
-    const state = (f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : why ? " · not built" : short ? " · short" : "")
+    const state = (f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : short ? " · short" : "")
       + (f.construction ? " · construction" : "");
     return {
-      name: f.name, detail: (mode === "new" ? f.kind : `${f.kind} · ${mode}`) + state, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
+      name: f.name, detail: why ? "not built" : (mode === "new" ? f.kind : `${f.kind} · ${mode}`) + state, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
       open: null, openCommand: null, ...(short && !why ? { fix: short } : {}), ...(why ? { warn: why } : {}),
     };
@@ -217,7 +220,7 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     const why = b.unbuilt === undefined ? refusals.get(b.name) : undefined;
     const row: OrganiserRow = {
       // The kind alone: a phone's pane cut "chamfer · 1 edge" (seen); its menu's header says the edges.
-      name: b.name, detail: b.unbuilt !== undefined ? `${b.kind} · unbuilt` : why ? `${b.kind} · not built` : b.kind, count: b.owns.length, eye,
+      name: b.name, detail: b.unbuilt !== undefined ? `${b.kind} · unbuilt` : why ? "not built" : b.kind, count: b.owns.length, eye,
       eyeCommand: eyeCommand(b.name, eye), tapCommand: `select(${quoted(b.name)})`,
       selected: lit(b.owns.filter((n) => !model.hidden.has(n))), open: null, openCommand: null, ...(why ? { warn: why } : {}),
     };

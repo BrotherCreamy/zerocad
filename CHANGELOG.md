@@ -51,8 +51,9 @@ measurement; the short form:
   under 1e-3, the hole stays. **A drag's release settles**: `Model.solve`
   runs on past the cap while it still moves (three more rounds), so a
   release is never left where the bound fell.
-- **A refused feature's row says so** — *not built*, in the warning ink
-  after the kind, the kernel's reason on hover and in the row's menu header
+- **A refused feature's row says so** — *not built*, the word alone in the
+  kind's place, in the warning ink, the kernel's reason on hover and in the
+  row's menu header (which keeps the kind)
   (`organiserSections(…, refusals)`, `Bodies.refusals()`), for a body
   refused as oblique, a boolean that could not be applied, a cut that cuts
   nothing, a feature left out of its body. Until now only the log's small

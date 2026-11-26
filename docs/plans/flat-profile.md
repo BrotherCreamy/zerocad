@@ -82,7 +82,8 @@ Two things, and the one that looked like the cause was not.
    tinted shell because the shell *is* what read as a boss, whatever its
    ink, and the outline says exactly what is there — geometry, no body.
 5. **A refused feature's row says so** (`organiserSections(…, refusals)`,
-   `Bodies.refusals()`): *not built* after the kind, in the warning ink
+   `Bodies.refusals()`): *not built*, the word alone in the kind's place
+   (a longer detail is cut by the pane's width), in the warning ink
    (`data-warn`), the kernel's first line about it on hover and in the row's
    menu header (a finger's hold). The same for a kernel refusal (*could not
    be applied*), an idle cut (*cuts nothing*), a feature left out of its
@@ -133,9 +134,10 @@ Two things, and the one that looked like the cause was not.
   creeping for; nothing settling took more than eighteen.
 - An unbuilt cut is **outline only** (its geometry drawn, no faces), not a
   tinted shell.
-- The row's word is **not built**, in the warning ink, the reason on hover
-  and in the menu header; a record unbuilt or open by its own doing keeps
-  its word.
+- The row's word is **not built**, alone in the kind's place (the pane cut
+  "extrude · cut · not built" to "not …"), in the warning ink, the reason
+  on hover and in the menu header, which keeps the kind; a record unbuilt
+  or open by its own doing keeps its word.
 - `e1_flat` is made for **four points or more**, over the **largest
   triangle**, **quiet** to the redundancy verdict, **not twinned**, format 24.
 - The drag plane is the **held plane** first, then the chosen sketch plane,

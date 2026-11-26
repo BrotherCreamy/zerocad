@@ -53,9 +53,10 @@ otherwise.
     `programOf`'s `shells`, its faces not drawn — **outline only**, the
     geometry it is. Not a tinted shell: the shell is what read as a boss,
     whatever its ink.
-  - **A refused feature's row says *not built***, in the warning ink, the
-    reason on hover and in the menu header; a record *unbuilt* or *open* by
-    its own doing keeps its word.
+  - **A refused feature's row says *not built***, the word alone in the
+    kind's place (a longer detail was cut to "not …" by the pane), in the
+    warning ink, the reason on hover and in the menu header, which keeps the
+    kind; a record *unbuilt* or *open* by its own doing keeps its word.
   - **`e1_flat` is made for four points or more, over the largest
     triangle, not twinned, quiet to the redundancy verdict, deletable, and
     format 24.** A triangle, a lone circle, a revolve and an edge extrude

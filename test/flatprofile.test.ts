@@ -247,9 +247,9 @@ test("bug 83: a cut whose plate is not built is no body of its own — left out,
   assert.match(refusals.get(hole) ?? "", /cannot be laid out: e1 is not built/);
   const rows = organiserSections(m, [], null, refusals).find((s) => s.id === "features")!.rows;
   const row = rows.find((r) => r.name === hole)!;
-  assert.equal(row.detail, "extrude · cut · not built");
+  assert.equal(row.detail, "not built", "the word alone: the pane's width cuts a longer detail");
   assert.equal(row.warn, refusals.get(hole));
-  assert.equal(rows.find((r) => r.name === p.feature)!.detail, "extrude · not built");
+  assert.equal(rows.find((r) => r.name === p.feature)!.detail, "not built");
   assert.match(rows.find((r) => r.name === p.feature)!.warn ?? "", /oblique/, "the plate's row says why it was refused");
   // A record unbuilt by its own deletion says so as before, whatever the solids layer adds.
   del(m, m.featureOf(p.feature, "extrude").depth!);
