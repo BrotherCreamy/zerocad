@@ -57,10 +57,13 @@ otherwise.
     kind's place (a longer detail was cut to "not …" by the pane), in the
     warning ink, the reason on hover and in the menu header, which keeps the
     kind; a record *unbuilt* or *open* by its own doing keeps its word.
-  - **`e1_flat` is made for four points or more, over the largest
-    triangle, not twinned, quiet to the redundancy verdict, deletable, and
-    format 24.** A triangle, a lone circle, a revolve and an edge extrude
-    get none.
+  - **`e1_flat` is made for four points or more, over the first three
+    points in profile order that make a plane, not twinned, quiet to the
+    redundancy verdict, deletable, and format 24.** Not the largest
+    triangle: a symmetric slot chose a different one at the replay's seeds
+    than in the solved drawing, and a saved file's relation differed from
+    its drawing's (shapes.e2e.ts caught it). A triangle, a lone circle, a
+    revolve and an edge extrude get none.
   - **The drag plane is the held plane first** (`onplane`, `coplanar`, a
     feature's `flat`), then the chosen sketch plane, then the facing plane;
     a disagreement among the grabbed points, or a plane seen edge-on, falls

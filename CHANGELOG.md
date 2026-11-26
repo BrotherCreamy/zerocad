@@ -9,6 +9,19 @@ decisions.
 
 ## 2026-11-26 — "the cut changed to add": a lens cut that never settled, a kernel bar tighter than the drawing's, a cut built as a boss, and a drag that tilted the box instead of sliding the circle
 
+*Gate on the branch's tip (`claude/flat-profile`, on `claude/resume-tasks-o7q02e`
+at `e7cd6db`, which had not moved): typecheck 0; unit 2176/2176; kernel
+11/11; the full browser suite 864 tests, 850 passed, 2 picture skips, 12
+failed — every one a browser file pinning the format version at 23
+(camera, lidframe, nolidframe, planar, regen, shapes ×4, spline ×2,
+workbenches), fixed to 24 and rerun 55/56; the one left, shapes' slot
+("the same relations, by op and argument" across save and open), found
+`e1_flat` choosing its largest triangle differently at the replay's seeds
+and in the solved drawing — the plane is the first three points in profile
+order that make one now — and shapes and flatprofile rerun 11/11; unit
+2176/2176 again on that tree. The suite took 27.7 minutes with nothing else
+on the box.*
+
 The owner, with his file: a plate from the Rectangle tool, a circle on its
 top crossing one edge, the Cut tool — a D-shaped notch — then the circle's
 centre nudged by finger. The log said *e1 cannot be laid out: its chord is
@@ -60,7 +73,8 @@ measurement; the short form:
   print said.
 - **An extrude holds its profile flat**: `flat("e1")`, made as `e1_flat`
   beside `e1_perp` for a profile of four points or more — one row per point
-  from the fourth on, in the plane of its largest triangle — listed, marked
+  from the fourth on, in the plane of the first three that make one, in the
+  profile's order (a choice a replay repeats) — listed, marked
   `▱`, deletable; not for a triangle or a lone circle, nor a revolve or an
   edge extrude; not twinned (the lid is flat by the extrusion); never named
   redundant (the feature agreeing with a rectangle's own right angles is

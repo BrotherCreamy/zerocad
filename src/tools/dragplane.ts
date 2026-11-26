@@ -45,8 +45,8 @@ function planeOfRelation(model: Model, point: string, op: string, args: readonly
       const others = names.filter((n) => n !== point);
       return others.length === 3 ? throughPoints(model, others[0], others[1], others[2]) : null;
     }
-    // `flat(e1, a, b, c, …)`: the plane of its first three — the largest
-    // triangle when it was made — whichever of its points this is.
+    // `flat(e1, a, b, c, …)`: the plane of its first three — the first of
+    // the profile's points that made a plane — whichever of its points this is.
     if (op === "profileFlat" && names.slice(1).includes(point) && names.length >= 4) return throughPoints(model, names[1], names[2], names[3]);
   } catch {
     return null; // a reference since deleted, a plane collapsed

@@ -168,9 +168,15 @@ export function profilePoints(model: Model, record: string): string[] {
  * (docs/plans/flat-profile.md). The kernel sweeps a flat profile and nothing
  * else, so the feature says so, as a relation of its own beside `e1_perp`:
  * the record's profile points, every one in the plane of three of them —
- * the three that make the largest triangle when the relation is made, for
- * its conditioning — one row per point from the fourth on, each a length
- * (`(p − a)·n̂`), nothing squared. Made by `extrude` for a profile of four
+ * **the first three in the profile's order that make a plane** when the
+ * relation is made — one row per point from the fourth on, each a length
+ * (`(p − a)·n̂`), nothing squared. Not the largest triangle: a symmetric
+ * profile (a slot) has two of those nearly equal, and the replay's seeds
+ * and the solved drawing chose differently, so a saved file held a
+ * different triangle from the drawing it was saved from (found by
+ * shapes.e2e.ts's slot, comparing a file's relations with its drawing's).
+ * The order is names alone; only "makes a plane" reads positions, and a
+ * triple that is collinear in the drawing is collinear in its seeds. Made by `extrude` for a profile of four
  * points or more; a triangle and a single circle have nothing to hold and
  * get none. A relation like any other: listed, marked, and deletable —
  * deleted, the user has said "I want it oblique", and the body is drawn and
@@ -198,21 +204,25 @@ export function profileFlat(model: Model, record: string, ...points: string[]): 
   const named = points.length ? [...new Set(points)] : profilePoints(model, record);
   for (const q of named) model.point(q); // fail now, not at the first solve
   if (named.length < 4) throw new Error(`${record}'s profile stands on ${named.length} point${named.length === 1 ? "" : "s"} — it is flat already, and there is nothing to hold`);
-  // The plane: the largest triangle among them, as `ang` to a profile takes it —
-  // or the first three given, when the points were handed over (a replay).
+  // The plane: the first three in the profile's order that make a triangle
+  // — or the first three given, when the points were handed over (a replay
+  // of a typed call). No triangle among them at all — a replay's seeds,
+  // every free line drawn at one place — takes the first three: the saved
+  // values put the profile back where it was solved before any row is
+  // read, and a live profile with no plane has nothing a solve could hold
+  // flat yet.
   let order = named;
   if (!points.length) {
     const X = named.map((q) => model.coords(q));
-    let best: [number, number, number] = [0, 1, 2], area = -1;
-    for (let i = 0; i < X.length; i++) for (let j = i + 1; j < X.length; j++) for (let k = j + 1; k < X.length; k++) {
+    const size = Math.max(1, ...X.map((x) => Math.hypot(...x)));
+    const area = (i: number, j: number, k: number) => {
       const u = X[j].map((c, q) => c - X[i][q]), v = X[k].map((c, q) => c - X[i][q]);
-      const a = Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]);
-      if (a > area) { area = a; best = [i, j, k]; }
+      return Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]);
+    };
+    let best: [number, number, number] = [0, 1, 2];
+    outer: for (let i = 0; i < X.length; i++) for (let j = i + 1; j < X.length; j++) for (let k = j + 1; k < X.length; k++) {
+      if (area(i, j, k) > 1e-9 * size * size) { best = [i, j, k]; break outer; }
     }
-    // No triangle among them — a replay's seeds, every free line drawn at one
-    // place — takes the first three: the saved values put the profile back
-    // where it was solved before any row is read, and a live profile with no
-    // plane has nothing a solve could hold flat yet.
     const plane = best.map((i) => named[i]);
     order = [...plane, ...named.filter((q) => !plane.includes(q))];
   }

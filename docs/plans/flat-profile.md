@@ -90,8 +90,11 @@ Two things, and the one that looked like the cause was not.
    body. A record already *unbuilt* or *open* keeps its own word.
 6. **An extrude holds its profile flat** — `flat("e1")`, `e1_flat`
    (`profileFlat`, `src/relations/profilesquare.ts`): one row per profile
-   point from the fourth on, in the plane of the three that made the largest
-   triangle when it was made; made by the extrude's expansion beside
+   point from the fourth on, in the plane of the first three points, in the
+   profile's order, that make a plane when it is made (not the largest
+   triangle: a symmetric profile chose differently at the replay's seeds
+   and in the solved drawing, so a saved file held another triangle than
+   its drawing — shapes.e2e.ts's slot); made by the extrude's expansion beside
    `e1_perp`, named for the record and claiming no counter, listed, marked
    `▱`, deletable; not for a triangle or a lone circle (nothing to hold), not
    for a revolve (its `revolution` holds the profile in the axis's plane) nor
@@ -138,8 +141,10 @@ Two things, and the one that looked like the cause was not.
   "extrude · cut · not built" to "not …"), in the warning ink, the reason
   on hover and in the menu header, which keeps the kind; a record unbuilt
   or open by its own doing keeps its word.
-- `e1_flat` is made for **four points or more**, over the **largest
-  triangle**, **quiet** to the redundancy verdict, **not twinned**, format 24.
+- `e1_flat` is made for **four points or more**, over the **first three
+  points in profile order that make a plane** (deterministic across a
+  replay; the largest triangle was not), **quiet** to the redundancy
+  verdict, **not twinned**, format 24.
 - The drag plane is the **held plane** first, then the chosen sketch plane,
   then the facing plane; a disagreement among the grabbed points falls back.
 
