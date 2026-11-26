@@ -9,6 +9,10 @@ decisions.
 
 ## 2026-11-26 — the oracle of parts: fourteen parts by command line, measured against answers derived by hand — and bug 87
 
+*Gate on the merged tree (`e295b15`, merged `--no-ff` from PR #102 after
+review): typecheck 0; unit 2192/2192 with the oracle in it; kernel 11/11;
+`npm run gate:walkthrough` 6/6. Mirrored clean.*
+
 *Gate on the branch (`claude/oracle`, from `origin/claude/resume-tasks-o7q02e`
 at `0e6c7d7`): typecheck 0; unit 2192/2192 in 97 s — `oracle:
 box-edge-lens-by-region` among them, bug 87's case, declared `known_failure`
