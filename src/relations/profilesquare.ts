@@ -39,7 +39,7 @@ export function profileMembers(model: Model, record: string): ProfileMember[] | 
 /** One row's worth of a profile edge: the variables it reads, and the residual it gives against the chord's unit direction. */
 interface EdgeRow {
   vars: number[];
-  rows: (c: Dual[], own: Dual[]) => Dual[];
+  rows: (c: Dual[], own: Dual[], chordLength: number) => Dual[];
 }
 
 function edgeRows(model: Model, m: ProfileMember): EdgeRow[] {
@@ -70,9 +70,9 @@ function edgeRows(model: Model, m: ProfileMember): EdgeRow[] {
   const n = normal;
   return [{
     vars: n(),
-    rows: (c, own) => {
+    rows: (c, own, k) => {
       const u = unitDuals(own.slice(0, 3));
-      return [c[1].mul(u[2]).sub(c[2].mul(u[1])), c[2].mul(u[0]).sub(c[0].mul(u[2])), c[0].mul(u[1]).sub(c[1].mul(u[0]))];
+      return [c[1].mul(u[2]).sub(c[2].mul(u[1])), c[2].mul(u[0]).sub(c[0].mul(u[2])), c[0].mul(u[1]).sub(c[1].mul(u[0]))].map((r) => r.mul(k));
     },
   }];
 }
@@ -92,7 +92,17 @@ export function squareToProfile(model: Model, chord: DirectionRef, record: strin
     return vars;
   }, (l) => {
     const c = unitDuals(chord.direction(l.slice(0, chord.width)));
-    return layout.flatMap(({ at, edge }) => edge.rows(c, l.slice(at, at + edge.vars.length)));
+    // The curve rows (`ĉ × n̂`) are paid in the **chord's length as the solve
+    // began**, as the line rows are paid in their edge's: a turn of the chord
+    // by θ moves its far end ℓ·θ. Left a bare angle (as they were until
+    // 2026-11-26) they were the soft direction of the owner's lens cut: the
+    // chord 110 long, so the damped step could only creep along the valley
+    // where turning it a little meant moving its end a lot, and the drawing
+    // never settled — 60 iterations every solve, the base left 3e-3 off
+    // square, the kernel refusing the plate (docs/plans/flat-profile.md,
+    // bug 84). Scaled, the same file settles in fourteen.
+    const k = chord.ends ? rowLength(lengthBefore(model, chord.vars())) : 1;
+    return layout.flatMap(({ at, edge }) => edge.rows(c, l.slice(at, at + edge.vars.length), k));
   }, label);
 }
 

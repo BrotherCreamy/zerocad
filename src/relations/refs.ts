@@ -334,6 +334,15 @@ export interface DirectionRef {
    * that is unit already — a frame's axis, a plane's or a curve's normal.
    */
   ends?: true;
+  /**
+   * The length an angle of this side is paid in, as the solve began, where
+   * the side is no line: a circle's radius — a turn of its normal by θ moves
+   * its rim by r·θ. Absent for a side that has no size (a frame's axis, a
+   * plane's normal). A row with no length on either side is a bare angle, and
+   * an angle row beside length rows is the soft direction a damped solve
+   * creeps along (docs/plans/flat-profile.md).
+   */
+  scale?: () => number;
 }
 
 /** The direction from the first `dim` Duals to the second — a line or a point pair. */
@@ -369,9 +378,9 @@ function fromEnds(dim: number, vars: () => number[]): DirectionRef {
 export function unitSides(model: Model, u: DirectionRef, v: DirectionRef, l: Dual[]):
   { du: Dual[]; dv: Dual[]; k: number; scaled: (row: Dual) => Dual } {
   const [ru, rv] = [u.direction(l.slice(0, u.width)), v.direction(l.slice(u.width))];
-  if (!u.ends && !v.ends) return { du: ru, dv: rv, k: 1, scaled: (row) => row };
+  if (!u.ends && !v.ends && !u.scale && !v.scale) return { du: ru, dv: rv, k: 1, scaled: (row) => row };
   const floor = model.lengthFloor();
-  const k = rowLength(u.ends ? lengthBefore(model, u.vars()) : 0, v.ends ? lengthBefore(model, v.vars()) : 0);
+  const k = rowLength(u.ends ? lengthBefore(model, u.vars()) : u.scale?.() ?? 0, v.ends ? lengthBefore(model, v.vars()) : v.scale?.() ?? 0);
   const short = [u.ends ? sizeOver(ru, floor) : null, v.ends ? sizeOver(rv, floor) : null].filter((s): s is Dual => s !== null);
   return {
     du: u.ends ? unit(ru, floor) : ru,
@@ -474,7 +483,8 @@ export function directionOf(model: Model, ref: string): DirectionRef {
   if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse")) {
     const normal = curveNormal(model, ref);
     if (!normal) throw new Error(`"${ref}" lies in the one plane a ${model.dim}D model has — its normal is no direction to relate`);
-    return { width: 3, vars: normal, direction: (own) => unitDuals(own), frame: null };
+    const radius = model.circular(ref).radiusVar;
+    return { width: 3, vars: normal, direction: (own) => unitDuals(own), frame: null, scale: () => Math.abs(model.valueBefore(radius)) };
   }
   if (!axis) return fromEnds(model.dim, lineVars(model, ref));
   // A 2D frame has no z. Said here, before the frame is even looked up, so the
