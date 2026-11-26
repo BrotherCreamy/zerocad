@@ -5365,6 +5365,11 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **The phone organiser clips a body's feature list to a dash** (seen in
+  docs/images/561–562, walkthrough-gate review): the row `e1  −e2  2` on
+  the desktop reads `e1 -  2` on the iPhone 13 — the `−e2` is cut at the
+  column's width, so the body looks as if it had an operand missing. Give
+  the column room or ellipsise with the full text on press.
 - [ ] **`pushed` and the random walk's oracle disagree on one push** (found
   2026-11-09 adding the constraints palette to the desktop defaults, which
   changed `test/panels.test.ts`'s seeded walk): at its 731st drag the
