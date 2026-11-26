@@ -1,0 +1,30 @@
+{
+  "volume": 15707.963267948964,
+  "area": 6283.185307179587,
+  "bbox": [
+    [
+      -30,
+      0,
+      -30
+    ],
+    [
+      30,
+      10,
+      30
+    ]
+  ],
+  "centroid": [
+    0,
+    5,
+    0
+  ],
+  "faces": 4,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-8,
+    "area": 0.000002,
+    "box": 1e-9,
+    "centroid": 1e-8
+  },
+  "derivation": "A rectangle 20 ≤ x ≤ 30, 0 ≤ y ≤ 10 revolved 360° about the y axis: V = π(R² − r²)h = 15707.963267948964; A = 2π(R² − r²) (two annuli) + 2π(R + r)h (two walls) = 3141.592653589793 + 3141.5926535897934; 4 faces; centroid on the axis at (0, h/2, 0). The kernel sweeps a revolve as a general surface of revolution and integrates it: volume measured 4.5e-10 off, so its bar is 1e-8; the centroid 1.0e-10 of the size, so 1e-8; the walls' area 2.0e-7, so 2e-6 — above the 1e-6 floor because the face-area integration is asked at 1e-6 and the two walls of ~1900 each carry it."
+}

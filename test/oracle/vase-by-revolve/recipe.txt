@@ -1,0 +1,17 @@
+# A rectangle 0 ≤ x ≤ 20, 0 ≤ y ≤ 30 with a semicircle of radius 15 bulging out of its right side,
+# revolved a whole turn about the origin's y axis (one edge on the axis).
+a = pt(0, 0, 0)
+b = pt(20, 0, 0)
+c = pt(20, 30, 0)
+d = pt(0, 30, 0)
+m = pt(20, 15, 0)
+fix(a, [0, 0, 0])
+fix(b, [20, 0, 0])
+fix(c, [20, 30, 0])
+fix(d, [0, 30, 0])
+fix(m, [20, 15, 0])
+ln(a, b)
+arc(m, b, c, 15)
+ln(c, d)
+ln(d, a)
+revolve("l1", "origin.y")

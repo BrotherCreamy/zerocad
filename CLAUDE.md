@@ -71,7 +71,7 @@ under-constrain, an operation can leave the model malformed.
 
 ## Verification
 
-**Run `npm run gate:walkthrough` first — the walkthrough runs before anything else on every merge — then `npm run test:e2e`, for anything that touches the app.** Eighty-six bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
+**Run `npm run gate:walkthrough` first — the walkthrough runs before anything else on every merge — then `npm run test:e2e`, for anything that touches the app.** Eighty-seven bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
 passed the entire unit suite and were obvious within seconds in a browser: a
 stale status readout, a fillet that satisfied every constraint to six decimals
 while drawing a broken rectangle, an auto-naming loop that hung the tab, and a

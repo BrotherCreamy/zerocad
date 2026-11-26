@@ -1,0 +1,30 @@
+{
+  "volume": 61029.92525272452,
+  "area": 15509.71918581804,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      40,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    -1.7047367740787367,
+    0,
+    5
+  ],
+  "faces": 8,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-10,
+    "area": 0.000001,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "A circle of radius r = 18 on the lid, its centre (46, 0) 6 outside the plate's edge x = 40, cut through all. What leaves is the prism on the circular segment inside the plate: with s = 6 the chord's signed distance from the centre toward the segment, θ = acos(s/r), area = r²θ − s√(r² − s²) = 297.00747472754813, chord 2√(r² − s²) = 33.94112549695428, arc 2rθ = 44.31453902426789. V = abc − area·c = 64000 − 2970.074747275481; A = 2(ab + bc + ca) − 2·area (lid and base) − chord·c (the wall's strip) + arc·c (the curved wall) = 15509.71918581804; 8 faces (the wall x = 40 is cut in two). The segment's centroid is (2/3)(r² − s²)^{3/2}/area = 10.970592745844423 from the centre into the segment's side, −x, so the body's centroid is (V_plate·(0, 0, c/2) − V_seg·(35.02940725415558, 0, c/2)) / V. The curved wall is a B-spline face: volume measured 2.3e-12 off (the lens; the notch 5.7e-13), bar 1e-10; area 2.7e-8, bar 1e-6 (the requested integration accuracy)."
+}

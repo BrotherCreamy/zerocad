@@ -7,6 +7,130 @@ decisions.
 
 ---
 
+## 2026-11-26 — the oracle of parts: fourteen parts by command line, measured against answers derived by hand — and bug 87
+
+*Gate on the branch (`claude/oracle`, from `origin/claude/resume-tasks-o7q02e`
+at `0e6c7d7`): typecheck 0; unit 2192/2192 in 97 s — `oracle:
+box-edge-lens-by-region` among them, bug 87's case, declared `known_failure`
+and held to failing; kernel 11/11; `npm run gate:walkthrough` 6/6 in 111 s.
+The app's code is untouched (the kernel interface gained `centroid`, which
+nothing in the app calls), so the full browser suite was not run.*
+
+The first SolidCraft pointer taken up (docs/plans/oracle.md). Bugs 80, 83
+and 84 each left a body the kernel built and the status called SOLVED that
+was the wrong body, and every unit test passed. The oracle asks *is this the
+solid the drawing describes?* for fourteen parts, headlessly, in about six
+seconds, with answers that cannot be wrong the same way the program is.
+
+- **`test/oracle/<case>/recipe.txt`** — the commands, one per line, as the
+  owner types them (`pt`, `fix`, `ln`, `circ`, `arc`, `extrude`, `revolve`,
+  `fillet`, a cut as `extrude("c1", -10, { mode: "cut", end: "through" })`),
+  with `#` comments a person can read. One line form the command line has
+  not got: `cut([x, y, z], depth, "through")`, the Cut tool's press at a
+  world point, which `test/oracle/replay.ts` makes exactly as the tool does
+  (the innermost loop around the point, `cutWay` for the sign,
+  `extrudeSteps` for the call). The owner's lens needs it: every member of
+  the lens is a member of its neighbours too, so no typed `extrude` can name
+  it (the call refuses, listing three loops).
+- **`test/oracle/<case>/expected.json`** — volume, area, bounding box,
+  centroid, face and body count, each bar, and the derivation in words.
+  **`test/oracle/derive.ts`** computes every one from the formula (the
+  circular segment for the lens, the spandrel for a fillet, Pappus for the
+  revolves); `npm run oracle:derive` rewrites the files and the suite's
+  first test asserts the committed files equal what it gives, so a number
+  and its derivation cannot drift apart.
+- **`test/oracle.test.ts`** replays each recipe, runs every body through
+  the kernel (`programOf(model, true)`, single features too), measures,
+  and does it again after `save`/`open`. In `npm test`; skipped, as the
+  other kernel tests are, without a solid kernel built.
+- **The kernel gained a centroid.** `SmApiBrepComputeMassProperties` is a
+  dozen lines of glue (`sm_mass`, scripts/solids/glue.cpp — area, volume
+  and the centre of volume in one pass), `SolidKernel.centroid`,
+  `Evaluator.centroid(body)`. A second integration over the body, so it is a
+  separate call the app never makes, not a field of every body result.
+  `build:solids` relinked from its warm cache in under a minute.
+- **The rule**, now in CONTRIBUTING's Tests: an expected value needs a
+  derivation; never from the program's output, never a bar loosened to fit,
+  never a failing case skipped — a case that fails names its bug in TODO and
+  is declared `known_failure` with that number in its `expected.json`, which
+  the suite then holds it to: replayed and measured like every other, its
+  comparison asserted to *fail*, so the fix drops the line in the same
+  change or the test says "bug N is fixed". (The spec had the case stay red
+  in `npm test`; reversed in review — a red `npm test` nobody can act on
+  hides the next real failure, in every other worker's gate.)
+
+**What the kernel returns against each closed form**, built (the reopened
+measurements were identical to the digit shown); errors relative for V and
+A, a share of the box's diagonal for the box and the centroid; bars chosen a
+decade above the measured error, the floor 1e-6 for an area the kernel
+integrates (its requested accuracy), 1e-12 for an analytic solid:
+
+| case | V closed form | V kernel | ΔV/V | bar | ΔA/A | bar | Δbox/size | Δcentroid/size | faces | kernel ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| box | 64000 | 64000.000000000015 | 2.3e-16 | 1e-12 | 2.3e-16 | 1e-12 | 0 | 1.1e-16 | 6 | 61 |
+| box-through-hole (r 12 at (10, 5)) | 59476.106578830695 | 59476.10657882693 | 6.3e-14 | 1e-11 | 3.5e-7 | 5e-6 | 1.6e-17 | 6.4e-14 | 7 | 110 |
+| box-blind-hole (6 deep) | 61285.66394729842 | 61285.66394729838 | 5.9e-16 | 1e-11 | 3.8e-8 | 1e-6 | 1.6e-17 | 5.1e-14 | 8 | 66 |
+| box-edge-lens (centre 10 inside) | 55505.496602974235 | 55505.496602845305 | 2.3e-12 | 1e-10 | 2.7e-8 | 1e-6 | 0 | 6.3e-13 | 8 | 557 |
+| box-edge-notch (centre 6 outside) | 61029.92525272452 | 61029.92525268973 | 5.7e-13 | 1e-10 | 4.2e-9 | 1e-6 | 1.6e-17 | 7.9e-14 | 8 | 35 |
+| box-edge-lens-by-region (**known failure, bug 87**) | 55505.496602974235 | 8494.503397035583 | 8.5e-1 | 1e-10 | 8.1e-1 | 1e-6 | 4.6e-1 | 2.8e-1 | 4 of 8 | 54 |
+| cylinder | 14137.166941154068 | 14137.166941151227 | 2.0e-13 | 1e-11 | 5.6e-8 | 1e-6 | 0 | 8.7e-13 | 3 | 65 |
+| boss-on-plate | 64226.19467105847 | 64226.194671056524 | 3.0e-14 | 1e-11 | 5.7e-9 | 1e-6 | 0 | 2.9e-14 | 8 | 70 |
+| tube-by-revolve | 15707.963267948964 | 15707.96327504114 | 4.5e-10 | 1e-8 | 2.0e-7 | 2e-6 | 2.1e-17 | 1.0e-10 | 4 | 150 |
+| vase-by-revolve | 96249.4985891337 | 96249.49858033078 | 9.1e-11 | 1e-9 | 2.0e-6 | 2e-5 | 6.9e-17 | 1.8e-11 | 3 | 2445 |
+| fillet-one-edge (r 3) | 63845.486677646164 | 63845.4866776451 | 1.7e-14 | 1e-11 | 2.5e-10 | 1e-7 | 4.4e-16 | 2.0e-15 | 7 | 29 |
+| fillet-four-edges (r 5) | 63785.39816339745 | 63785.3981635335 | 2.1e-12 | 1e-10 | 1.1e-9 | 1e-7 | 0 | 2.4e-13 | 10 | 51 |
+| cut-that-splits | 56000 | 56000.00000000002 | 3.9e-16 | 1e-12 | 2.3e-16 | 1e-12 | 0 | 5.8e-17 | 12 | 12 |
+
+What the table says about the kernel: an analytic solid is exact to
+roundoff (the box 2e-16, the slot 4e-16); a cylinder's volume to 1e-13 and
+its wall's area to 1e-7 (the area of a face is integrated at a requested
+1e-6, and the off-centre hole's wall came back 3.5e-7 off where the centred
+one was 5e-8); a revolve is a general surface of revolution, its volume
+good to 1e-10 and its area to 2e-6 — the vase's zone is the one measure
+over the 1e-6 floor, and its case says so; a fillet comes back as a
+B-spline face and is exact to 1e-12 in volume. The suite is 8.9 s as
+`node --test` times it, 5 s wall with the kernel warm: the vase's NURBS
+revolve is 2.4 s of every evaluation, the rest a few tens of
+milliseconds each. The spec's **one-edge fillet area formula was wrong**:
+the two end walls each lose a spandrel too, 3.86 of 15893 — the kernel
+caught it; so was **my lens centroid**, written toward the chord where it
+lies into the plate (the notch's would have been outside the part; 7e-3 of
+the size, caught at once).
+
+**The flipped-sign proof**, two mutants by hand, both reverted:
+
+- `cutWay`'s way negated (bug 80's mistake): **red** `box-edge-lens`,
+  `box-edge-notch`, `cut-that-splits` — exactly the three cases made by
+  the Cut tool's press — each built as the plain plate, 64000; every typed
+  cut stayed green, because a typed `extrude("c1", -10, { mode: "cut" })`
+  carries its own sign, as the Cut tool types it. The oracle sees the tool
+  layer only through that press.
+- A cut's sweep reversed in `extrudeSpan` (the depth negated for `mode:
+  "cut"`, the typed path's version of the same mistake): **red** all six cut
+  cases — `box-through-hole`, `box-blind-hole`, `box-edge-lens`,
+  `box-edge-notch`, `box-edge-lens-by-region`, `cut-that-splits` — every
+  one built as the plain plate; the nine cases without a cut green.
+
+**Bug 87**, found by the case the journal's own spelling makes
+(`box-edge-lens-by-region`, a declared known failure): the region the Cut tool makes for the lens
+— `region("l6", "origin", ["l6", "c1"])` — resolves to the lid *minus* the
+lens, because `faceLoop` keeps the loop with most of the face's names and
+counts a member cut in two twice. The body of the owner's file is right only
+because the feature carries its own loops; `regionAtPoint` answers `rg2`
+everywhere on the plate but inside the lens, so a second Cut press on the
+plate would cut everything but the lens, and typed as journalled the extrude
+of `rg2` builds the lens prism alone (8494.5 for 55505.5). Not fixed here
+(no one-line fix: counting distinct names leaves a three-way tie); filed in
+TODO with the decision it needs.
+
+**Filed, not built**: `shell` — the kernel has one, the app has no command
+for it, so the spec's eleventh case has its derivation in TODO and no
+recipe; a typed spelling for a region by a point inside it, so the lens
+becomes plain commands; surface distance against a reference mesh, FreeCAD
+as a second kernel, mutation testing proper.
+
+---
+
 ## 2026-11-26 — the walkthrough gate: the first ten minutes by finger and by mouse, run before anything else — and the two bugs its first run found
 
 *Gate on the merged tree (`cdad9db`, merged `--no-ff` from PR #101 after

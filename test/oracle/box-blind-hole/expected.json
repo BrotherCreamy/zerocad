@@ -1,0 +1,30 @@
+{
+  "volume": 61285.66394729842,
+  "area": 16452.38934211693,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      40,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    -0.44289902040316137,
+    -0.22144951020158068,
+    4.9114201959193675
+  ],
+  "faces": 8,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-11,
+    "area": 0.000001,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "The plate less a cylinder of radius r = 12 cut h = 6 deep from the lid (c = 10), centred at (10,5): V = abc − πr²h = 64000 − 2714.336052701581; A = 2(ab + bc + ca) − πr² (the lid's disc) + 2πrh (the wall) + πr² (the floor) = 16000 + 452.3893421169302; 8 faces; centroid = (V_plate·(0, 0, c/2) − V_hole·(10,5, c − h/2)) / V. Area bar 1e-6 as the through hole's (measured 4e-8)."
+}

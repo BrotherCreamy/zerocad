@@ -7,6 +7,7 @@
   "scripts": {
     "build:kernel": "cd kernel-rs && wasm-pack build --target web --out-dir ../src/kernel/wasm-gen",
     "test:kernel": "cd kernel-rs && cargo test",
+    "oracle:derive": "node --experimental-strip-types test/oracle/derive.ts",
     "dev": "vite",
     "build": "npm run build:kernel && vite build",
     "test": "node --experimental-strip-types --test test/*.test.ts",

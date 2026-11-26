@@ -1,0 +1,30 @@
+{
+  "volume": 64000,
+  "area": 16000,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      40,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    0,
+    0,
+    5
+  ],
+  "faces": 6,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-12,
+    "area": 1e-12,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "A box a × b × c = 80 × 80 × 10: V = abc = 64000; A = 2(ab + bc + ca) = 16000; 6 faces; the centroid at the middle, (0, 0, c/2). The box is analytic: exact to roundoff."
+}

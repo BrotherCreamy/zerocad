@@ -1,0 +1,30 @@
+{
+  "volume": 63785.39816339745,
+  "area": 15871.23889803847,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      40,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    0,
+    0,
+    5
+  ],
+  "faces": 10,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-10,
+    "area": 1e-7,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "The plate's four vertical edges rounded r = 5: V = abc − 4r²(1 − π/4)c = 64000 − 214.60183660255169; A = 2(ab − 4r²(1 − π/4)) (lid and base) + (2(a + b) − 8r + 2πr)c (the walls, perimeter 311.41592653589794) = 15871.23889803847; 10 faces (four walls, four quarter cylinders, lid, base); symmetric, centroid (0, 0, c/2). The rounds come back as B-spline faces: volume measured 2.1e-12 off, bar 1e-10; area 1.1e-9, bar 1e-7."
+}

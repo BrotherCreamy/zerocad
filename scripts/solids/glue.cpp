@@ -660,6 +660,28 @@ API int sm_bbox(int h, double* out) {
   return st(s);
 }
 
+// Area, volume and the centre of volume in one pass
+// (SmApiBrepComputeMassProperties, unit density): 5 doubles out — area,
+// volume, centroid xyz. The oracle of parts (test/oracle.test.ts) asks it: a
+// hole in the wrong place has the right volume and the wrong centroid. The
+// same accuracy ladder as sm_volume, for the same reason; a closed manifold
+// solid only, which is what the API accepts — a sheet answers -2.
+API int sm_mass(int h, double* out) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  for (double acc : {1e-9, 1e-7, 1e-5}) {
+    double area = NAN, vol = NAN, mass = NAN;
+    SmPoint3d c;
+    SmVector3d moments, products;
+    SmApiStatus s = SmApiBrepComputeMassProperties(b, acc, 1.0, SmPoint3d(0, 0, 0), area, vol, mass, c, moments, products);
+    if (s == SM_SUCCESS && std::isfinite(vol) && std::isfinite(c.x) && std::isfinite(c.y) && std::isfinite(c.z)) {
+      out[0] = area; out[1] = vol; out[2] = c.x; out[3] = c.y; out[4] = c.z;
+      return 0;
+    }
+  }
+  return -2;
+}
+
 API int sm_is_manifold(int h) {
   SmBrep* b = get(h);
   SmBoolean m = FALSE;

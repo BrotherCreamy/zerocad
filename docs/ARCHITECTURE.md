@@ -2683,8 +2683,9 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Eighty-six bugs so far were invisible to the unit tests and obvious within seconds
-of running the app:
+Eighty-seven bugs so far were invisible to the unit tests and obvious within seconds
+of running the app (the eighty-seventh to the oracle of parts, which asks the
+question a browser does — is this the solid the drawing describes? — headlessly):
 
 1. a status readout that went stale, so a conflict could be introduced from
    the command line while the header still read `SOLVED`;
@@ -3206,6 +3207,27 @@ of running the app:
    there the page forgot the body's answer with the body. Found by the
    walkthrough gate's first run, at its undo and its reopen. The page
    forgets a body's answer only when the kernel forgets its chain.
+87. The region the Cut tool makes for the owner's lens resolves to the lid
+   *minus* the lens. The press inside the lens journals
+   `region("l6", "origin", ["l6", "c1"])` — the face by its members' names —
+   and the extrude with its loops spelled out, so the body is right, built
+   and reopened: a feature carries its own loops. But the region itself
+   (`regionValue` → `faceLoop`, operations.ts) chooses, among the three loops
+   through `l6` in that plane, the one keeping *most* of the face's names,
+   and counts a member cut into two portions twice: the lid-minus-lens loop
+   (`l5, l6, c1, l6, l7, l8`) keeps three, the lens (`l6, c1`) two. So
+   `regionAtPoint` answers `rg2` anywhere on the plate *outside* the lens and
+   null inside it; a second Cut press anywhere on the plate takes the region
+   and would cut everything but the lens; and the journal's own spelling,
+   typed — `region(…)` then `extrude("rg2", -10, { mode: "cut", end:
+   "through" })` — builds the lens prism alone, 8494.5 where the plate less
+   the lens is 55505.5. Found by the oracle of parts
+   (`test/oracle/box-edge-lens-by-region`, docs/plans/oracle.md), which
+   declares it a `known_failure` and holds it to failing until the fix drops
+   the line. Not fixed in that package: counting distinct names leaves a
+   three-way tie, and nothing in `faceLoop` can tell the lens from the sliver
+   outside the plate without the point that was pressed, which a region
+   does not keep.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

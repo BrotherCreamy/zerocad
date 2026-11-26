@@ -148,6 +148,13 @@ export interface SolidKernel {
   free(s: Solid): void;
 
   volume(s: Solid): number;
+  /**
+   * The centre of volume — a mass-properties pass, so dearer than `volume`
+   * and asked only by a test that wants it (the oracle of parts,
+   * docs/plans/oracle.md): a hole in the wrong place has the right volume
+   * and the wrong centroid. Throws for a sheet, which has no volume to centre.
+   */
+  centroid(s: Solid): V3;
   bbox(s: Solid): [V3, V3];
   validity(s: Solid): Validity;
   /** Just the manifold test of `validity` — cheap, where the consistency checks are not. */

@@ -1,0 +1,30 @@
+{
+  "volume": 56000,
+  "area": 15800,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      40,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    0,
+    0,
+    5
+  ],
+  "faces": 12,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-12,
+    "area": 1e-12,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "A slot 10 wide across the plate's middle, cut through all: two boxes a′ × b × c with a′ = (a − 10)/2 = 35. V = 2a′bc = 56000; A = 2·2(a′b + bc + ca′) = 15800; 12 faces (two boxes' six). The app reports one body — the kernel's one B-rep holding two shells — so bodies is 1 here by observation, not by derivation. Symmetric about x = 0: centroid (0, 0, c/2). Analytic, exact."
+}

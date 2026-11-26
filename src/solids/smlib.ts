@@ -50,6 +50,7 @@ export interface SmModule {
   _sm_is_sheet(h: number): number;
   _sm_tag_edge(h: number, i: number, tag: number): number;
   _sm_volume(h: number): number;
+  _sm_mass(h: number, out: number): number;
   _sm_bbox(h: number, out: number): number;
   _sm_is_manifold(h: number): number;
   _sm_check(h: number): number;
@@ -262,6 +263,15 @@ export class SmlibKernel implements SolidKernel {
   free(s: Solid): void { this.m._sm_delete(s); }
 
   volume(s: Solid): number { return this.m._sm_volume(s); }
+
+  centroid(s: Solid): V3 {
+    return this.doubles(5, (p, v) => {
+      const st = this.m._sm_mass(s, p);
+      if (st !== 0) throw new KernelError("centroid", st);
+      const d = v();
+      return [d[2], d[3], d[4]];
+    });
+  }
 
   bbox(s: Solid): [V3, V3] {
     return this.doubles(6, (p, v) => {

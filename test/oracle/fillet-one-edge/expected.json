@@ -1,0 +1,30 @@
+{
+  "volume": 63845.486677646164,
+  "area": 15893.12828537193,
+  "bbox": [
+    [
+      -40,
+      -40,
+      0
+    ],
+    [
+      40,
+      40,
+      10
+    ]
+  ],
+  "centroid": [
+    0,
+    0.09518281155525561,
+    4.989521159920269
+  ],
+  "faces": 7,
+  "bodies": 1,
+  "bars": {
+    "volume": 1e-11,
+    "area": 1e-7,
+    "box": 1e-9,
+    "centroid": 1e-9
+  },
+  "derivation": "The plate's lid edge along y = −40 (L = 80) rounded r = 3: the spandrel r²(1 − π/4) = 1.9314165294229655 leaves along the edge, V = abc − r²(1 − π/4)L = 64000 − 154.51332235383722; A = 2(ab + bc + ca) − 2rL (two strips of the faces) + (πr/2)L (the quarter cylinder) − 2·r²(1 − π/4) (each end wall loses the spandrel) = 15893.12828537193; 7 faces. The spandrel's centroid is 0.670103816837257 in from each face (the square's r/2 less the quarter disc's r − 4r/(3π), by area), so the removed prism is centred (0, −40 + 0.670103816837257, 10 − 0.670103816837257) and the body's centroid follows. Area bar 1e-7: the quarter cylinder measured 1e-9 off."
+}
