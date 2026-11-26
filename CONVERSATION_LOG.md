@@ -10,6 +10,28 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-26 — SolidCraft, read for pointers
+
+The owner pointed at "the solid craft repo (open source)": tangency-labs/
+solidcraft, Apache-2.0/MIT parametric CAD in Rust with a desktop app, a
+browser build, a headless CLI and an MCP server over one command registry.
+Cloned read-only and read, not copied. The surprise: its kernel, solidcore,
+is a safe-Rust port of the same NVIDIA usd-brep SMLib our `build:solids`
+compiles to WebAssembly, so their notes on SMLib's failure modes (near-miss
+seams, bare status 1001, tolerance growth) are notes on our kernel too.
+
+What I judged worth taking is itemised at the top of TODO's *Next up*, in
+order: an oracle of parts with hand-derived volumes (we have exact mass
+properties and a replayable journal, and no such suite); their exact test
+for an *agreeing* redundant constraint (a row adding no rank, residual
+zero) which is the owner's over-constraint principle made precise; a
+constructive seed that keeps orientation so dimension edits don't fold
+into the mirror solution; a stable failure code and replayable bodies on
+every kernel error; a browser-side `execute`/`inspect` handle so tests
+and agents drive the app by command rather than by pixel. Rejected for us:
+their feature timeline (ours is relational by principle), their dense
+finite-difference Jacobian (ours is exact and sparse by autodiff), and
+copying any code — the ideas are the value, and each goes through a spec.
 ## 2026-11-26 — the walkthrough gate: the stall was a datum that moved, and the gate's first run found a second bug
 
 The brief was the gate's missing halves — undo and redo through the whole
