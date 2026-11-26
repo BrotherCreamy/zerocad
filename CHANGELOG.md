@@ -10,9 +10,9 @@ decisions.
 ## 2026-11-26 — the oracle of parts: fourteen parts by command line, measured against answers derived by hand — and bug 87
 
 *Gate on the branch (`claude/oracle`, from `origin/claude/resume-tasks-o7q02e`
-at `0e6c7d7`): typecheck 0; unit 2191/2192 in 101 s — the one red is
-`oracle: box-edge-lens-by-region`, bug 87's case, red by the oracle's rule
-until the fix lands; kernel 11/11; `npm run gate:walkthrough` 6/6 in 111 s.
+at `0e6c7d7`): typecheck 0; unit 2192/2192 in 97 s — `oracle:
+box-edge-lens-by-region` among them, bug 87's case, declared `known_failure`
+and held to failing; kernel 11/11; `npm run gate:walkthrough` 6/6 in 111 s.
 The app's code is untouched (the kernel interface gained `centroid`, which
 nothing in the app calls), so the full browser suite was not run.*
 
@@ -51,7 +51,13 @@ seconds, with answers that cannot be wrong the same way the program is.
   `build:solids` relinked from its warm cache in under a minute.
 - **The rule**, now in CONTRIBUTING's Tests: an expected value needs a
   derivation; never from the program's output, never a bar loosened to fit,
-  never a failing case skipped.
+  never a failing case skipped — a case that fails names its bug in TODO and
+  is declared `known_failure` with that number in its `expected.json`, which
+  the suite then holds it to: replayed and measured like every other, its
+  comparison asserted to *fail*, so the fix drops the line in the same
+  change or the test says "bug N is fixed". (The spec had the case stay red
+  in `npm test`; reversed in review — a red `npm test` nobody can act on
+  hides the next real failure, in every other worker's gate.)
 
 **What the kernel returns against each closed form**, built (the reopened
 measurements were identical to the digit shown); errors relative for V and
@@ -66,7 +72,7 @@ integrates (its requested accuracy), 1e-12 for an analytic solid:
 | box-blind-hole (6 deep) | 61285.66394729842 | 61285.66394729838 | 5.9e-16 | 1e-11 | 3.8e-8 | 1e-6 | 1.6e-17 | 5.1e-14 | 8 | 66 |
 | box-edge-lens (centre 10 inside) | 55505.496602974235 | 55505.496602845305 | 2.3e-12 | 1e-10 | 2.7e-8 | 1e-6 | 0 | 6.3e-13 | 8 | 557 |
 | box-edge-notch (centre 6 outside) | 61029.92525272452 | 61029.92525268973 | 5.7e-13 | 1e-10 | 4.2e-9 | 1e-6 | 1.6e-17 | 7.9e-14 | 8 | 35 |
-| box-edge-lens-by-region (**red, bug 87**) | 55505.496602974235 | 8494.503397035583 | 8.5e-1 | 1e-10 | 8.1e-1 | 1e-6 | 4.6e-1 | 2.8e-1 | 4 of 8 | 54 |
+| box-edge-lens-by-region (**known failure, bug 87**) | 55505.496602974235 | 8494.503397035583 | 8.5e-1 | 1e-10 | 8.1e-1 | 1e-6 | 4.6e-1 | 2.8e-1 | 4 of 8 | 54 |
 | cylinder | 14137.166941154068 | 14137.166941151227 | 2.0e-13 | 1e-11 | 5.6e-8 | 1e-6 | 0 | 8.7e-13 | 3 | 65 |
 | boss-on-plate | 64226.19467105847 | 64226.194671056524 | 3.0e-14 | 1e-11 | 5.7e-9 | 1e-6 | 0 | 2.9e-14 | 8 | 70 |
 | tube-by-revolve | 15707.963267948964 | 15707.96327504114 | 4.5e-10 | 1e-8 | 2.0e-7 | 2e-6 | 2.1e-17 | 1.0e-10 | 4 | 150 |
@@ -106,7 +112,7 @@ the size, caught at once).
   one built as the plain plate; the nine cases without a cut green.
 
 **Bug 87**, found by the case the journal's own spelling makes
-(`box-edge-lens-by-region`, red): the region the Cut tool makes for the lens
+(`box-edge-lens-by-region`, a declared known failure): the region the Cut tool makes for the lens
 — `region("l6", "origin", ["l6", "c1"])` — resolves to the lid *minus* the
 lens, because `faceLoop` keeps the loop with most of the face's names and
 counts a member cut in two twice. The body of the owner's file is right only

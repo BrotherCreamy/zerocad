@@ -1,7 +1,8 @@
 # The owner's lens as the journal spells the Cut tool's press — the region by its face's
 # members, then the extrude of the region — typed. Bug 87: `region("l6", "origin", ["l6", "c1"])`
 # resolves to the lid minus the lens (the loop keeping most of those names), so the cut takes
-# everything but the lens and what is built is the lens prism. Red until the fix lands.
+# everything but the lens and what is built is the lens prism. Declared known_failure in
+# expected.json until the fix lands; the suite holds it to failing.
 a = pt(-40, -40, 0)
 b = pt(40, -40, 0)
 c = pt(40, 40, 0)

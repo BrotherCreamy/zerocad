@@ -3222,8 +3222,9 @@ question a browser does — is this the solid the drawing describes? — headles
    typed — `region(…)` then `extrude("rg2", -10, { mode: "cut", end:
    "through" })` — builds the lens prism alone, 8494.5 where the plate less
    the lens is 55505.5. Found by the oracle of parts
-   (`test/oracle/box-edge-lens-by-region`, docs/plans/oracle.md), which is red
-   for it. Not fixed in that package: counting distinct names leaves a
+   (`test/oracle/box-edge-lens-by-region`, docs/plans/oracle.md), which
+   declares it a `known_failure` and holds it to failing until the fix drops
+   the line. Not fixed in that package: counting distinct names leaves a
    three-way tie, and nothing in `faceLoop` can tell the lens from the sliver
    outside the plate without the point that was pressed, which a region
    does not keep.

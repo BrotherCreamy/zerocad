@@ -3161,7 +3161,8 @@ are flagged as such.
      formula; `test/oracle.test.ts` replays, measures volume, area, box,
      centroid and faces through the kernel, and again after `save`/`open`,
      in ~6 s inside `npm test`. What it found: **bug 87** (the region a
-     lens cut stands on resolves to its complement; its case is red), the
+     lens cut stands on resolves to its complement; its case is a declared
+     `known_failure`, held to failing until the fix drops the line), the
      spec's one-edge fillet area formula missing the two end walls'
      spandrels, and my own lens centroid written toward the chord when the
      kernel put it into the plate (both caught by the kernel, both
@@ -3221,7 +3222,8 @@ are flagged as such.
   disk is short). Nothing adopted without a spec in `docs/plans/`.
 - [ ] **Bug 87: the region a lens cut stands on resolves to the lid minus
   the lens** (2026-11-26, found by the oracle of parts,
-  `test/oracle/box-edge-lens-by-region`, red until fixed;
+  `test/oracle/box-edge-lens-by-region`, declared `known_failure` in its
+  expected.json and held to failing until the fix drops the line;
   docs/ARCHITECTURE.md's list). `faceLoop` (operations.ts) picks the loop
   keeping most of the face's member names and counts a member split in two
   portions twice, so `region("l6", "origin", ["l6", "c1"])` — what the Cut

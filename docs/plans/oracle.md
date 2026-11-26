@@ -54,8 +54,11 @@ family has a second net.
 *An expected value needs a derivation. Never take one from the program's
 own output, never loosen a tolerance to fit what the kernel now gives, and
 never mark a failing case skipped: a case that fails names its bug in
-TODO and stays red until the fix lands. A new case beside an old one is
-always allowed.*
+TODO and is declared `known_failure` with that number, which the suite then
+holds it to — the fix drops the line in the same change. A new case beside
+an old one is always allowed.* (As specified the case stayed red in
+`npm test`; reversed in review — a red `npm test` nobody can act on hides
+the next real failure.)
 
 ## The first dozen cases
 
@@ -100,7 +103,8 @@ not the derivation.
 A case whose operation the app refuses or builds wrong is a bug: number it
 (the count is **eighty-six** today, in CLAUDE.md, CONTRIBUTING.md,
 test/e2e/harness.ts and docs/ARCHITECTURE.md), list it in ARCHITECTURE,
-keep the case red, file it in TODO, and go on with the others. Do not fix
+declare the case `known_failure` (as built; the spec said keep it red),
+file it in TODO, and go on with the others. Do not fix
 the app in this package unless the fix is one line and obviously right;
 the oracle's job is to find, this time.
 
@@ -168,7 +172,12 @@ CHANGELOG entry carries the error table and the two mutants.
   spelling, `region("l6", "origin", ["l6", "c1"])` then `extrude("rg2", …)`,
   is **bug 87**: the region resolves to the lid minus the lens and the
   extrude builds the lens prism alone. That spelling is the third case,
-  `box-edge-lens-by-region`, red until the fix lands. The stand-in does what
+  `box-edge-lens-by-region`, declared `known_failure: "bug 87: …"` in its
+  expected.json: replayed and measured like every other, its comparison
+  asserted to fail, so the fix drops the line or the test says "bug 87 is
+  fixed". (The spec had it stay red in `npm test`; reversed in review, since
+  a red unit run nobody can act on hides the next real failure in every
+  other worker's gate.) The stand-in does what
   the tool does (`loopAround`, `cutWay`, `extrudeSteps`), which is why the
   `cutWay` mutant reddens exactly those cases.
 - *The one-edge fillet area formula in the spec was wrong*: the two end

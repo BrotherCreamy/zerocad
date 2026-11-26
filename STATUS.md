@@ -26,7 +26,8 @@ etc).
   a solid kernel built). The rule it works by is in CONTRIBUTING's Tests.
   The kernel gained `centroid` (`sm_mass` in scripts/solids/glue.cpp,
   `SolidKernel.centroid`, `Evaluator.centroid`), asked only by the oracle.
-  One case is red: `box-edge-lens-by-region`, bug 87 (the region the Cut
+  One case is a declared `known_failure`, held to failing until the fix
+  drops the line: `box-edge-lens-by-region`, bug 87 (the region the Cut
   tool makes for the lens resolves to the lid minus the lens). The lens
   and the notch are made by `cut([x, y, z], depth, "through")`, the Cut
   tool's press by its world point (`test/oracle/replay.ts`), since no

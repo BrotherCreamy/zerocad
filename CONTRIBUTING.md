@@ -98,10 +98,15 @@ beside each number, built and again after a save/open round trip. Its rule:
 *An expected value needs a derivation. Never take one from the program's
 own output, never loosen a tolerance to fit what the kernel now gives, and
 never mark a failing case skipped: a case that fails names its bug in TODO
-and stays red until the fix lands. A new case beside an old one is always
-allowed.* To add a case: a folder with `recipe.txt`, a function in
-`derive.ts`, `npm run oracle:derive` to write its `expected.json`, and the
-bar chosen from the measured error with a margin of ten.
+and is declared `known_failure` with that number, which the suite then holds
+it to — the fix drops the line in the same change. A new case beside an old
+one is always allowed.* A declared case is still replayed and measured; the
+suite asserts its comparison *fails*, so the day the fix lands the test says
+"bug N is fixed: drop known_failure". Why not leave it red: a red `npm test`
+nobody can act on hides the next real failure. To add a case: a folder with
+`recipe.txt`, a function in `derive.ts`, `npm run oracle:derive` to write
+its `expected.json`, and the bar chosen from the measured error with a
+margin of ten.
 
 ## Where things go
 

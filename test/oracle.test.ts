@@ -6,7 +6,12 @@
 // The rule (CONTRIBUTING.md, Tests): an expected value needs a derivation.
 // Never take one from the program's own output, never loosen a bar to fit what
 // the kernel now gives, and never mark a failing case skipped — a case that
-// fails names its bug in TODO and stays red until the fix lands.
+// fails names its bug in TODO and is declared `known_failure` with that number
+// in its expected.json, which the suite then holds it to: it is replayed and
+// measured like every other, and the comparison is asserted to fail, so the
+// fix drops the line in the same change or this file says "bug N is fixed".
+// Why not leave it red: a red `npm test` nobody can act on hides the next
+// real failure, in every other worker's gate.
 //
 // Why this exists: bugs 80, 83 and 84 each left a body the kernel built and
 // the status called SOLVED that was simply the wrong body. Every unit test
@@ -33,6 +38,7 @@ test("oracle: every committed expected.json is exactly what derive.ts gives — 
     const file = JSON.parse(await readFile(new URL(`./oracle/${name}/expected.json`, import.meta.url), "utf8")) as Expected;
     assert.deepEqual(file, derived(name), `${name}: run \`node --experimental-strip-types test/oracle/derive.ts\` and commit the result`);
     assert.ok(file.derivation.length > 40, `${name}: a derivation in words`);
+    if (file.known_failure) assert.match(file.known_failure, /^bug \d+: \S/, `${name}: a known failure names its bug's number`);
   }
 });
 
@@ -79,6 +85,13 @@ for (const name of CASE_NAMES) {
     const { model, log } = await replay(lines);
     assert.ok(model.solve().solved, `${name}: the recipe solves`);
     const built = measure(k, model);
+    if (want.known_failure) {
+      // Declared broken: the comparison must fail, and the day it does not,
+      // the fix is in and the declaration comes out in the same change.
+      assert.throws(() => check(name, "built", built, want), /off by|faces|bodies/,
+        `${want.known_failure.split(":")[0]} is fixed: drop known_failure from test/oracle/${name}/expected.json (derive.ts) — the case passes now`);
+      return;
+    }
     check(name, "built", built, want);
     assert.ok(!log.some((l) => /refus|cannot|cuts nothing|not reach/.test(l)), `${name}: the log says nothing went wrong — ${log.join(" / ")}`);
     // And the same body after a save/open round trip: the file carries the

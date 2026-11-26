@@ -32,6 +32,16 @@ export interface Expected {
   bars: { volume: number; area: number; box: number; centroid: number };
   /** The formula and the numbers that go into it, in words. */
   derivation: string;
+  /**
+   * A case the app builds wrong today: the bug's number and a few words. The
+   * suite still replays and measures it, and asserts that the comparison
+   * **fails** — the case is red by its own declaration, and the day the fix
+   * lands the test fails with "bug N is fixed: drop known_failure", so the
+   * fix cannot go unnoticed. Never a reason to skip, and never a loosened bar:
+   * the expected values stay the derivation's. (A red `npm test` nobody can
+   * act on hides the next real failure.)
+   */
+  known_failure?: string;
 }
 
 // ---- the pieces every case is built from ---------------------------------------
@@ -149,12 +159,17 @@ export const CASES: Record<string, () => Expected> = {
   "box-edge-lens-by-region": () => {
     // The same lens, cut as the journal spells the Cut tool's press — the
     // region by its face's members, then the extrude of the region — typed.
-    // The same body is meant, so the same numbers; the case is red for bug 87
-    // (the region resolves to the lid minus the lens) until the fix lands.
+    // The same body is meant, so the same numbers; the case is a declared
+    // known failure for bug 87 (the region resolves to the lid minus the
+    // lens) until the fix lands, which drops the declaration.
     const r = 18, cx = 30, d = PLATE.a / 2 - cx;
     const same = lens("inside", r, cx, -d);
-    return { ...same, derivation: `${same.derivation} The same lens as box-edge-lens, cut by the journal's own spelling: `
-      + `region("l6", "origin", ["l6", "c1"]) then extrude("rg2", …). Red: bug 87.` };
+    return {
+      ...same,
+      derivation: `${same.derivation} The same lens as box-edge-lens, cut by the journal's own spelling: `
+        + `region("l6", "origin", ["l6", "c1"]) then extrude("rg2", …). Known failure: bug 87.`,
+      known_failure: "bug 87: the region resolves to the lid minus the lens, and the cut builds the lens prism alone",
+    };
   },
 
   cylinder: () => {

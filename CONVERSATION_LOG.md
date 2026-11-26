@@ -46,8 +46,13 @@ the kernel's own answer to "save time". That is the one thing the rule
 forbids.
 
 **A failing case is a bug, not a loosened bar.** `box-edge-lens-by-region`
-builds the lens prism alone (8494.5 for 55505.5) and stays red with bug 87's
-number; the fix is not one line (counting distinct names leaves a three-way
+builds the lens prism alone (8494.5 for 55505.5) and is declared
+`known_failure: "bug 87: …"` in its expected.json: still replayed and
+measured, its comparison asserted to fail, so the day the fix lands the test
+says "bug 87 is fixed: drop known_failure". The spec had it stay red in
+`npm test`; the review reversed that, rightly — a red unit run nobody can
+act on makes every other worker's gate unreadable and hides the next real
+failure. The fix is not one line (counting distinct names leaves a three-way
 tie; the region needs the pressed point or an area tie-break — a decision in
 TODO). `shell` has no command at all, so its case is filed, with its
 derivation, rather than written against the kernel directly — a recipe the
