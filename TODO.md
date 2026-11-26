@@ -3110,6 +3110,68 @@ are flagged as such.
 
 ## Next up
 
+- [ ] **Steal from SolidCraft (owner's pointer, 2026-11-26)**: tangency-labs/
+  solidcraft (Apache-2.0/MIT, clean-room Rust parametric CAD) runs on
+  *solidcore*, a safe-Rust port of the same NVIDIA usd-brep SMLib our
+  `build:solids` compiles. Read, not copied; what is worth taking, in
+  order of value to us:
+  1. **An oracle of parts with closed-form answers** (`docs/oracle.md`):
+     90 recipes replayed by command, volume, area, centroid and bounding
+     box checked against formulas worked out by hand (Pappus, Steiner),
+     a `tools/oracle-analytic/` script per case giving the derivation,
+     never a value "from our own run". We have SMLib's exact mass
+     properties and a journal that replays; the owner's box-minus-lens is
+     one such case (box minus a circular-segment prism). Spec it as
+     `docs/plans/oracle.md`: a dozen recipes, the rule that an expected
+     value needs a derivation, mutation testing of the solver against
+     them (`docs/mutation-testing.md` there: the black-box suites judge).
+  2. **Consistent redundancy is a Jacobian question, not a count**
+     (`crates/sketch/src/redundancy.rs`): a constraint none of whose rows
+     add rank is redundant; redundant *and* zero residual (`CONSISTENT`
+     1e-6) is agreeing, so it is kept and satisfied, never refused. That is
+     the owner's "over constrained is fine so long as they agree" with the
+     exact test; ours (`conflicts.ts`) decides by the solve's result. Check
+     ours gives the same answer on two rectangles sharing a side.
+  3. **A constructive seed before Levenberg–Marquardt**
+     (`crates/sketch/src/construct.rs`, Owen 1991, Fudos–Hoffmann 1997):
+     points two loci on placed points pin down are placed exactly, on the
+     branch that keeps the orientation they had, so a dimension edit never
+     folds into the mirror solution; then LM solves what remains and the
+     rank analysis still decides freedom. Our flip-on-edit cases (the
+     register's "mirror solution" entries) are this problem; their stall
+     rule (`STALL_ITERS` 20, decrease < 1e-5, residual > 1e-4: give up on a
+     held solve sitting in a conflict valley) is the frame-cap rule the
+     entry below asks for, measured on 62,000 runs.
+  4. **A stable failure code on every kernel error**
+     (`solidcore/docs/failure-codes-and-reproduction.md`): SMLib's bare
+     `1001` is exactly what the lens nudge showed us; they map every error
+     to `call · kind · operation` plus the failing call's bodies as a
+     replayable rig entry. Our worker wrapper could keep the SM_API status
+     and the call's arguments the same way, so a "status 1001" frame is a
+     fixture, not a mystery. Their `ssi.md` §7 lists SMLib's known failure
+     modes with pictures: near-miss seams (an intersection within tolerance
+     of a cylinder's seam fails `SmFace::Test #36` or `make_faceuse` 1001,
+     "turning the seam away from the material builds") is a candidate for
+     our boolean frame failures — orient a cut cylinder's seam into air.
+  5. **Everything is a command, every surface runs the same ones**: desktop,
+     browser, headless CLI and MCP all execute one registry, scripts are a
+     JSON list of those commands, `window.solidcraft.execute()` drives the
+     web app from a console or a test, and parameter contracts are checked
+     (`--param-check strict`). Our REPL/journal is the same idea; what we
+     lack is the browser-side `execute`/`inspect` handle for e2e (we press
+     pixels) and typed contracts for ops. An MCP server over our `replenv`
+     would be a small package once that exists.
+  6. **Face attachment by certificate, then by lineage name**
+     (`docs/face-attachments.md`): a sketch on a face stores an exact face
+     certificate (source body, feature, boundary by source curve ids) and
+     falls back to the kernel's persistent face name; the plane is
+     re-measured on each rebuild. Our `e1:l2` wall naming is the same
+     instinct; theirs covers caps, blends, pattern copies and split pieces.
+  Their rules we already share and should keep stating: no expected value
+  from our own output, a regression test goes in its area's file never a
+  per-bug file, decisions from exact geometry never meshes. Clone is at
+  `/home/user/tangency-labs/solidcraft` (read-only, 789 MB; delete when
+  disk is short). Nothing adopted without a spec in `docs/plans/`.
 - [ ] **A lens cut's circle nudged by finger barely moves, and the release's
   solve stalls a few 1e-7 off** (2026-11-26, flat-profile, found by
   `test/e2e/flatprofile.e2e.ts`'s iPhone lens): the Rectangle-tool box, a
