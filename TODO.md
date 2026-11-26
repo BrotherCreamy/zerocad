@@ -33,6 +33,31 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **The walkthrough gate runs before anything else; a cap's datum stands
+  still; the page keeps a body's answer while the kernel keeps its chain**
+  (2026-11-26, branch `claude/walkthrough-gate`, bugs 85 and 86;
+  docs/plans/walkthrough-gate.md). Each vetoable:
+  - **`npm run gate:walkthrough` is one file run alone, first** — the first
+    ten minutes by finger and by mouse, every step on the model and the log;
+    its main path is the Cut tool from the flyout at the default depth, the
+    Extrude button's Cut mode and the lens beside it; the file APIs stubbed
+    as files.e2e.ts stubs them; the reload asserts the autosave, then New,
+    then Open.
+  - **A cap's normal stays a datum** (the register's decision below stands),
+    **and the datum reads the frame's normal while the chord is square to it
+    within `OFFENDING`**, the chord past that. Before, the bar was 1e-9, so
+    the datum turned with the chord's every micro-tilt and the rows that
+    read it lied about their gradient (bug 85). The switch is a step of
+    lever × bar / chord (0.2 for the lens) that the next frame works off; a
+    smooth blend was not built. Making the normal a column — the chord's,
+    or the face's own plane's — was tried and rejected again: both reopened
+    the lean (a `dist` against a through cut SOLVED with the hole slid; a
+    boss pulled to a free block's lid taking the block 1.05 of 2.5).
+  - **The page keeps a body's last answer across an empty program it
+    answered itself**, one answer per body name, until the kernel is told
+    of a program without the body or the Worker is replaced (bug 86).
+  - **Pictures 561–568**, four a hand.
+
 - **A curve's direction rows are paid in a length; the kernel's bar is the
   drawing's; an unbuilt cut is outline only; an extrude holds its profile
   flat; a drag stays on a held plane** (2026-11-26, branch
@@ -1091,7 +1116,10 @@ otherwise.
     along the plate's top and leaning the cut half a degree against its
     `par`, every row under the offender threshold, SOLVED where it is a
     conflict (unit angle rows have no length; a free in-plane translation
-    is a lever of any length). Measured both ways; the datum kept.
+    is a lever of any length). Measured both ways; the datum kept. (Tried
+    again 2026-11-26 with the curve rows now paid in a length, and as the
+    face's own plane: the same lean, both times — bug 85's fix keeps the
+    datum and makes it stand still instead; walkthrough-gate.md.)
   - **What a through cut goes through is what its own profile meets**, not
     what was made first, and never another cut: two through cuts no longer
     compound (the second stood a tenth past the first one's tool).
@@ -3172,19 +3200,47 @@ are flagged as such.
   per-bug file, decisions from exact geometry never meshes. Clone is at
   `/home/user/tangency-labs/solidcraft` (read-only, 789 MB; delete when
   disk is short). Nothing adopted without a spec in `docs/plans/`.
-- [ ] **A lens cut's circle nudged by finger barely moves, and the release's
+- [x] **A lens cut's circle nudged by finger barely moves, and the release's
   solve stalls a few 1e-7 off** (2026-11-26, flat-profile, found by
-  `test/e2e/flatprofile.e2e.ts`'s iPhone lens): the Rectangle-tool box, a
-  circle on its lid across its edge, Cut through all, the centre nudged
-  −24 px, +8 px. By mouse the circle slides 8 and settles to 1e-10; by
-  finger (coalesced moves) it moves 0.02, the radius drifts 18 → 18.0066,
-  and a further plain solve runs sixty iterations from 3.457e-7 to 3.457e-7
-  on `perp(p10,p12,e2)` and `onplane(p1,e2.lid)` — built, SOLVED, nothing to
-  see, but not settled. The same lens on the owner's blind cut settles in
-  7–12 after any in-plane pull headlessly, so it is the through-all's
-  `e2_through` (the far vertex on the cut's lid) with the crossings' `on`
-  and `oncircle` rows that make the valley. Measure the levers as bug 84's
-  were (`probe2`'s method: an undamped step and what it moves).
+  `test/e2e/flatprofile.e2e.ts`'s iPhone lens). **Fixed** (2026-11-26,
+  branch `claude/walkthrough-gate`, bug 85; docs/plans/walkthrough-gate.md):
+  the valley was `e2_through`'s datum — a cap's normal read off the chord
+  unless within 1e-9 of the frame's normal, so it turned with the chord's
+  every micro-tilt and the row, forty long, moved by as much as each step
+  meant to fix (the undamped step at the stall: 8.2e-6 → 7.7e-6). The datum
+  reads the frame's normal within `OFFENDING` now; the stalled release
+  (60 iterations, 4.5e-8) settles in 11 to 4.4e-10, the browser's in 12–14
+  where it took 24–29, and the kernel refuses no frame. The 0.02 slide was
+  not reproduced (7 every run, both hands); the gate holds slid > 2. Left:
+    - [ ] **The lens's frames still run to the cap at 1e-4** (a hole's at
+          1e-6): the three-point plane `p5.p6.p8` is a datum to `r6`, `r7`
+          and `e2_through`'s frame normal, and the free box moves a hair each
+          frame (0.001–0.01 along its normal over the nudge) with the
+          datum's origin and normal unmodelled — the undamped step now
+          descends 8.15e-6 → 3.3e-6, the rest the datum's. The architecture's
+          *every other frame is a datum*; the release settles it in a dozen.
+    - [ ] **The radius drifts under a drag of the centre**: 18 → 20.6 for
+          the 7-unit nudge, both hands, before and after. The radius is
+          dimensioned by nothing, two points are held on the circle and on
+          the edge, so the frame shares the centre's motion between the
+          radius and the crossings, and `keptSizes` keeps no radius. Should
+          the circle move whole? The owner's call.
+    - [ ] **The datum's switch is a step**: at the bar a row on the cap jumps
+          by lever × bar / chord (0.2 for the lens). Measured only where a
+          body turns whole (the up-to-face test's block), which passes; a
+          blend between the two readings over `OFFENDING`…`2·OFFENDING` is
+          the smooth form, if a drag ever stutters there.
+    - [ ] **A lens cut's flat wall lies on the plate's wall by construction**
+          — a coincident-face boolean. A frame 1e-4 off made SMLib fail once
+          (status 1001) before the fix and never after; the robust answer is
+          a margin outward for a profile member on a body's wall, as
+          `throughPast` gives a through cut's end.
+- [x] **A hole undone and cut again the same, or a file saved, New and
+  opened again, came back without its hole** (2026-11-26, found by the
+  walkthrough gate's first run, bug 86): the kernel says *cached* and sends
+  no solid, the page had forgotten the answer with the body. **Fixed**: the
+  page forgets a body's answer only when the kernel forgets its chain
+  (`Bodies.take`, `fromKernel`); `test/bodies.test.ts`.
 - [ ] **A drag's frames against a rigid body run to the cap with a compromise
   residual** (2026-11-26, flat-profile): the owner's box pulled off its face
   — now only where no held plane applies — stops each frame at sixty
@@ -3354,6 +3410,12 @@ are flagged as such.
           on the unit-angle rows (`par(curve, plane)`, the `.n` row — the
           curve's radius is the natural one; review-solver's `k = 1` for
           normal rows is the decision to revisit), and then the exact normal.
+          **Re-measured 2026-11-26** with the curve rows paid in a length
+          (bug 84): the exact normal, as the chord or as the face's own
+          plane, still opens the lever below (the small circle's normal is
+          paid in its radius, 5, against a lever the drawing's width). What
+          bug 85 fixed instead was the datum wandering with the chord's
+          micro-tilts; see walkthrough-gate.md.
     - [ ] **A free in-plane translation is a lever of any length for a unit
           angle row.** With the cap's normal a column, `dist` 15 against a
           through relation through a plate 10 thick was met by sliding the

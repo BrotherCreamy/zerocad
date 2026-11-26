@@ -168,10 +168,10 @@ async function read(a: AppContext): Promise<Reading> {
 
 /**
  * The body built with its cut, nothing refused, the drawing settled, and no
- * shell drawn. `settled`: a further solve has nothing to do at all — or,
- * where a finger's nudge of the lens leaves the solve stalled a few 1e-7
- * off (TODO.md, *Next up*), nothing the eye, the status or the kernel's bar
- * can tell from settled.
+ * shell drawn. `settled`: a further solve has nothing to do at all. (Until
+ * bug 85 a finger's nudge of the lens left the release stalled a few 1e-7
+ * off, and this took "to the eye" for it; every nudge settles exactly now,
+ * and the loosened form is kept only so a regression says which it was.)
  */
 function assertBuilt(r: Reading, what: string, settled: "exactly" | "to the eye" = "exactly"): void {
   assert.deepEqual(r.features, [["extrude", null, null], ["extrude", "cut", "e1"]], `${what}: the box and a cut into it`);
@@ -262,19 +262,20 @@ for (const device of ["iPhone", "mouse"] as const) {
       assert.match(profile, /\{"name":"l\d+","from":"p\d+","to":"p\d+"\}/, `the cut's profile is the lens — a piece of the lid's edge and a piece of the circle: ${profile}`);
       await h.nudge([30, 0, T], -24, 8);
       const nudged = await read(a);
-      // By mouse the circle slides 8 and the drawing settles to 1e-10. By
-      // finger it moves 0.02 and the release's solve stalls at 3.5e-7 on the
-      // cut's own rows (measured; TODO.md, *Next up*) — nothing the owner can
-      // see: built, SOLVED, the notch where it was. Held to that here.
-      assertBuilt(nudged, "after the nudge", "to the eye");
+      // Both hands: the circle slides and the drawing settles exactly. By
+      // finger the release's solve used to stall at 3.5e-7 on the cut's own
+      // rows, and the kernel refused a frame's boolean (bug 85: the cap's
+      // normal, a datum, wandered with the chord's every micro-tilt;
+      // docs/plans/walkthrough-gate.md). The walkthrough gate holds the same.
+      assertBuilt(nudged, "after the nudge");
       const slid = Math.hypot(...nudged.centre.map((c, i) => c - made.centre[i]));
-      assert.ok(slid > (device === "mouse" ? 2 : 0.01), `the circle moved ${slid}`);
+      assert.ok(slid > 2, `the circle moved ${slid} (0.02 by finger once, the stall)`);
       assert.ok(nudged.baseOff < 1e-6, `the box flat: ${nudged.baseOff}`);
       await shot(a, `${n.lens}-${device.toLowerCase()}-the-lens-cut-nudged-still-built`);
       await say(a, "undo()");
       await a.page.waitForTimeout(900);
       const undone = await read(a);
-      assertBuilt(undone, "after undo", "to the eye");
+      assertBuilt(undone, "after undo");
       assert.ok(Math.hypot(...undone.centre.map((c, i) => c - made.centre[i])) < 1e-6, "the circle back where it was");
       assert.deepEqual(a.pageErrors, []);
     } finally {

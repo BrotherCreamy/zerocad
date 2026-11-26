@@ -2683,7 +2683,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Eighty-four bugs so far were invisible to the unit tests and obvious within seconds
+Eighty-six bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -3178,6 +3178,34 @@ of running the app:
    the chord's length, as the line rows are paid in their edge's, the same
    file settles in one solve. A unit test of the owner's file opens it
    (`test/fixtures/owner-lens-cut-v23.neocad.json`) and holds it to that.
+85. The owner's lens cut nudged by finger left the release's solve stalled
+   at 3.5e-7 for sixty iterations on `perp(p10,p12,e2)` and
+   `onplane(p1,e2.lid)`, and the kernel refused a frame's boolean (*subtract
+   failed, status 1001*). A cap's normal is a datum to every row on the cap
+   — read at each evaluation, no column of the Jacobian — and
+   `extrudeNormal` read it off the chord unless the chord was within 1e-9
+   of the frame's normal. The lens's drag frames tilt the chord a millionth
+   (a crossing point slides along the plate's edge, the chord's far end
+   chases it); the datum turned with it, and the row, forty long, moved by
+   as much as each step had meant to fix: the undamped step at the stall
+   took the residual from 8.2e-6 to 7.7e-6 where its model promised zero.
+   A datum has to stand still while the solve steps. It reads the frame's
+   normal while the chord is square to it within the drawing's own bar
+   (`OFFENDING`), the chord only once the body has turned: the stalled
+   release settles in 11 iterations, the browser's in 12–14 where it took
+   24–29, nothing refused. Making the normal a column of the row — the
+   chord's, or the face's own plane's — mended the valley and reopened the
+   lean the register had measured (through-all-relation.md); rejected
+   twice, with the numbers (docs/plans/walkthrough-gate.md).
+86. A hole cut, undone and cut again the same — or a file saved, New, and
+   opened again — came back without its hole: the box stood plain, nothing
+   refused, the organiser still saying `e1 − e2`. The kernel answers a
+   program it has already built with *cached* and no solid, and forgets a
+   body's chain only when a program without it reaches the Worker; the
+   empty program never does (`Bodies.sync` answers it on the page), and
+   there the page forgot the body's answer with the body. Found by the
+   walkthrough gate's first run, at its undo and its reopen. The page
+   forgets a body's answer only when the kernel forgets its chain.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
