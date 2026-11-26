@@ -483,8 +483,12 @@ export function directionOf(model: Model, ref: string): DirectionRef {
   if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse")) {
     const normal = curveNormal(model, ref);
     if (!normal) throw new Error(`"${ref}" lies in the one plane a ${model.dim}D model has — its normal is no direction to relate`);
-    const radius = model.circular(ref).radiusVar;
-    return { width: 3, vars: normal, direction: (own) => unitDuals(own), frame: null, scale: () => Math.abs(model.valueBefore(radius)) };
+    // Its size as the solve began — a circle's or arc's radius, an ellipse's
+    // first declared size — is what a turn of its normal is paid in.
+    const size = model.sizesOf(e)[0];
+    const ref3: DirectionRef = { width: 3, vars: normal, direction: (own) => unitDuals(own), frame: null };
+    if (size !== undefined) ref3.scale = () => Math.abs(model.valueBefore(size));
+    return ref3;
   }
   if (!axis) return fromEnds(model.dim, lineVars(model, ref));
   // A 2D frame has no z. Said here, before the frame is even looked up, so the

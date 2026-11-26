@@ -80,6 +80,7 @@ import {
   assignView, cameraPlane, depth, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
 import { pointOnWorkingPlane, chosenPlane } from "../workplane.ts";
+import { heldPlane } from "./dragplane.ts";
 import { TOUCH_REACH, hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
@@ -584,15 +585,26 @@ export class ToolEngine {
   }
 
   /**
-   * Where a drag's press is read, and the plane the drag then moves in: the
-   * plane the user chose to sketch on (`chosenPlane`), else the one facing
-   * the viewer — not the origin's, which is where a click *lands* with no plane
-   * chosen (../workplane.ts). A drag is a hand moving something it sees, and
-   * pinning it to the ground in a turned view would leave a lid's corner
-   * immovable along the one direction the user is looking at it in.
+   * Where a drag's press is read, and the plane the drag then moves in:
+   * **the plane the grabbed points are held on** (dragplane.ts's `heldPlane`
+   * — `onplane`, `coplanar`, a feature's `flat`; docs/plans/flat-profile.md,
+   * bug 83), else the plane the user chose to sketch on (`chosenPlane`),
+   * else the one facing the viewer — not the origin's, which is where a
+   * click *lands* with no plane chosen (../workplane.ts). A drag is a hand
+   * moving something it sees, and pinning it to the ground in a turned view
+   * would leave a lid's corner immovable along the one direction the user
+   * is looking at it in; and a point held on a face, pulled toward a place
+   * off the face, moves nowhere while whatever is free gives instead — the
+   * owner's free prism tilted toward his finger and the circle on its face
+   * stayed put. On the face's plane, the finger's ray meets the face where
+   * the eye sees it land, and the circle slides. A plane seen edge-on is
+   * passed over: a ray along it lands nowhere.
    */
-  private dragPointAt(sx: number, sy: number): { world: number[]; plane?: Plane } {
+  private dragPointAt(sx: number, sy: number, names: readonly string[] = []): { world: number[]; plane?: Plane } {
     if (this.model.dim !== 3) return { world: screenToWorld(this.view, sx, sy) };
+    const held = names.length ? heldPlane(this.model, names) : null;
+    const onHeld = held && screenToPlane(this.view, sx, sy, held);
+    if (onHeld && held) return { world: onHeld, plane: held };
     const chosen = chosenPlane(this.model);
     const on = chosen && screenToPlane(this.view, sx, sy, chosen);
     if (on && chosen) return { world: on, plane: chosen };
@@ -1375,12 +1387,12 @@ export class ToolEngine {
     // tier: it must not be possible to aim at a mark and start either
     // dragging the geometry behind it or a box over it.
     const under = this.pickAt(sx, sy);
-    const { world: grab, plane } = this.dragPointAt(sx, sy);
     // A kernel edge drags the entity it was picked in place of, if any — and
     // otherwise nothing: the kernel's edge is derived, and a press on it that
     // moves is a pan (it is not empty canvas, so no box).
     const grabbed = under?.kind === "edge" ? under.under ?? null : under;
     const names = grabbed ? dragGoverns(this.model, grabbed) : [];
+    const { world: grab, plane } = this.dragPointAt(sx, sy, names);
     const drag = names.length
       ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab, ...(plane ? { plane } : {}) }
       : null;

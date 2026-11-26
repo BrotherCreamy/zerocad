@@ -363,7 +363,7 @@ test('del("e1") takes the record, its extrusion and its perpendicular — and le
   const made = f.owns.filter((n) => m.entities.has(n));
   const twins = [...m.relations.values()].filter((r) => r.twin).map((r) => r.name);
   const removed = del(m, "e1");
-  assert.deepEqual(removed, ["e1", f.depth, "e1_perp"]);
+  assert.deepEqual(removed, ["e1", f.depth, "e1_perp", "e1_flat"]);
   // A frameless sketch runs along the origin's +z, and no frame is made for it
   // (docs/plans/frameless-curves.md).
   assert.equal(f.frame, "origin");

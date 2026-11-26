@@ -347,7 +347,7 @@ function featureTag(model: Model, name: string): string {
  * different things.
  */
 export const SHORT_OP: Record<string, string> = {
-  coincident: "coin", midpoint: "mid",
+  coincident: "coin", midpoint: "mid", profileFlat: "flat",
   parallel: "par", perpendicular: "perp", angle: "ang", pointOnLine: "on",
   equalLength: "eq", radius: "rad", onCircle: "oncircle", concentric: "conc",
   equalRadius: "eqrad", tangent: "tan", symmetric: "sym", arcEndpoints: "arcends",

@@ -63,6 +63,16 @@ export interface ProgramOf {
   chains: Map<string, Chain>;
   /** Features that could not be laid out (no depth, a collapsed plane), and why. */
   skipped: { feature: string; why: string }[];
+  /**
+   * Cuts (and intersects) whose body was never begun — the feature before
+   * them could not be laid out — so they are no body of their own and must
+   * not be drawn as one (`drawn`; docs/plans/flat-profile.md, bug 83). Until
+   * 2026-11-26 such a cut became its chain's first node, "new", and the
+   * kernel built the hole's walls and cap as a solid: a boss where a hole
+   * was asked for, under a plain prism — what the owner read as "the cut
+   * changed to add".
+   */
+  shells: string[];
   /** The preview tried in it, if any. */
   trial?: BlendTrial;
 }
@@ -92,6 +102,7 @@ export interface BlendTrial {
 export function programOf(model: Model, all = false, trial: BlendTrial | null = null): ProgramOf {
   const chains = new Map<string, Chain>();
   const skipped: ProgramOf["skipped"] = [];
+  const shells: string[] = [];
   const bodies: Program["bodies"] = [];
   /** Every body's nodes, shown or not and of one sweep or more: what a surface taken from a body's face is built from. */
   const nodesOf = new Map<string, Node[]>();
@@ -107,6 +118,17 @@ export function programOf(model: Model, all = false, trial: BlendTrial | null = 
         continue;
       }
       const sw = f;
+      // A cut with nothing before it has nothing to cut: with its base not
+      // laid out it is left out too, and said, rather than made the body —
+      // a boss of a hole's shape. An add still stands on its own, which is
+      // what it would be.
+      if (nodes.length === 0 && (modeOf(sw) === "cut" || modeOf(sw) === "intersect")) {
+        if (said) {
+          skipped.push({ feature: f.name, why: `${chain.steps[0].name} is not built, so there is nothing for it to ${modeOf(sw)}` });
+          shells.push(f.name);
+        }
+        continue;
+      }
       try {
         const { at, profile, sweep } = kernelSweep(model, sw);
         nodes.push({ id: featureId(f.name), op: nodes.length === 0 ? "new" : OPS[modeOf(sw)], sweep, profile, at });
@@ -158,7 +180,7 @@ export function programOf(model: Model, all = false, trial: BlendTrial | null = 
     chains.set(b.name, { name: b.name, features: [], steps: [] });
     bodies.push({ name: b.name, nodes });
   }
-  return { program: { bodies, prefix: PREFIX, chord: CHORD, angle: ANGLE }, chains, skipped, ...(trial ? { trial } : {}) };
+  return { program: { bodies, prefix: PREFIX, chord: CHORD, angle: ANGLE }, chains, skipped, shells, ...(trial ? { trial } : {}) };
 }
 
 /**
@@ -408,6 +430,8 @@ export interface Report {
   lines: string[];
   /** Whether every kernel body on screen is the one its features make now. */
   current: boolean;
+  /** The first of those lines about each feature, by the feature's name — what its organiser row says (`refusals`). */
+  byFeature: Map<string, string>;
 }
 
 /** What `drawn` hands the face layer: the kernel's faces, and the features they stand in for. */
@@ -630,6 +654,17 @@ export class Bodies {
         for (const f of chain.features.slice(1)) if (modeOf(f) !== "add") replaces.add(f.name);
       }
     }
+    // A cut whose body was never begun is no solid either — its base refused
+    // by the solids layer (`shells`), or left out of every body (an unbuilt
+    // or open base, modes.ts's `left`): its profile and chords are drawn as
+    // the geometry they are, its faces not at all.
+    for (const f of this.current?.shells ?? []) replaces.add(f);
+    if (this.model) {
+      for (const l of chainsOf(this.model).left) {
+        const f = this.model.features.get(l.feature);
+        if (f && modeOf(f) !== "new" && modeOf(f) !== "add") replaces.add(f.name);
+      }
+    }
     return { faces, replaces };
   }
 
@@ -690,15 +725,21 @@ export class Bodies {
   /** What to say about the bodies: refusals, idle cuts, features left out, a kernel that is not there. */
   report(): Report {
     const lines: string[] = [];
+    const byFeature = new Map<string, string>();
+    /** A line about one feature: said, and remembered for its row (the first of them). */
+    const about = (feature: string, line: string) => {
+      lines.push(line);
+      if (!byFeature.has(feature)) byFeature.set(feature, line);
+    };
     const p = this.current;
-    if (!p) return { lines, current: true };
+    if (!p) return { lines, current: true, byFeature };
     const model = this.model;
     if (model) {
       const chains = chainsOf(model);
-      for (const l of chains.left) lines.push(`${l.feature} is left out: ${l.why}`);
-      for (const a of chains.alone) lines.push(`${a.feature}: ${a.why}`);
+      for (const l of chains.left) about(l.feature, `${l.feature} is left out: ${l.why}`);
+      for (const a of chains.alone) about(a.feature, `${a.feature}: ${a.why}`);
     }
-    for (const s of p.skipped) lines.push(`${s.feature} cannot be laid out: ${s.why}`);
+    for (const s of p.skipped) about(s.feature, `${s.feature} cannot be laid out: ${s.why}`);
     if (p.program.bodies.length && !this.client) lines.push("the solid kernel is not available — cuts are not shown");
     else if (p.program.bodies.length && this.failure) lines.push(`the solid kernel: ${this.failure}`);
     for (const b of p.program.bodies) {
@@ -715,7 +756,7 @@ export class Bodies {
         for (const g of chain.features.filter((x) => modeOf(x) === "add" || modeOf(x) === "new")) {
           const on = faceUnder(model, g);
           if (on && chain.features.some((f) => on.startsWith(`${f.name}.`)) && !has.has(on)) {
-            lines.push(`${g.name} is drawn on ${on}, which ${b.name} no longer has — it stays where that face was`);
+            about(g.name, `${g.name} is drawn on ${on}, which ${b.name} no longer has — it stays where that face was`);
           }
         }
       }
@@ -726,23 +767,33 @@ export class Bodies {
       const trial = p.trial?.body === b.name ? p.trial.node.id : null;
       // A surface's partners' nodes are carried inside its own (a knit's), and their refusals are its.
       const own = (id: number) => id !== trial && allNodes(b.nodes).some((n) => n.id === id);
-      for (const f of r.failed) if (own(f.id)) lines.push(`${name(f.id)} could not be applied to ${b.name}: ${f.why}`);
+      for (const f of r.failed) if (own(f.id)) about(name(f.id), `${name(f.id)} could not be applied to ${b.name}: ${f.why}`);
       // A fillet some of whose edges a change took (docs/plans/solid-fillets.md): the rest are still rounded.
       for (const m of (r.missing ?? []).filter((x) => own(x.id))) {
         const what = model?.blends.get(name(m.id))?.kind ?? "fillet";
-        lines.push(`${name(m.id)} no longer ${what === "fillet" ? "fillets" : "chamfers"} ${m.edges.join(", ")} — ${b.name} has no such edge now`);
+        about(name(m.id), `${name(m.id)} no longer ${what === "fillet" ? "fillets" : "chamfers"} ${m.edges.join(", ")} — ${b.name} has no such edge now`);
       }
       for (const i of r.idle) {
         const mode = model?.features.get(name(i.id)) ? modeOf(model.features.get(name(i.id)) as FeatureEntry) : "add";
         if (model?.surfaces.has(name(i.id))) {
-          lines.push(`${name(i.id)} trims nothing from ${b.name} — what it cuts by does not cross it`);
+          about(name(i.id), `${name(i.id)} trims nothing from ${b.name} — what it cuts by does not cross it`);
           continue;
         }
-        lines.push(mode === "cut" ? `${name(i.id)} cuts nothing from ${b.name} — it does not reach it`
+        about(name(i.id), mode === "cut" ? `${name(i.id)} cuts nothing from ${b.name} — it does not reach it`
           : mode === "add" ? `${name(i.id)} adds nothing to ${b.name} — it is all inside it`
             : `${name(i.id)} changes nothing in ${b.name}`);
       }
     }
-    return { lines, current: this.settled };
+    return { lines, current: this.settled, byFeature };
+  }
+
+  /**
+   * What the solids layer has to say against each feature, by name — the
+   * first line of `report` about it: refused as oblique, nothing left,
+   * could not be applied, cuts nothing, left out of its body. What the
+   * organiser's row says in the warning ink (docs/plans/flat-profile.md).
+   */
+  refusals(): Map<string, string> {
+    return this.report().byFeature;
   }
 }

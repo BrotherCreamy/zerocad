@@ -78,6 +78,15 @@ export interface OrganiserRow {
    * feature leaves empty.
    */
   fix?: { command: string; summary: string };
+  /**
+   * **Why the solids layer did not build it** (docs/plans/flat-profile.md,
+   * bug 83): the reason the kernel gave — oblique, nothing left, could not
+   * be applied, cuts nothing — said in the warning ink after the kind, the
+   * whole of it on hover and in the row's menu header. Until 2026-11-26
+   * only the log's small print said, and the owner read a refused cut's
+   * drawn walls as the cut having "changed to add".
+   */
+  warn?: string;
 }
 
 export interface OrganiserSection {
@@ -158,7 +167,8 @@ export function definedOf(model: Model, group: string, free: ReadonlySet<string>
  * before one), only for each group's definedness. Pure: a test asks it what
  * the pane would show.
  */
-export function organiserSections(model: Model, selection: readonly string[] = [], free: ReadonlySet<string> | null = null): OrganiserSection[] {
+export function organiserSections(model: Model, selection: readonly string[] = [], free: ReadonlySet<string> | null = null,
+                                  refusals: ReadonlyMap<string, string> = new Map()): OrganiserSection[] {
   const chosen = new Set(selection);
   const lit = (members: readonly string[]) => members.length > 0 && members.every((m) => chosen.has(m));
   const groups: OrganiserRow[] = [...model.groups.values()].map((g) => {
@@ -186,12 +196,17 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // body leaves something farther, the row says so and offers the one tap.
     // And *construction*, on the feature a construction body's flag is on (docs/plans/fillets-one-thing.md).
     const short = f.kind === "extrude" && f.unbuilt === undefined && !f.open ? shortOf(model, f) : null;
-    const state = (f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : short ? " · short" : "")
+    // **And when the solids layer refused it** (`refusals`, the bodies layer's
+    // word for each feature it could not build): *not built*, in the warning
+    // ink, the reason on hover and in the menu's header. Not for a record
+    // already said unbuilt or open — those say why themselves.
+    const why = f.unbuilt === undefined && !(f.kind === "extrude" && f.open) ? refusals.get(f.name) : undefined;
+    const state = (f.unbuilt !== undefined ? " · unbuilt" : f.kind === "extrude" && f.open ? " · open" : why ? " · not built" : short ? " · short" : "")
       + (f.construction ? " · construction" : "");
     return {
       name: f.name, detail: (mode === "new" ? f.kind : `${f.kind} · ${mode}`) + state, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
-      open: null, openCommand: null, ...(short ? { fix: short } : {}),
+      open: null, openCommand: null, ...(short && !why ? { fix: short } : {}), ...(why ? { warn: why } : {}),
     };
   });
   // Fillets and chamfers are features too (docs/plans/solid-fillets.md), each
@@ -199,11 +214,12 @@ export function organiserSections(model: Model, selection: readonly string[] = [
   // out of its body — and Edit and Delete on its menu.
   for (const b of model.blends.values()) {
     const eye = eyeOf(model, b.owns, model.hidden.has(b.name));
+    const why = b.unbuilt === undefined ? refusals.get(b.name) : undefined;
     const row: OrganiserRow = {
       // The kind alone: a phone's pane cut "chamfer · 1 edge" (seen); its menu's header says the edges.
-      name: b.name, detail: b.unbuilt !== undefined ? `${b.kind} · unbuilt` : b.kind, count: b.owns.length, eye,
+      name: b.name, detail: b.unbuilt !== undefined ? `${b.kind} · unbuilt` : why ? `${b.kind} · not built` : b.kind, count: b.owns.length, eye,
       eyeCommand: eyeCommand(b.name, eye), tapCommand: `select(${quoted(b.name)})`,
-      selected: lit(b.owns.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
+      selected: lit(b.owns.filter((n) => !model.hidden.has(n))), open: null, openCommand: null, ...(why ? { warn: why } : {}),
     };
     const after = features.findIndex((f) => Number(f.name.slice(1)) > Number(b.name.slice(1)));
     if (after < 0) features.push(row);
@@ -352,7 +368,8 @@ export function addCommand(selection: readonly string[]): string {
  * or Close, Ungroup; for a feature: *Edit e1* and Delete. An item that would
  * do nothing is shown off, with the reason, as the context menu shows one.
  */
-export function rowMenu(model: Model, name: string, selection: readonly string[] = [], free: ReadonlySet<string> | null = null): Menu | null {
+export function rowMenu(model: Model, name: string, selection: readonly string[] = [], free: ReadonlySet<string> | null = null,
+                        refusals: ReadonlyMap<string, string> = new Map()): Menu | null {
   const g = model.groups.get(name);
   if (g) {
     const inIt = selection.filter((n) => g.members.includes(n));
@@ -402,10 +419,13 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
     // The one construction row every kind has (docs/plans/fillets-one-thing.md): a feature's is its body's.
     const body = bodyNameOf(model, name) ?? name;
     const reference = model.isConstruction(body);
+    // Not built: the reason in the header, which is what a finger's hold on the row reads.
+    const why = refusals.get(name);
     return {
-      header: f.kind === "fillet" || f.kind === "chamfer"
+      header: (f.kind === "fillet" || f.kind === "chamfer"
         ? `${name}  ${f.kind} of ${f.edges.length} edge${f.edges.length === 1 ? "" : "s"} of ${f.into}`
-        : short ? short.summary.replace(" — tap to take the far side again", "") : `${name}  ${f.kind}, ${f.owns.length} made${reference ? "  ·  construction" : ""}`,
+        : short && !why ? short.summary.replace(" — tap to take the far side again", "") : `${name}  ${f.kind}, ${f.owns.length} made${reference ? "  ·  construction" : ""}`)
+        + (why ? `  ·  not built: ${why}` : ""),
       items: [
         ...(short ? [{ label: "Go through again", action: { do: "run" as const, command: short.command } }] : []),
         { label: `Edit ${name}`, action: { do: "run", command: `edit(${quoted(name)})` } },
@@ -728,6 +748,13 @@ export class Organiser {
       detail.className = "odetail";
       detail.textContent = r.detail;
       row.appendChild(detail);
+      // Not built: the detail in the warning ink, the kernel's reason on
+      // hover; a finger's hold is the row's menu, whose header says it.
+      if (r.warn) {
+        row.dataset.warn = "";
+        const why = r.warn;
+        giveTip(detail, () => ({ name: r.name, summary: why, command: r.tapCommand }), this.host.tooltip, { hold: false });
+      }
     }
     if (r.defined !== undefined) row.appendChild(this.definedEl(r));
     const count = document.createElement("span");

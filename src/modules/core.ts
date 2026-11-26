@@ -11,6 +11,7 @@ import type { Model } from "../model.ts";
 import { slots } from "../clauses.ts";
 import * as basic from "../relations/basic.ts";
 import * as geom from "../relations/geometry.ts";
+import { profileFlat } from "../relations/profilesquare.ts";
 import { measure } from "../relations/measure.ts";
 import { construction, set } from "../operations.ts";
 import { amongEntry, join, leave, relate } from "../among.ts";
@@ -116,6 +117,10 @@ defineModule("core", {
     // 3D only: the point in the plane of three others, all four moving — the
     // both-ways hold an offset keeps its copy in its chain's plane by (profiles-held.md).
     coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar, twin: "shape" },
+    // 3D only: an extrude's profile flat among its own points — what `extrude`
+    // makes as `e1_flat` (docs/plans/flat-profile.md). No twin: the lid is
+    // flat by the extrusion, and a second relation would say it twice.
+    profileFlat: { names: ["flat"], slots: slots("feature"), fn: profileFlat },
     // The relations that hold among many equals — `par("l1", "l2", "l3", "l4")`
     // is one relation, not a star on the first (docs/plans/review-relations.md).
     // A twin on a linked profile is the relation as written — the entry's `fn`,
@@ -216,6 +221,7 @@ defineModule("core", {
     '           par/perp/ang take any axis by name — par("l1", "f2.x").',
     '           perp("l9", "e1") holds a chord square to an extrude\'s profile;',
     '           ang("l9", "e1", θ) at θ off its normal. coplanar(p, a, b, c)',
+    '           flat("e1") the profile flat among its points — what e1_flat is',
     "           holds p in the plane of a, b and c, all four moving.",
     "           A frame draws as an axes marker at its origin, in SolidWorks'",
     "           colours — x red, y green, z blue, each lettered — heavier when",

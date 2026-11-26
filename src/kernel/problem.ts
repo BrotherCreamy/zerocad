@@ -133,8 +133,17 @@ export const AGREEING_MS = 150;
 /** Relative rank tolerance for `analyse`: a column counts when its remainder is above this share of its norm. */
 const RANK_TOL = 1e-9;
 
-/** How far off a stored row must stay for a solve to call it an offender. */
-const OFFENDING = 0.05;
+/**
+ * How far off a stored row must stay for a solve to call it an offender —
+ * **the drawing's own tolerance**: under this every row is met and the
+ * status reads SOLVED. Exported for the layers that must agree with that
+ * verdict (the solids layer's flatness bar, solids.ts): a drawing the
+ * status calls solved is not then refused by the kernel for being a
+ * ten-thousandth off (docs/plans/flat-profile.md).
+ */
+export const OFFENDING = 0.05;
+/** The iterations one solve may take before it stops and says where it got to. */
+export const MAX_ITER = 60;
 
 /**
  * How the kernel can be handed to us: a URL to fetch (the browser path) or the
@@ -403,7 +412,7 @@ export class Problem {
    * improvements that change nothing a caller would read.
    */
   solve(opts: { maxIter?: number; tol?: number; extra?: ResidualBlock[]; only?: ReadonlySet<BlockHandle>; stall?: number } = {}): SolveReport {
-    const maxIter = opts.maxIter ?? 60;
+    const maxIter = opts.maxIter ?? MAX_ITER;
     const tol = opts.tol ?? 1e-9;
     const stall = opts.stall ?? 0;
     const extra = opts.extra ?? [];

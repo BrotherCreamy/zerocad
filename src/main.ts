@@ -2446,9 +2446,11 @@ async function main() {
       // A group's definedness is read off the last diagnosis's free set
       // (docs/plans/no-sketch.md) — the one `showDiagnosis` draws the free ink
       // from, so the row's dot and the canvas's blue agree.
-      sections: () => organiserSections(model, engine.selection.prune(model), diagnosis?.free ?? null),
+      // And what the solids layer could not build, by feature, so a refused
+      // body's row says so where the owner looks (docs/plans/flat-profile.md).
+      sections: () => organiserSections(model, engine.selection.prune(model), diagnosis?.free ?? null, solidBodies.refusals()),
       selection: () => engine.selection.prune(model),
-      menu: (name) => rowMenu(model, name, engine.selection.prune(model), diagnosis?.free ?? null),
+      menu: (name) => rowMenu(model, name, engine.selection.prune(model), diagnosis?.free ?? null, solidBodies.refusals()),
       showMenu: (m, x, y) => {
         hoverEl.hidden = true;
         const wrap = menuEl.parentElement!.getBoundingClientRect();

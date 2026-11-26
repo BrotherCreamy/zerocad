@@ -676,7 +676,7 @@ test("a format-19 file's stars reopen as the separate relations they were, and i
   const text = await fixture("review-relations-v19.neocad.json");
   const was = JSON.parse(await fixture("review-relations-v19.geometry.json")) as Geometry;
   assert.equal(JSON.parse(text).version, 19);
-  assert.equal(VERSION, 23);
+  assert.equal(VERSION, 24);
   const m = open(text);
   // Every point where that build had it, before and after a solve.
   const worst = () => Math.max(...Object.entries(was.points).map(([p, at]) => len(sub(m.coords(p), at))));
@@ -686,7 +686,8 @@ test("a format-19 file's stars reopen as the separate relations they were, and i
   // Relation for relation, under the same names: nothing joined, nothing migrated but a wall's name.
   // (Beside them, each relation within an extrude's profile has its twin on the other profile now —
   // docs/plans/linked-profiles.md — under a name derived from its own, which claims none of these.)
-  assert.deepEqual([...m.relations.values()].filter((r) => !r.twin).map((r) => r.name), was.relations.map((r) => r.name));
+  // The flat-profile relations are new by design (docs/plans/flat-profile.md, 24): made at the replay step under derived names, they shift no name.
+  assert.deepEqual([...m.relations.values()].filter((r) => !r.twin && r.op !== "profileFlat").map((r) => r.name), was.relations.map((r) => r.name));
   assert.ok([...m.relations.values()].some((r) => r.twin), "the file's extrude is linked from the moment it opens");
   const now = new Map([...m.relations.values()].map((r) => [r.name, r]));
   let stars = 0, walls = 0;
@@ -718,7 +719,7 @@ test("a format-19 file's stars reopen as the separate relations they were, and i
   assert.equal(gone.filter((n) => copy.relations.has(n) === false && /^r/.test(n)).length, 6, "three pars and three eqs went with the first line");
   // Re-saved: the current version, no place left in it, and the same again from there.
   const saved = save(m);
-  assert.equal(JSON.parse(saved).version, 23);
+  assert.equal(JSON.parse(saved).version, 24);
   assert.ok(!/"e\d+\.m\d+"/.test(saved), "no wall is written by its place");
   assert.equal(save(open(saved)), saved, "stable");
   const twice = open(saved);
